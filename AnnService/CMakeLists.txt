@@ -35,6 +35,17 @@ file(GLOB SEARCHER_FILES ${SRC_FILES} ${PROJECT_SOURCE_DIR}/AnnService/src/Index
 add_executable (indexsearcher ${SEARCHER_FILES} ${HDR_FILES})
 target_link_libraries(indexsearcher ${Boost_LIBRARIES})
 
+find_package(MPI)
+if (MPI_FOUND)
+    message (STATUS "Found MPI.")
+    message (STATUS "MPI Include Path: ${MPI_CXX_INCLUDE_PATH}")
+    message (STATUS "MPI Libraries: ${MPI_CXX_LIBRARIES}")
+    include_directories (${MPI_CXX_INCLUDE_PATH})
+    file(GLOB PARTITION_FILES ${SRC_FILES} ${PROJECT_SOURCE_DIR}/AnnService/src/BalancedDataPartition/*.cpp)
+    add_executable (balanceddatapartition ${PARTITION_FILES} ${HDR_FILES})
+    target_link_libraries(balanceddatapartition ${Boost_LIBRARIES} ${MPI_CXX_LIBRARIES})
+endif()
+
 install(TARGETS SPTAGLib SPTAGLibStatic server client aggregator indexbuilder indexsearcher
   RUNTIME DESTINATION bin
   ARCHIVE DESTINATION lib

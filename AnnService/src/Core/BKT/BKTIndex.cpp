@@ -103,8 +103,8 @@ namespace SPTAG
 
 #define Search(CheckDeleted1, CheckDeleted2) \
         std::shared_lock<std::shared_timed_mutex> lock(*(m_pTrees.m_lock)); \
-        m_pTrees.InitSearchTrees(this, p_query, p_space); \
-        m_pTrees.SearchTrees(this, p_query, p_space, m_iNumberOfInitialDynamicPivots); \
+        m_pTrees.InitSearchTrees(m_pSamples, m_fComputeDistance, p_query, p_space); \
+        m_pTrees.SearchTrees(m_pSamples, m_fComputeDistance, p_query, p_space, m_iNumberOfInitialDynamicPivots); \
         const DimensionType checkPos = m_pGraph.m_iNeighborhoodSize - 1; \
         while (!p_space.m_NGQueue.empty()) { \
             COMMON::HeapCell gnode = p_space.m_NGQueue.pop(); \
@@ -144,7 +144,7 @@ namespace SPTAG
                 p_space.m_NGQueue.insert(COMMON::HeapCell(nn_index, distance2leaf)); \
             } \
             if (p_space.m_NGQueue.Top().distance > p_space.m_SPTQueue.Top().distance) { \
-                m_pTrees.SearchTrees(this, p_query, p_space, m_iNumberOfOtherDynamicPivots + p_space.m_iNumberOfCheckedLeaves); \
+                m_pTrees.SearchTrees(m_pSamples, m_fComputeDistance, p_query, p_space, m_iNumberOfOtherDynamicPivots + p_space.m_iNumberOfCheckedLeaves); \
             } \
         } \
         p_query.SortResult(); \
@@ -208,7 +208,7 @@ namespace SPTAG
             m_workSpacePool->Init(m_iNumberOfThreads);
             m_threadPool.init();
 
-            m_pTrees.BuildTrees<T>(this);
+            m_pTrees.BuildTrees<T>(m_pSamples, m_iDistCalcMethod);
             m_pGraph.BuildGraph<T>(this, &(m_pTrees.GetSampleMap()));
 
             return ErrorCode::Success;
@@ -258,7 +258,7 @@ namespace SPTAG
 
             ptr->m_deletedID.Initialize(newR);
             COMMON::BKTree* newtree = &(ptr->m_pTrees);
-            (*newtree).BuildTrees<T>(ptr);
+            (*newtree).BuildTrees<T>(ptr->m_pSamples, ptr->m_iDistCalcMethod);
             m_pGraph.RefineGraph<T>(this, indices, reverseIndices, nullptr, &(ptr->m_pGraph), &(ptr->m_pTrees.GetSampleMap()));
             if (m_pMetaToVec != nullptr) ptr->BuildMetaMapping();
             return ErrorCode::Success;
@@ -294,7 +294,7 @@ namespace SPTAG
             if (nullptr != m_pMetadata && (p_indexStreams.size() < 6 || ErrorCode::Success != m_pMetadata->RefineMetadata(indices, *p_indexStreams[4], *p_indexStreams[5]))) return ErrorCode::Fail;
 
             COMMON::BKTree newTrees(m_pTrees);
-            newTrees.BuildTrees<T>(this, &indices, &reverseIndices);
+            newTrees.BuildTrees<T>(m_pSamples, m_iDistCalcMethod, &indices, &reverseIndices);
             newTrees.SaveTrees(*p_indexStreams[1]);
 
             m_pGraph.RefineGraph<T>(this, indices, reverseIndices, p_indexStreams[2], nullptr, &(newTrees.GetSampleMap()));
@@ -423,7 +423,7 @@ namespace SPTAG
             }
 
             if (end - m_pTrees.sizePerTree() >= m_addCountForRebuild && m_threadPool.jobsize() == 0) {
-                m_threadPool.add(new RebuildJob(this, &m_pTrees, &m_pGraph));
+                m_threadPool.add(new RebuildJob(&m_pSamples, &m_pTrees, &m_pGraph, m_iDistCalcMethod));
             }
 
             for (SizeType node = begin; node < end; node++)
