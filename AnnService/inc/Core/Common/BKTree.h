@@ -38,13 +38,13 @@ namespace SPTAG
             DimensionType _D;
             int _T;
             T* centers;
+            T* newTCenters;
             SizeType* counts;
             float* newCenters;
             SizeType* newCounts;
             int* label;
             SizeType* clusterIdx;
             float* clusterDist;
-            T* newTCenters;
 
             KmeansArgs(int k, DimensionType dim, SizeType datasize, int threadnum) : _K(k), _D(dim), _T(threadnum) {
                 centers = (T*)aligned_malloc(sizeof(T) * k * dim, ALIGN);
@@ -104,209 +104,207 @@ namespace SPTAG
             }
         };
 
-		template <typename T>
-		float RefineCenters(const Dataset<T>& data, KmeansArgs<T>& args, DistCalcMethod distMethod)
-		{
-			float(*fComputeDistance)(const T* pX, const T* pY, DimensionType length) = COMMON::DistanceCalcSelector<T>(distMethod);
+        template <typename T>
+        float RefineCenters(const Dataset<T>& data, KmeansArgs<T>& args, DistCalcMethod distMethod)
+        {
+            float(*fComputeDistance)(const T* pX, const T* pY, DimensionType length) = COMMON::DistanceCalcSelector<T>(distMethod);
 
-			int maxcluster = -1;
-			SizeType maxCount = 0;
-			for (int k = 0; k < args._K; k++) {
-				if (args.newCounts[k] > maxCount && DistanceUtils::ComputeL2Distance((T*)data[args.clusterIdx[k]], args.centers + k * data.C(), data.C()) > 1e-6)
-				{
-					maxcluster = k;
-					maxCount = args.newCounts[k];
-				}
-			}
+            int maxcluster = -1;
+            SizeType maxCount = 0;
+            for (int k = 0; k < args._K; k++) {
+                if (args.newCounts[k] > maxCount && DistanceUtils::ComputeL2Distance((T*)data[args.clusterIdx[k]], args.centers + k * args._D, args._D) > 1e-6)
+                {
+                    maxcluster = k;
+                    maxCount = args.newCounts[k];
+                }
+            }
 
-			if (maxcluster != -1 && (args.clusterIdx[maxcluster] < 0 || args.clusterIdx[maxcluster] >= data.R()))
-				std::cout << "maxcluster:" << maxcluster << "(" << args.newCounts[maxcluster] << ") Error dist:" << args.clusterDist[maxcluster] << std::endl;
+            if (maxcluster != -1 && (args.clusterIdx[maxcluster] < 0 || args.clusterIdx[maxcluster] >= data.R()))
+                std::cout << "maxcluster:" << maxcluster << "(" << args.newCounts[maxcluster] << ") Error dist:" << args.clusterDist[maxcluster] << std::endl;
 
-			float diff = 0;
-			for (int k = 0; k < args._K; k++) {
-				T* TCenter = args.newTCenters + k * data.C();
-				if (args.newCounts[k] == 0) {
-					if (maxcluster != -1) {
-						//int nextid = Utils::rand_int(last, first);
-						//while (args.label[nextid] != maxcluster) nextid = Utils::rand_int(last, first);
-						SizeType nextid = args.clusterIdx[maxcluster];
-						std::memcpy(TCenter, data[nextid], sizeof(T)*data.C());
-					}
-					else {
-						std::memcpy(TCenter, args.centers + k * data.C(), sizeof(T)*data.C());
-					}
-				}
-				else {
-					float* currCenters = args.newCenters + k * data.C();
-					for (DimensionType j = 0; j < data.C(); j++) currCenters[j] /= args.newCounts[k];
+            float diff = 0;
+            for (int k = 0; k < args._K; k++) {
+                T* TCenter = args.newTCenters + k * args._D;
+                if (args.newCounts[k] == 0) {
+                    if (maxcluster != -1) {
+                        //int nextid = Utils::rand_int(last, first);
+                        //while (args.label[nextid] != maxcluster) nextid = Utils::rand_int(last, first);
+                        SizeType nextid = args.clusterIdx[maxcluster];
+                        std::memcpy(TCenter, data[nextid], sizeof(T)*args._D);
+                    }
+                    else {
+                        std::memcpy(TCenter, args.centers + k * args._D, sizeof(T)*args._D);
+                    }
+                }
+                else {
+                    float* currCenters = args.newCenters + k * args._D;
+                    for (DimensionType j = 0; j < args._D; j++) currCenters[j] /= args.newCounts[k];
 
-					if (distMethod == DistCalcMethod::Cosine) {
-						COMMON::Utils::Normalize(currCenters, data.C(), COMMON::Utils::GetBase<T>());
-					}
-					for (DimensionType j = 0; j < data.C(); j++) TCenter[j] = (T)(currCenters[j]);
-				}
-				diff += fComputeDistance(args.centers + k*data.C(), TCenter, data.C());
-			}
-			return diff;
-		}
+                    if (distMethod == DistCalcMethod::Cosine) {
+                        COMMON::Utils::Normalize(currCenters, args._D, COMMON::Utils::GetBase<T>());
+                    }
+                    for (DimensionType j = 0; j < args._D; j++) TCenter[j] = (T)(currCenters[j]);
+                }
+                diff += fComputeDistance(args.centers + k*args._D, TCenter, args._D);
+            }
+            return diff;
+        }
 
-		template <typename T>
-		float KmeansAssign(const Dataset<T>& data,
-			std::vector<SizeType>& indices,
-			const SizeType first, const SizeType last, KmeansArgs<T>& args, const bool updateCenters, DistCalcMethod distMethod) {
-			float currDist = 0;
-			int threads = args._T;
-			float lambda = (updateCenters) ? COMMON::Utils::GetBase<T>() * COMMON::Utils::GetBase<T>() / (100.0f * (last - first)) : 0.0f;
-			SizeType subsize = (last - first - 1) / threads + 1;
-			float(*fComputeDistance)(const T* pX, const T* pY, DimensionType length) = COMMON::DistanceCalcSelector<T>(distMethod);
+        template <typename T>
+        inline float KmeansAssign(const Dataset<T>& data,
+            std::vector<SizeType>& indices,
+            const SizeType first, const SizeType last, KmeansArgs<T>& args, const bool updateCenters, DistCalcMethod distMethod, float lambda) {
+            float(*fComputeDistance)(const T* pX, const T* pY, DimensionType length) = COMMON::DistanceCalcSelector<T>(distMethod);
+            float currDist = 0;
+            SizeType subsize = (last - first - 1) / args._T + 1;
 
-#pragma omp parallel for num_threads(threads)
-			for (int tid = 0; tid < threads; tid++)
-			{
-				SizeType istart = first + tid * subsize;
-				SizeType iend = min(first + (tid + 1) * subsize, last);
-				SizeType *inewCounts = args.newCounts + tid * args._K;
-				float *inewCenters = args.newCenters + tid * args._K * data.C();
-				SizeType * iclusterIdx = args.clusterIdx + tid * args._K;
-				float * iclusterDist = args.clusterDist + tid * args._K;
-				float idist = 0;
-				for (SizeType i = istart; i < iend; i++) {
-					int clusterid = 0;
-					float smallestDist = MaxDist;
-					for (int k = 0; k < args._K; k++) {
-						float dist = fComputeDistance(data[indices[i]], args.centers + k*data.C(), data.C()) + lambda*args.counts[k];
-						if (dist > -MaxDist && dist < smallestDist) {
-							clusterid = k; smallestDist = dist;
-						}
-					}
-					args.label[i] = clusterid;
-					inewCounts[clusterid]++;
-					idist += smallestDist;
-					if (updateCenters) {
-						const T* v = (const T*)data[indices[i]];
-						float* center = inewCenters + clusterid*data.C();
-						for (DimensionType j = 0; j < data.C(); j++) center[j] += v[j];
-						if (smallestDist > iclusterDist[clusterid]) {
-							iclusterDist[clusterid] = smallestDist;
-							iclusterIdx[clusterid] = indices[i];
-						}
-					}
-					else {
-						if (smallestDist <= iclusterDist[clusterid]) {
-							iclusterDist[clusterid] = smallestDist;
-							iclusterIdx[clusterid] = indices[i];
-						}
-					}
-				}
-				COMMON::Utils::atomic_float_add(&currDist, idist);
-			}
+#pragma omp parallel for num_threads(args._T) shared(data, indices) reduction(+:currDist)
+            for (int tid = 0; tid < args._T; tid++)
+            {
+                SizeType istart = first + tid * subsize;
+                SizeType iend = min(first + (tid + 1) * subsize, last);
+                SizeType *inewCounts = args.newCounts + tid * args._K;
+                float *inewCenters = args.newCenters + tid * args._K * args._D;
+                SizeType * iclusterIdx = args.clusterIdx + tid * args._K;
+                float * iclusterDist = args.clusterDist + tid * args._K;
+                float idist = 0;
+                for (SizeType i = istart; i < iend; i++) {
+                    int clusterid = 0;
+                    float smallestDist = MaxDist;
+                    for (int k = 0; k < args._K; k++) {
+                        float dist = fComputeDistance(data[indices[i]], args.centers + k*args._D, args._D) + lambda*args.counts[k];
+                        if (dist > -MaxDist && dist < smallestDist) {
+                            clusterid = k; smallestDist = dist;
+                        }
+                    }
+                    args.label[i] = clusterid;
+                    inewCounts[clusterid]++;
+                    idist += smallestDist;
+                    if (updateCenters) {
+                        const T* v = (const T*)data[indices[i]];
+                        float* center = inewCenters + clusterid*args._D;
+                        for (DimensionType j = 0; j < args._D; j++) center[j] += v[j];
+                        if (smallestDist > iclusterDist[clusterid]) {
+                            iclusterDist[clusterid] = smallestDist;
+                            iclusterIdx[clusterid] = indices[i];
+                        }
+                    }
+                    else {
+                        if (smallestDist <= iclusterDist[clusterid]) {
+                            iclusterDist[clusterid] = smallestDist;
+                            iclusterIdx[clusterid] = indices[i];
+                        }
+                    }
+                }
+                currDist += idist;
+            }
 
-			for (int i = 1; i < threads; i++) {
-				for (int k = 0; k < args._K; k++)
-					args.newCounts[k] += args.newCounts[i*args._K + k];
-			}
+            for (int i = 1; i < args._T; i++) {
+                for (int k = 0; k < args._K; k++)
+                    args.newCounts[k] += args.newCounts[i*args._K + k];
+            }
 
-			if (updateCenters) {
-				for (int i = 1; i < threads; i++) {
-					float* currCenter = args.newCenters + i*args._K*data.C();
-					for (size_t j = 0; j < ((size_t)args._K) * data.C(); j++) args.newCenters[j] += currCenter[j];
+            if (updateCenters) {
+                for (int i = 1; i < args._T; i++) {
+                    float* currCenter = args.newCenters + i*args._K*args._D;
+                    for (size_t j = 0; j < ((size_t)args._K) * args._D; j++) args.newCenters[j] += currCenter[j];
 
-					for (int k = 0; k < args._K; k++) {
-						if (args.clusterIdx[i*args._K + k] != -1 && args.clusterDist[i*args._K + k] > args.clusterDist[k]) {
-							args.clusterDist[k] = args.clusterDist[i*args._K + k];
-							args.clusterIdx[k] = args.clusterIdx[i*args._K + k];
-						}
-					}
-				}
-			}
-			else {
-				for (int i = 1; i < threads; i++) {
-					for (int k = 0; k < args._K; k++) {
-						if (args.clusterIdx[i*args._K + k] != -1 && args.clusterDist[i*args._K + k] <= args.clusterDist[k]) {
-							args.clusterDist[k] = args.clusterDist[i*args._K + k];
-							args.clusterIdx[k] = args.clusterIdx[i*args._K + k];
-						}
-					}
-				}
-			}
-			return currDist;
-		}
+                    for (int k = 0; k < args._K; k++) {
+                        if (args.clusterIdx[i*args._K + k] != -1 && args.clusterDist[i*args._K + k] > args.clusterDist[k]) {
+                            args.clusterDist[k] = args.clusterDist[i*args._K + k];
+                            args.clusterIdx[k] = args.clusterIdx[i*args._K + k];
+                        }
+                    }
+                }
+            }
+            else {
+                for (int i = 1; i < args._T; i++) {
+                    for (int k = 0; k < args._K; k++) {
+                        if (args.clusterIdx[i*args._K + k] != -1 && args.clusterDist[i*args._K + k] <= args.clusterDist[k]) {
+                            args.clusterDist[k] = args.clusterDist[i*args._K + k];
+                            args.clusterIdx[k] = args.clusterIdx[i*args._K + k];
+                        }
+                    }
+                }
+            }
+            return currDist;
+        }
 
-		template <typename T>
-		void InitCenters(const Dataset<T>& data, std::vector<SizeType>& indices, const SizeType first, const SizeType last, KmeansArgs<T>& args, DistCalcMethod distMethod, int samples = 1000) {
-			SizeType batchEnd = min(first + samples, last);
-			float currDist, minClusterDist = MaxDist;
-			for (int numKmeans = 0; numKmeans < 3; numKmeans++) {
-				for (int k = 0; k < args._K; k++) {
-					SizeType randid = COMMON::Utils::rand(last, first);
-					std::memcpy(args.centers + k*data.C(), data[indices[randid]], sizeof(T)*data.C());
-				}
-				args.ClearCounts();
-				currDist = KmeansAssign(data, indices, first, batchEnd, args, false, distMethod);
-				if (currDist < minClusterDist) {
-					minClusterDist = currDist;
-					memcpy(args.newTCenters, args.centers, sizeof(T)*args._K*data.C());
-					memcpy(args.counts, args.newCounts, sizeof(SizeType) * args._K);
-				}
-			}
-		}
+        template <typename T>
+        inline void InitCenters(const Dataset<T>& data, std::vector<SizeType>& indices, const SizeType first, const SizeType last, KmeansArgs<T>& args, DistCalcMethod distMethod, int samples) {
+            SizeType batchEnd = min(first + samples, last);
+            float currDist, minClusterDist = MaxDist;
+            for (int numKmeans = 0; numKmeans < 3; numKmeans++) {
+                for (int k = 0; k < args._K; k++) {
+                    SizeType randid = COMMON::Utils::rand(last, first);
+                    std::memcpy(args.centers + k*args._D, data[indices[randid]], sizeof(T)*args._D);
+                }
+                args.ClearCounts();
+                currDist = KmeansAssign(data, indices, first, batchEnd, args, false, distMethod, 0);
+                if (currDist < minClusterDist) {
+                    minClusterDist = currDist;
+                    memcpy(args.newTCenters, args.centers, sizeof(T)*args._K*args._D);
+                    memcpy(args.counts, args.newCounts, sizeof(SizeType) * args._K);
+                }
+            }
+        }
 
-		template <typename T>
-		int KmeansClustering(const Dataset<T>& data,
-			std::vector<SizeType>& indices, const SizeType first, const SizeType last, KmeansArgs<T>& args, DistCalcMethod distMethod, int samples = 1000) {
-			
-			InitCenters(data, indices, first, last, args, distMethod, samples);
-			
-			SizeType batchEnd = min(first + samples, last);
-			float currDiff, currDist, minClusterDist = MaxDist;
-			int noImprovement = 0;
-			for (int iter = 0; iter < 100; iter++) {
-				std::memcpy(args.centers, args.newTCenters, sizeof(T)*args._K*data.C());
-				std::random_shuffle(indices.begin() + first, indices.begin() + last);
+        template <typename T>
+        int KmeansClustering(const Dataset<T>& data,
+            std::vector<SizeType>& indices, const SizeType first, const SizeType last, KmeansArgs<T>& args, DistCalcMethod distMethod, int samples = 1000) {
+            
+            InitCenters(data, indices, first, last, args, distMethod, samples);
+            
+            SizeType batchEnd = min(first + samples, last);
+            float currDiff, currDist, minClusterDist = MaxDist;
+            int noImprovement = 0;
+            for (int iter = 0; iter < 100; iter++) {
+                std::memcpy(args.centers, args.newTCenters, sizeof(T)*args._K*args._D);
+                std::random_shuffle(indices.begin() + first, indices.begin() + last);
 
-				args.ClearCenters();
-				args.ClearCounts();
-				args.ClearDists(-MaxDist);
-				currDist = KmeansAssign(data, indices, first, batchEnd, args, true, distMethod);
-				std::memcpy(args.counts, args.newCounts, sizeof(SizeType) * args._K);
+                args.ClearCenters();
+                args.ClearCounts();
+                args.ClearDists(-MaxDist);
+                currDist = KmeansAssign(data, indices, first, batchEnd, args, true, distMethod, COMMON::Utils::GetBase<T>() * COMMON::Utils::GetBase<T>() / (100.0f * (batchEnd - first)));
+                std::memcpy(args.counts, args.newCounts, sizeof(SizeType) * args._K);
 
-				if (currDist < minClusterDist) {
-					noImprovement = 0;
-					minClusterDist = currDist;
-				}
-				else {
-					noImprovement++;
-				}
-				currDiff = RefineCenters(data, args, distMethod);
-				if (currDiff < 1e-3 || noImprovement >= 5) break;
-			}
+                if (currDist < minClusterDist) {
+                    noImprovement = 0;
+                    minClusterDist = currDist;
+                }
+                else {
+                    noImprovement++;
+                }
+                currDiff = RefineCenters(data, args, distMethod);
+                if (currDiff < 1e-3 || noImprovement >= 5) break;
+            }
 
-			args.ClearCounts();
-			args.ClearDists(MaxDist);
-			currDist = KmeansAssign(data, indices, first, last, args, false, distMethod);
-			std::memcpy(args.counts, args.newCounts, sizeof(SizeType) * args._K);
+            args.ClearCounts();
+            args.ClearDists(MaxDist);
+            currDist = KmeansAssign(data, indices, first, last, args, false, distMethod, 0);
+            std::memcpy(args.counts, args.newCounts, sizeof(SizeType) * args._K);
 
-			int numClusters = 0;
-			for (int i = 0; i < args._K; i++) if (args.counts[i] > 0) numClusters++;
+            int numClusters = 0;
+            for (int i = 0; i < args._K; i++) if (args.counts[i] > 0) numClusters++;
 
-			if (numClusters <= 1) {
-				//if (last - first > 1) std::cout << "large cluster:" << last - first << " dist:" << currDist << std::endl;
-				return numClusters;
-			}
-			args.Shuffle(indices, first, last);
-			return numClusters;
-		}
+            if (numClusters <= 1) {
+                //if (last - first > 1) std::cout << "large cluster:" << last - first << " dist:" << currDist << std::endl;
+                return numClusters;
+            }
+            args.Shuffle(indices, first, last);
+            return numClusters;
+        }
 
         class BKTree
         {
         public:
-            BKTree(): m_iTreeNumber(1), m_iBKTKmeansK(32), m_iBKTLeafSize(8), m_iSamples(1000), m_lock(new std::shared_timed_mutex) {}
+            BKTree(): m_lock(new std::shared_timed_mutex), m_iTreeNumber(1), m_iBKTKmeansK(32), m_iBKTLeafSize(8), m_iSamples(1000) {}
             
-            BKTree(BKTree& other): m_iTreeNumber(other.m_iTreeNumber), 
+            BKTree(BKTree& other): m_lock(new std::shared_timed_mutex),
+                                   m_iTreeNumber(other.m_iTreeNumber), 
                                    m_iBKTKmeansK(other.m_iBKTKmeansK), 
                                    m_iBKTLeafSize(other.m_iBKTLeafSize),
-                                   m_iSamples(other.m_iSamples),
-                                   m_lock(new std::shared_timed_mutex) {}
+                                   m_iSamples(other.m_iSamples) {}
             ~BKTree() {}
 
             inline const BKTNode& operator[](SizeType index) const { return m_pTreeRoots[index]; }
