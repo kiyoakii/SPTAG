@@ -3,6 +3,8 @@
 #include "inc/SSDServing/SelectHead_BKT/Options.h"
 #include "inc/SSDServing/BuildHead/BootBuildHead.h"
 #include "inc/SSDServing/BuildHead/Options.h"
+#include "inc/SSDServing/VectorSearch/BootVectorSearch.h"
+#include "inc/SSDServing/VectorSearch/Options.h"
 using namespace SPTAG;
 
 namespace SPTAG {
@@ -30,6 +32,13 @@ namespace SPTAG {
 				bhOpts.SetParameter(iter.first.c_str(), iter.second.c_str());
 			}
 			SSDServing::BuildHead::Bootstrap(bhOpts);
+
+			SSDServing::VectorSearch::Options vsOpts;
+			for (const auto& iter : iniReader.GetParameters("BuildSSDIndex"))
+			{
+				vsOpts.SetParameter(iter.first.c_str(), iter.second.c_str());
+			}
+			SSDServing::VectorSearch::Bootstrap(vsOpts);
 			return 0;
 		}
 	}

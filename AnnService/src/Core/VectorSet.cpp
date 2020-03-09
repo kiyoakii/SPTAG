@@ -50,7 +50,6 @@ BasicVectorSet::BasicVectorSet(const char* p_filePath, VectorValueType p_valueTy
     inputStream.read(vecBuf, totalRecordVectorBytes);
     inputStream.close();
 
-    m_valueType = p_valueType;
     m_dimension = col;
     m_vectorCount = row;
     m_perVectorDataSize = static_cast<SizeType>(col * GetValueTypeSize(p_valueType));

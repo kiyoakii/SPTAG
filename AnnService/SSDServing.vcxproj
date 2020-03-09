@@ -25,6 +25,7 @@
     <ClCompile Include="src\SSDServing\SelectHead_BKT\AnalyzeTree.cpp" />
     <ClCompile Include="src\SSDServing\SelectHead_BKT\SelectHead.cpp" />
     <ClCompile Include="src\SSDServing\SelectHead_BKT\BootSelectHead.cpp" />
+    <ClCompile Include="src\SSDServing\VectorSearch\BootVectorSearch.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="inc\SSDServing\BuildHead\BootBuildHead.h" />
@@ -40,6 +41,19 @@
     <ClInclude Include="inc\SSDServing\SelectHead_BKT\ParameterDefinitionList.h" />
     <ClInclude Include="inc\SSDServing\SelectHead_BKT\SelectHead.h" />
     <ClInclude Include="inc\SSDServing\SelectHead_BKT\BootSelectHead.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\BootVectorSearch.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\BuildSsdIndex.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\DynamicNeighbors.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\ExtraFullGraphSearcher.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\ExtraGraphSearcher.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\IExtraSearcher.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\ParameterDefinitionList.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\SearchSsdIndex.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\VectorSearchUtils.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\Options.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\SearchDefault.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\SearchProcessor.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\SearchStats.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>

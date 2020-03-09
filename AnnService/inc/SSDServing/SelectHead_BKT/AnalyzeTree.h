@@ -1,6 +1,9 @@
 #pragma once
 #include "inc/SSDServing/Common/stdafx.h"
 #include "inc/SSDServing/SelectHead_BKT/BKTNodeInfo.h"
+#include "inc/SSDServing/SelectHead_BKT/Options.h"
+
+using namespace std;
 
 namespace SPTAG {
     namespace SSDServing {

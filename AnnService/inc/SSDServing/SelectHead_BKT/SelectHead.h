@@ -1,6 +1,7 @@
 #pragma once
 
 #include "inc/SSDServing/Common/stdafx.h"
+#include "inc/SSDServing/SelectHead_BKT/Options.h"
 
 using namespace std;
 

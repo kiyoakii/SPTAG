@@ -11,10 +11,6 @@
       <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
       <Extensions>h;hh;hpp;hxx;hm;inl;inc;ipp;xsd</Extensions>
     </Filter>
-    <Filter Include="Common\Source Files">
-      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
-      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
-    </Filter>
     <Filter Include="SelectHead_BKT\Header Files">
       <UniqueIdentifier>{fb8f8586-b4ee-4634-b042-ac290d448a9d}</UniqueIdentifier>
     </Filter>
@@ -40,6 +36,19 @@
     <Filter Include="BuildHead\Source Files">
       <UniqueIdentifier>{f7b4682c-0d87-4083-951a-b5d0128b4136}</UniqueIdentifier>
       <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="VectorSearch">
+      <UniqueIdentifier>{4d32979e-5535-477d-9f12-f79b282db426}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Common\Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="VectorSearch\Header Files">
+      <UniqueIdentifier>{81dd1aa5-a598-4e10-80e7-9ddb8eaf8d91}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="VectorSearch\Source Files">
+      <UniqueIdentifier>{9bd14025-bcb2-4c90-afbb-8955f6897e49}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -82,6 +91,45 @@
     <ClInclude Include="inc\SSDServing\IndexBuildManager\main.h">
       <Filter>IndexBuildManager\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="inc\SSDServing\VectorSearch\BootVectorSearch.h">
+      <Filter>VectorSearch\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\SSDServing\VectorSearch\IExtraSearcher.h">
+      <Filter>VectorSearch\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\SSDServing\VectorSearch\SearchStats.h">
+      <Filter>VectorSearch\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\SSDServing\VectorSearch\ExtraFullGraphSearcher.h">
+      <Filter>VectorSearch\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\SSDServing\VectorSearch\ExtraGraphSearcher.h">
+      <Filter>VectorSearch\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\SSDServing\VectorSearch\DynamicNeighbors.h">
+      <Filter>VectorSearch\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\SSDServing\VectorSearch\SearchProcessor.h">
+      <Filter>VectorSearch\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\SSDServing\VectorSearch\SearchDefault.h">
+      <Filter>VectorSearch\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\SSDServing\VectorSearch\Options.h">
+      <Filter>VectorSearch\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\SSDServing\VectorSearch\BuildSsdIndex.h">
+      <Filter>VectorSearch\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\SSDServing\VectorSearch\VectorSearchUtils.h">
+      <Filter>VectorSearch\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\SSDServing\VectorSearch\ParameterDefinitionList.h">
+      <Filter>VectorSearch\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\SSDServing\VectorSearch\SearchSsdIndex.h">
+      <Filter>VectorSearch\Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\SSDServing\SelectHead_BKT\SelectHead.cpp">
@@ -101,6 +149,9 @@
     </ClCompile>
     <ClCompile Include="src\SSDServing\IndexBuildManager\main.cpp">
       <Filter>IndexBuildManager\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SSDServing\VectorSearch\BootVectorSearch.cpp">
+      <Filter>VectorSearch\Source Files</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

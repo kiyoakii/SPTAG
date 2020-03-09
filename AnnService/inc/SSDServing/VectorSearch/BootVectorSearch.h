@@ -1,11 +1,10 @@
 #pragma once
-
 #include "inc/SSDServing/Common/stdafx.h"
-#include "inc/SSDServing/SelectHead_BKT/Options.h"
+#include "inc/SSDServing/VectorSearch/Options.h"
 
 namespace SPTAG {
 	namespace SSDServing {
-		namespace SelectHead_BKT {
+		namespace VectorSearch {
 			ErrorCode Bootstrap(Options& opts);
 		}
 	}
