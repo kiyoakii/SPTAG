@@ -269,7 +269,7 @@ namespace SPTAG {
             void Search(Options& p_opts, shared_ptr<VectorIndex> headIndex)
             {
                 string queryFile = p_opts.m_queryFile;
-                string outputFile = p_opts.m_outputFile;
+                string outputFile = p_opts.m_searchResult;
                 string truthFile = p_opts.m_truthFile;
                 string warmupFile = p_opts.m_warmupFile;
 
@@ -480,10 +480,10 @@ namespace SPTAG {
 
                 fprintf(logOut, "\n");
 
-                if (!p_opts.m_outputFile.empty())
+                if (!outputFile.empty())
                 {
-                    fprintf(stderr, "Start output to %s\n", p_opts.m_outputFile.c_str());
-                    OutputResult(p_opts.m_outputFile, results, K);
+                    fprintf(stderr, "Start output to %s\n", outputFile.c_str());
+                    OutputResult(outputFile, results, K);
                 }
 
                 fprintf(stdout,

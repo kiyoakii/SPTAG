@@ -3,7 +3,7 @@
 #include <memory>
 #include <vector>
 #include "inc/SSDServing/VectorSearch/IExtraSearcher.h"
-#include "inc/SSDServing/VectorSearch/DynamicNeighbors.h"
+#include "inc/Helper/DynamicNeighbors.h"
 
 namespace SPTAG {
     namespace SSDServing {
@@ -20,7 +20,7 @@ namespace SPTAG {
                     m_extraVectorSet.reset(new BasicVectorSet(p_extraVectorSetFile.c_str(), GetEnumValueType<ValueType>()));
 
                     fprintf(stderr, "Loading extra graph set...\n");
-                    m_dynamicNeighborsSet.reset(new DynamicNeighborsSet(p_neighborsFile.c_str()));
+                    m_dynamicNeighborsSet.reset(new Helper::DynamicNeighborsSet(p_neighborsFile.c_str()));
 
                     fprintf(stderr, "Finish loading extra graph set.\n");
                 }
@@ -92,7 +92,7 @@ namespace SPTAG {
             private:
                 std::unique_ptr<BasicVectorSet> m_extraVectorSet;
 
-                std::unique_ptr<DynamicNeighborsSet> m_dynamicNeighborsSet;
+                std::unique_ptr<Helper::DynamicNeighborsSet> m_dynamicNeighborsSet;
 
                 int m_maxCheck;
             };

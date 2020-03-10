@@ -2,17 +2,31 @@
 #include "inc/SSDServing/VectorSearch/BootVectorSearch.h"
 #include "inc/SSDServing/VectorSearch/BuildSsdIndex.h"
 #include "inc/SSDServing/VectorSearch/SearchSsdIndex.h"
+#include "inc/Helper/SimpleIniReader.h"
 
 namespace SPTAG {
 	namespace SSDServing {
 		namespace VectorSearch {
 
-			void GetHeadIndex(Options& p_opts, shared_ptr<VectorIndex> p_index) {
+			void GetHeadIndex(Options& p_opts, shared_ptr<VectorIndex>& p_index) {
 				if (VectorIndex::LoadIndex(p_opts.m_headIndexFolder, p_index) != ErrorCode::Success) {
 					std::cerr << "ERROR: Cannot Load index files!" << std::endl;
 					exit(1);
 				}
 				p_index->SetParameter("NumberOfThreads", std::to_string(p_opts.m_iNumberOfThreads));
+				Helper::IniReader iniReader;
+				if (!p_opts.m_headConfig.empty())
+				{
+					if (iniReader.LoadIniFile(p_opts.m_headConfig) != ErrorCode::Success) {
+						std::cerr << "ERROR of loading head index config: " << p_opts.m_headConfig << std::endl;
+						exit(1);
+					}
+
+					for (const auto& iter : iniReader.GetParameters("Index"))
+					{
+						p_index->SetParameter(iter.first.c_str(), iter.second.c_str());
+					}
+				}
 			}
 
 			ErrorCode Bootstrap(Options& opts) {

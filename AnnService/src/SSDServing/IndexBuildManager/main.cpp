@@ -19,26 +19,50 @@ namespace SPTAG {
 			Helper::IniReader iniReader;
 			iniReader.LoadIniFile(argv[1]);
 
-			SSDServing::SelectHead_BKT::Options slOpts;
-			for (const auto& iter : iniReader.GetParameters("SelectHead"))
+			auto& selectHeadParameters = iniReader.GetParameters("SelectHead");
+			if (!selectHeadParameters.empty())
 			{
-				slOpts.SetParameter(iter.first.c_str(), iter.second.c_str());
+				SSDServing::SelectHead_BKT::Options slOpts;
+				for (const auto& iter : selectHeadParameters)
+				{
+					slOpts.SetParameter(iter.first.c_str(), iter.second.c_str());
+				}
+				SSDServing::SelectHead_BKT::Bootstrap(slOpts);
 			}
-			SSDServing::SelectHead_BKT::Bootstrap(slOpts);
 
-			SSDServing::BuildHead::Options bhOpts;
-			for (const auto& iter : iniReader.GetParameters("BuildHead"))
+			auto& buildHeadParameters = iniReader.GetParameters("BuildHead");
+			if (!buildHeadParameters.empty())
 			{
-				bhOpts.SetParameter(iter.first.c_str(), iter.second.c_str());
+				SSDServing::BuildHead::Options bhOpts;
+				for (const auto& iter : buildHeadParameters)
+				{
+					bhOpts.SetParameter(iter.first.c_str(), iter.second.c_str());
+				}
+				SSDServing::BuildHead::Bootstrap(bhOpts);
 			}
-			SSDServing::BuildHead::Bootstrap(bhOpts);
 
-			SSDServing::VectorSearch::Options vsOpts;
-			for (const auto& iter : iniReader.GetParameters("BuildSSDIndex"))
+			auto& buildSSDParameters = iniReader.GetParameters("BuildSSDIndex");
+			if (!buildSSDParameters.empty())
 			{
-				vsOpts.SetParameter(iter.first.c_str(), iter.second.c_str());
+				SSDServing::VectorSearch::Options vsOpts;
+				for (const auto& iter : buildSSDParameters)
+				{
+					vsOpts.SetParameter(iter.first.c_str(), iter.second.c_str());
+				}
+				SSDServing::VectorSearch::Bootstrap(vsOpts);
 			}
-			SSDServing::VectorSearch::Bootstrap(vsOpts);
+
+			auto& searchSSDParameters = iniReader.GetParameters("SearchSSDIndex");
+			if (!searchSSDParameters.empty())
+			{
+				SSDServing::VectorSearch::Options vsOpts;
+				for (const auto& iter : searchSSDParameters)
+				{
+					vsOpts.SetParameter(iter.first.c_str(), iter.second.c_str());
+				}
+				SSDServing::VectorSearch::Bootstrap(vsOpts);
+			}
+
 			return 0;
 		}
 	}

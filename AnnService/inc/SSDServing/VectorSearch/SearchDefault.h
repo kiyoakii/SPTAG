@@ -110,8 +110,7 @@ namespace SPTAG {
                     if (nullptr != m_extraSearcher)
                     {
                         auto& exWordspace = m_extraWorkSpaces[p_threadID];
-                        //TODO
-                        //p_queryResults.Reverse();
+                        p_queryResults.Reverse();
 
                         m_extraSearcher->Search(exWordspace, p_queryResults, m_index, p_stats);
                     }

@@ -3,11 +3,11 @@
 #ifdef DefineBuildHeadParameter
 
 // DefineBuildHeadParameter(VarName, VarType, DefaultValue, RepresentStr)
-DefineBuildHeadParameter(m_inputFiles, std::string, std::string("vectors.bin"), "VectorFilePath")
-DefineBuildHeadParameter(m_outputFolder, std::string, std::string("HeadVectors.bin"), "VectorValueType")
-DefineBuildHeadParameter(m_indexAlgoType, SPTAG::IndexAlgoType, SPTAG::IndexAlgoType::BKT, "DistCalcMethod")
-DefineBuildHeadParameter(m_builderConfigFile, std::string, std::string("builder.ini"), "VectorFilePath")
+DefineBuildHeadParameter(m_inputFiles, std::string, std::string("vectors.bin"), "HeadVectorFile")
+DefineBuildHeadParameter(m_outputFolder, std::string, std::string("HeadVectors.bin"), "HeadIndex")
+DefineBuildHeadParameter(m_indexAlgoType, SPTAG::IndexAlgoType, SPTAG::IndexAlgoType::BKT, "IndexAlgoType")
+DefineBuildHeadParameter(m_builderConfigFile, std::string, std::string("builder.ini"), "BuilderConfigFile")
 DefineBuildHeadParameter(m_inputValueType, SPTAG::VectorValueType, SPTAG::VectorValueType::Float, "VectorValueType")
-DefineBuildHeadParameter(m_threadNum, std::uint32_t, omp_get_num_threads(), "DistCalcMethod")
+DefineBuildHeadParameter(m_threadNum, std::uint32_t, omp_get_num_threads(), "ThreadNum")
 
 #endif

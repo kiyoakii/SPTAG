@@ -72,6 +72,11 @@ public:
         }
     }
 
+        void Reverse()
+    {
+        std::reverse(m_results.Data(), m_results.Data() + m_resultNum);
+    }
+
 private:
     void Heapify(int count)
     {

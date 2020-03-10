@@ -43,7 +43,6 @@
     <ClInclude Include="inc\SSDServing\SelectHead_BKT\BootSelectHead.h" />
     <ClInclude Include="inc\SSDServing\VectorSearch\BootVectorSearch.h" />
     <ClInclude Include="inc\SSDServing\VectorSearch\BuildSsdIndex.h" />
-    <ClInclude Include="inc\SSDServing\VectorSearch\DynamicNeighbors.h" />
     <ClInclude Include="inc\SSDServing\VectorSearch\ExtraFullGraphSearcher.h" />
     <ClInclude Include="inc\SSDServing\VectorSearch\ExtraGraphSearcher.h" />
     <ClInclude Include="inc\SSDServing\VectorSearch\IExtraSearcher.h" />

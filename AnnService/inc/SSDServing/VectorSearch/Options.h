@@ -1,5 +1,7 @@
 #pragma once
 #include "inc/SSDServing/Common/stdafx.h"
+#include <limits>
+
 using namespace std;
 
 namespace SPTAG {
@@ -7,37 +9,34 @@ namespace SPTAG {
 		namespace VectorSearch {
 			class Options {
 			public:
-				// Build SSD
+				// Both Building and Searching
 				bool m_buildSsdIndex;
+				string m_vectorIDTranslate;
+				string m_headIndexFolder;
+				string m_queryFile;
+				int m_internalResultNum;
+				int m_iNumberOfThreads;
+				string m_headConfig;
+
+				// Building
+				string m_ssdIndex;
+				int m_replicaCount;
+				int m_postingPageLimit;
 				bool m_outputEmptyReplicaID;
 
-				// Search SSD
+				// Searching
+				string m_searchResult;
+				string m_extraFullGraphFile;
+				string m_extraGraphFile;
+				string m_extraGraphVectorSetFile;
 				string m_truthFile;
 				string m_warmupFile;
 				string m_logFile;
+				string m_extraMaxCheck;
 				int m_qpsLimit;
 				int m_resultNum;
 				int m_queryCountLimit;
-
-				// HEAD
-				string m_headIndexFolder;
-
-				// SSD
-				string m_queryFile;
-				string m_outputFile;
-				int m_internalResultNum;
-				int m_replicaCount;
-				int m_postingPageLimit;
-				string m_extraGraphFile;
-				string m_extraGraphVectorSetFile;
-				string m_extraFullGraphFile;
-				string m_extraMaxCheck;
 				string m_parallelLoadPercentage;
-
-				// MISC
-				bool m_setCpuGroup;
-				int m_iNumberOfThreads;
-				string m_vectorIDTranslate;
 
 				Options() {
 #define DefineSSDParameter(VarName, VarType, DefaultValue, RepresentStr) \
@@ -47,11 +46,13 @@ namespace SPTAG {
 #undef DefineSSDParameter
 				}
 
+				~Options() {}
+
 				ErrorCode SetParameter(const char* p_param, const char* p_value)
 				{
 					if (nullptr == p_param || nullptr == p_value) return ErrorCode::Fail;
 
-#define DefineBuildHeadParameter(VarName, VarType, DefaultValue, RepresentStr) \
+#define DefineSSDParameter(VarName, VarType, DefaultValue, RepresentStr) \
     else if (SPTAG::Helper::StrUtils::StrEqualIgnoreCase(p_param, RepresentStr)) \
     { \
         fprintf(stderr, "Setting %s with value %s\n", RepresentStr, p_value); \
@@ -63,7 +64,7 @@ namespace SPTAG {
     } \
 
 #include "inc/SSDServing/VectorSearch/ParameterDefinitionList.h"
-#undef DefineBuildHeadParameter
+#undef DefineSSDParameter
 
 					return ErrorCode::Success;
 				}

@@ -9,6 +9,7 @@
 #include <queue>
 #include <vector>
 #include <set>
+#include <string>
 #include "inc/Core/Common.h"
 #include "inc/Core/Common/BKTree.h"
 #include "inc/Core/Common/DistanceUtils.h"

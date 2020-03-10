@@ -330,7 +330,7 @@ namespace SPTAG {
                 auto start = std::chrono::system_clock::now();
 
                 std::string queryFile = p_opts.m_queryFile;
-                std::string outputFile = p_opts.m_outputFile;
+                std::string outputFile = p_opts.m_ssdIndex;
 
                 if (outputFile.empty())
                 {
