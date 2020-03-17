@@ -46,13 +46,12 @@ namespace SPTAG {
 			template<typename T>
 			shared_ptr<COMMON::BKTree> BuildBKT(BasicVectorSet& p_vectorSet, const Options& opts) {
 				HeadSimp<T> simp(p_vectorSet, opts.m_iDistCalcMethod);
-
 				shared_ptr<COMMON::BKTree> bkt = make_shared<COMMON::BKTree>();
 				bkt->m_iBKTKmeansK = opts.m_iBKTKmeansK;
 				bkt->m_iBKTLeafSize = opts.m_iBKTLeafSize;
 				bkt->m_iSamples = opts.m_iSamples;
 				bkt->m_iTreeNumber = opts.m_iTreeNumber;
-				bkt->BuildTrees<T>(&simp);
+				bkt->BuildTrees<T>(&simp, nullptr, nullptr, opts.m_iNumberOfThreads);
 
 				std::stringstream bktFileNameBuilder;
 				bktFileNameBuilder << opts.m_vectorFile << ".bkt."

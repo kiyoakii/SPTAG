@@ -11,6 +11,7 @@ DefineSelectHeadParameter(m_iTreeNumber, int, 1, "TreeNumber")
 DefineSelectHeadParameter(m_iBKTKmeansK, int, 32, "BKTKmeansK")
 DefineSelectHeadParameter(m_iBKTLeafSize, int, 8, "BKTLeafSize")
 DefineSelectHeadParameter(m_iSamples, int, 1000, "SamplesNumber")
+DefineSelectHeadParameter(m_iNumberOfThreads, int, 4, "NumberOfThreads")
 DefineSelectHeadParameter(m_saveBKT, bool, true, "SaveBKT")
 
 DefineSelectHeadParameter(m_analyzeOnly, bool, true, "AnalyzeOnly")

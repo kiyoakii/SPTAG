@@ -18,6 +18,7 @@ namespace SPTAG {
 				int m_iBKTKmeansK;
 				int m_iBKTLeafSize; 
 				int m_iSamples;
+				int m_iNumberOfThreads;
 				bool m_saveBKT;
 				// Section 3: for selecting head
 				// analyze
