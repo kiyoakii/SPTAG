@@ -1,10 +1,12 @@
-#include "inc/SSDServing/Common/stdafx.h"
+#include "inc/Helper/SimpleIniReader.h"
+
 #include "inc/SSDServing/SelectHead_BKT/BootSelectHead.h"
 #include "inc/SSDServing/SelectHead_BKT/Options.h"
 #include "inc/SSDServing/BuildHead/BootBuildHead.h"
 #include "inc/SSDServing/BuildHead/Options.h"
 #include "inc/SSDServing/VectorSearch/BootVectorSearch.h"
 #include "inc/SSDServing/VectorSearch/Options.h"
+
 using namespace SPTAG;
 
 namespace SPTAG {
@@ -67,3 +69,12 @@ namespace SPTAG {
 		}
 	}
 }
+
+// switch between exe and static library by _$(OutputType)
+#ifdef _exe
+
+int main(int argc, char* argv[]) {
+	SPTAG::SSDServing::internalMain(argc, argv);
+}
+
+#endif

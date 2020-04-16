@@ -1,4 +1,3 @@
-#include "inc/SSDServing/Common/stdafx.h"
 #include "inc/SSDServing/VectorSearch/BootVectorSearch.h"
 #include "inc/SSDServing/VectorSearch/BuildSsdIndex.h"
 #include "inc/SSDServing/VectorSearch/SearchSsdIndex.h"
@@ -9,6 +8,8 @@ namespace SPTAG {
 		namespace VectorSearch {
 
 			void GetHeadIndex(Options& p_opts, shared_ptr<VectorIndex>& p_index) {
+				fprintf(stdout, "Start loading head index. \n");
+
 				if (VectorIndex::LoadIndex(p_opts.m_headIndexFolder, p_index) != ErrorCode::Success) {
 					std::cerr << "ERROR: Cannot Load index files!" << std::endl;
 					exit(1);
@@ -27,6 +28,8 @@ namespace SPTAG {
 						p_index->SetParameter(iter.first.c_str(), iter.second.c_str());
 					}
 				}
+
+				fprintf(stdout, "End loading head index. \n");
 			}
 
 			ErrorCode Bootstrap(Options& opts) {

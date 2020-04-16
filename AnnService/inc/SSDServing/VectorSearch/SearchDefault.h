@@ -1,6 +1,4 @@
 #pragma once
-#include <WinBase.h>
-#include "inc/SSDServing/Common/stdafx.h"
 #include "inc/SSDServing/VectorSearch/IExtraSearcher.h"
 #include "inc/SSDServing/VectorSearch/ExtraFullGraphSearcher.h"
 #include "inc/SSDServing/VectorSearch/ExtraGraphSearcher.h"
@@ -82,15 +80,14 @@ namespace SPTAG {
 
                     if (nullptr != m_extraSearcher)
                     {
-                        auto& exWordspace = m_extraWorkSpaces[p_threadID];
-                        exWordspace.Reset();
+                        m_extraWorkSpaces[p_threadID]->m_postingIDs.clear();
 
                         for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
                         {
                             auto res = p_queryResults.GetResult(i);
                             if (res->VID != -1)
                             {
-                                exWordspace.m_startPoints.emplace_back(res->VID, std::sqrtf(res->Dist));
+                                m_extraWorkSpaces[p_threadID]->m_postingIDs.emplace_back(res->VID);
                             }
                         }
                     }
@@ -109,10 +106,9 @@ namespace SPTAG {
 
                     if (nullptr != m_extraSearcher)
                     {
-                        auto& exWordspace = m_extraWorkSpaces[p_threadID];
                         p_queryResults.Reverse();
 
-                        m_extraSearcher->Search(exWordspace, p_queryResults, m_index, p_stats);
+                        m_extraSearcher->Search(m_extraWorkSpaces[p_threadID], p_queryResults, m_index, p_stats);
                     }
 
                     QueryPerformanceCounter(&ExEndingTime);
@@ -166,13 +162,11 @@ namespace SPTAG {
 
                     if (nullptr != m_extraSearcher)
                     {
-                        m_extraWorkSpaces.resize(p_threadNum);
-                        for (int i = 0; i < p_threadNum; i++)
+                        m_extraWorkSpaces.resize(p_threadNum, nullptr);
+                        for (size_t i = 0; i < p_threadNum; i++)
                         {
-                            m_extraSearcher->InitWorkSpace(m_extraWorkSpaces[i], p_resultNum);
+                            m_extraWorkSpaces[i] = new ExtraWorkSpace();
                         }
-
-                        m_extraSearcher->FinishPrepare();
                     }
                 }
 
@@ -213,8 +207,8 @@ namespace SPTAG {
                 std::unique_ptr<long long[]> m_vectorTranslateMap;
 
                 std::unique_ptr<IExtraSearcher<ValueType>> m_extraSearcher;
-
-                std::vector<ExtraWorkSpace> m_extraWorkSpaces;
+                
+                std::vector<ExtraWorkSpace*> m_extraWorkSpaces;
 
                 LARGE_INTEGER Frequency;
 

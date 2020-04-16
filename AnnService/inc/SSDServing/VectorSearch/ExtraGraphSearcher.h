@@ -1,5 +1,4 @@
 #pragma once
-#include "inc/SSDServing/Common/stdafx.h"
 #include <memory>
 #include <vector>
 #include "inc/SSDServing/VectorSearch/IExtraSearcher.h"
@@ -30,33 +29,32 @@ namespace SPTAG {
                 }
 
 
-                virtual void InitWorkSpace(ExtraWorkSpace& p_space, int p_resNumHint)
+                virtual void InitWorkSpace(ExtraWorkSpace* p_space, int p_resNumHint)
                 {
-                    p_space.m_startPoints.clear();
-                    p_space.m_startPoints.reserve(p_resNumHint);
-
-                    p_space.m_exNodeCheckStatus.Init(m_extraVectorSet->Count());
+                    p_space->m_deduper.Clear();
                 }
 
 
-                virtual void Search(ExtraWorkSpace& p_exWorkSpace,
+                virtual void Search(ExtraWorkSpace* p_exWorkSpace,
                     COMMON::QueryResultSet<ValueType>& p_queryResults,
                     shared_ptr<VectorIndex> p_index,
                     SearchStats& p_stats)
                 {
+                    InitWorkSpace(p_exWorkSpace, p_exWorkSpace->m_postingIDs.size());
+
                     bool finish = false;
                     int curCheck = 0;
 
-                    for (const auto& vi : p_exWorkSpace.m_startPoints)
+                    for (const auto& vi : p_exWorkSpace->m_postingIDs)
                     {
-                        const auto& nl = (*m_dynamicNeighborsSet)[vi.first];
+                        const auto& nl = (*m_dynamicNeighborsSet)[vi];
 
                         p_stats.m_totalListElementsCount += static_cast<int>(nl.Size());
 
                         for (int i = 0; i < nl.Size(); ++i)
                         {
                             int v = nl[i];
-                            if (p_exWorkSpace.m_exNodeCheckStatus.CheckAndSet(v))
+                            if (p_exWorkSpace->m_deduper.CheckAndSet(v))
                             {
                                 continue;
                             }

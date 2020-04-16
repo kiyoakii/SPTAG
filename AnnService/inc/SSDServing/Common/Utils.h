@@ -1,5 +1,4 @@
 #pragma once
-#include "inc/SSDServing/Common/stdafx.h"
 
 namespace SPTAG {
     namespace SSDServing {

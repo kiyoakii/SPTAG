@@ -1,4 +1,11 @@
-#include "inc/SSDServing/Common/stdafx.h"
+#pragma once
+#include <unordered_set>
+#include <string>
+#include <fstream>
+#include <memory>
+#include <vector>
+#include <set>
+
 #include "inc/SSDServing/VectorSearch/Options.h"
 #include "inc/SSDServing/VectorSearch/SearchDefault.h"
 #include "inc/Core/Common/QueryResultSet.h"

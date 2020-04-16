@@ -1,6 +1,6 @@
 #pragma once
-
-#include "inc/SSDServing/Common/stdafx.h"
+#include "inc/Core/Common.h"
+#include "inc/Helper/StringConvert.h"
 
 using namespace std;
 

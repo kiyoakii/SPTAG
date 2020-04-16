@@ -1,6 +1,8 @@
 #pragma once
-#include "inc/SSDServing/Common/stdafx.h"
 #include <limits>
+
+#include "inc/Core/Common.h"
+#include "inc/Helper/StringConvert.h"
 
 using namespace std;
 
@@ -36,7 +38,6 @@ namespace SPTAG {
 				int m_qpsLimit;
 				int m_resultNum;
 				int m_queryCountLimit;
-				string m_parallelLoadPercentage;
 
 				Options() {
 #define DefineSSDParameter(VarName, VarType, DefaultValue, RepresentStr) \

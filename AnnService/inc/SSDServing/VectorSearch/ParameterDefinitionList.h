@@ -27,6 +27,5 @@ DefineSSDParameter(m_extraMaxCheck, string, string("1024"), "ExtraMaxCheck")
 DefineSSDParameter(m_qpsLimit, int, 0, "QpsLimit")
 DefineSSDParameter(m_resultNum, int, 32, "ResultNum")
 DefineSSDParameter(m_queryCountLimit, int, (numeric_limits<int>::max)(), "QueryCountLimit")
-DefineSSDParameter(m_parallelLoadPercentage, string, string("0"), "ParallelLoadPercentage")
 
 #endif

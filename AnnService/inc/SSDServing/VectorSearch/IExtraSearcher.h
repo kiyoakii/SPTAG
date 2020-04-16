@@ -1,9 +1,12 @@
 #pragma once
-#include "inc/SSDServing/Common/stdafx.h"
+#include "inc/Core/VectorIndex.h"
+
 #include "inc/SSDServing/VectorSearch/SearchStats.h"
 #include "inc/SSDServing/VectorSearch/VectorSearchUtils.h"
 #include "inc/SSDServing/VectorSearch/Options.h"
 #include "inc/Core/Common/QueryResultSet.h"
+#include "inc/SSDServing/VectorSearch/DiskListCommonUtils.h"
+#include "inc/SSDServing/VectorSearch/DiskFileReader.h"
 
 #include <memory>
 #include <vector>
@@ -43,47 +46,32 @@ namespace SPTAG {
                 std::size_t m_pageBufferSize;
             };
 
+            struct DiskListRequest : public DiskFileReadRequest
+            {
+                bool m_success;
+
+                uint32_t m_requestID;
+            };
 
             struct ExtraWorkSpace
             {
-                ExtraWorkSpace()
-                    : m_fileHandle(NULL), m_fileHandle2(NULL)
-                {
+                ExtraWorkSpace() {
+                    m_processIocp.Reset(::CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, NULL, 0));
                 }
 
-                ~ExtraWorkSpace()
-                {
-                    if (m_fileHandle != NULL)
-                    {
-                        ::CloseHandle(m_fileHandle);
-                        m_fileHandle = NULL;
-                    }
+                ~ExtraWorkSpace() {
 
-                    if (m_fileHandle2 != NULL)
-                    {
-                        ::CloseHandle(m_fileHandle2);
-                        m_fileHandle2 = NULL;
-                    }
                 }
 
-                void Reset()
-                {
-                    m_startPoints.clear();
-                    m_exNodeCheckStatus.Clear();
-                }
+                std::vector<int> m_postingIDs;
 
-                std::vector<std::pair<int, float>> m_startPoints;
+                HashBasedDeduper m_deduper;
 
-                CountVector<unsigned char> m_exNodeCheckStatus;
+                HandleWrapper m_processIocp;
 
                 std::vector<PageBuffer<std::uint8_t>> m_pageBuffers;
 
-                PageBuffer<std::uint8_t> m_vectorBuffer;
-
-                HANDLE m_fileHandle;
-
-                HANDLE m_fileHandle2;
-
+                std::vector<DiskListRequest> m_diskRequests;
             };
 
 
@@ -100,8 +88,7 @@ namespace SPTAG {
                 {
                 }
 
-
-                virtual void InitWorkSpace(ExtraWorkSpace& p_space, int p_resNumHint) = 0;
+                virtual void InitWorkSpace(ExtraWorkSpace* p_space, int p_resNumHint) = 0;
 
                 virtual void Setup(Options& p_config) = 0;
 
@@ -109,7 +96,7 @@ namespace SPTAG {
                 {
                 }
 
-                virtual void Search(ExtraWorkSpace& p_exWorkSpace,
+                virtual void Search(ExtraWorkSpace* p_exWorkSpace,
                     COMMON::QueryResultSet<ValueType>& p_queryResults,
                     shared_ptr<VectorIndex> p_index,
                     SearchStats& p_stats) = 0;

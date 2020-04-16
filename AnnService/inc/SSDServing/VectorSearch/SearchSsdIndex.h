@@ -1,5 +1,4 @@
 #pragma once
-#include "inc/SSDServing/Common/stdafx.h"
 #include "inc/SSDServing/VectorSearch/Options.h"
 #include "inc/Core/Common/QueryResultSet.h"
 #include "inc/Helper/Concurrent.h"
@@ -143,6 +142,7 @@ namespace SPTAG {
 
                 std::atomic_uint32_t processed = 0;
 
+                fprintf(stdout, "Searching: numThread: %d, numQueries: %d.\n", p_numThreads, numQueries);
                 concurrency::parallel_for(0, p_numThreads, [&](int tid)
                     {
                         // LARGE_INTEGER timePoint;

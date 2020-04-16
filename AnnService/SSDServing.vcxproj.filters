@@ -52,9 +52,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="inc\SSDServing\Common\stdafx.h">
-      <Filter>Common\Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="inc\SSDServing\SelectHead_BKT\SelectHead.h">
       <Filter>SelectHead_BKT\Header Files</Filter>
     </ClInclude>
@@ -127,6 +124,18 @@
     <ClInclude Include="inc\SSDServing\VectorSearch\SearchSsdIndex.h">
       <Filter>VectorSearch\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="inc\SSDServing\VectorSearch\DiskListCommonUtils.h">
+      <Filter>VectorSearch\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\SSDServing\VectorSearch\DiskFileReader.h">
+      <Filter>VectorSearch\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\SSDServing\VectorSearch\PrioritizedDiskFileReader.h">
+      <Filter>VectorSearch\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\SSDServing\VectorSearch\DiskAccessUtils.h">
+      <Filter>VectorSearch\Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\SSDServing\SelectHead_BKT\SelectHead.cpp">
@@ -141,13 +150,19 @@
     <ClCompile Include="src\SSDServing\BuildHead\BootBuildHead.cpp">
       <Filter>BuildHead\Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\SSDServing\Common\Utils.cpp">
-      <Filter>Common\Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\SSDServing\IndexBuildManager\main.cpp">
       <Filter>IndexBuildManager\Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\SSDServing\VectorSearch\BootVectorSearch.cpp">
+      <Filter>VectorSearch\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SSDServing\VectorSearch\DiskFileReader.cpp">
+      <Filter>VectorSearch\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SSDServing\VectorSearch\PrioritizedDiskFileReader.cpp">
+      <Filter>VectorSearch\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SSDServing\VectorSearch\DiskAccessUtils.cpp">
       <Filter>VectorSearch\Source Files</Filter>
     </ClCompile>
   </ItemGroup>

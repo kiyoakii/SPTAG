@@ -14,6 +14,7 @@
 #include "inc/SSDServing/IndexBuildManager/main.h"
 #include "inc/Core/Common/DistanceUtils.h"
 #include "inc/Core/Common/CommonUtils.h"
+#include <ppl.h>
 
 using namespace std;
 
@@ -114,66 +115,81 @@ void GenerateTruth(const string queryFile, const string vectorFile, const string
 	vector<vector<T>> vectors;
 	FillVectors<T>(queryFile, querys);
 	FillVectors<T>(vectorFile, vectors);
+	vector<vector<SPTAG::SizeType>> truthset(querys.size(), vector<SPTAG::SizeType>(K, 0));
 	ofstream of(truthFile);
+	std::atomic_uint32_t processed = 0;
+
+	concurrency::parallel_for(0, 16, [&](int tid)
+		{
+			// LARGE_INTEGER timePoint;
+			for (uint32_t i = processed.fetch_add(1); i < querys.size(); i = processed.fetch_add(1))
+			{
+				vector<T> curQuery = querys[i];
+				vector<Neighbor> neighbours;
+				bool isFirst = true;
+				for (size_t j = 0; j < vectors.size(); j++)
+				{
+					vector<T> curVector = vectors[j];
+					if (curQuery.size() != curVector.size())
+					{
+						fprintf(stderr, "query and vector have different dimensions.");
+						BOOST_CHECK(false);
+						return;
+					}
+
+					float dist;
+
+					if (distMethod == SPTAG::DistCalcMethod::L2)
+					{
+						dist = SPTAG::COMMON::DistanceUtils::ComputeL2Distance(curQuery.data(), curVector.data(), curQuery.size());
+					}
+					else {
+						dist = SPTAG::COMMON::DistanceUtils::ComputeCosineDistance(curQuery.data(), curVector.data(), curQuery.size());
+					}
+
+					Neighbor nei(j, dist);
+					neighbours.push_back(nei);
+					if (neighbours.size() == K && isFirst)
+					{
+						make_heap(neighbours.begin(), neighbours.end());
+						isFirst = false;
+					}
+					if (neighbours.size() > K)
+					{
+						push_heap(neighbours.begin(), neighbours.end());
+						pop_heap(neighbours.begin(), neighbours.end());
+						neighbours.pop_back();
+					}
+				}
+
+				if (K != neighbours.size())
+				{
+					fprintf(stderr, "K is too big.\n");
+					BOOST_CHECK(false);
+					return;
+				}
+
+				std::sort(neighbours.begin(), neighbours.end());
+
+				for (size_t k = 0; k < K; k++)
+				{
+					truthset[i][k] = neighbours[k].key;
+				}
+
+			}
+		});
+
 	for (size_t i = 0; i < querys.size(); i++)
 	{
-		vector<T> curQuery = querys[i];
-		vector<Neighbor> neighbours;
-		bool isFirst = true;
-		for (size_t j = 0; j < vectors.size(); j++)
+		for (size_t k = 0; k < K; k++)
 		{
-			vector<T> curVector = vectors[j];
-			if (curQuery.size() != curVector.size())
-			{
-				fprintf(stderr, "query and vector have different dimensions.");
-				BOOST_CHECK(false);
-				return;
-			}
-
-			float dist;
-
-			if (distMethod == SPTAG::DistCalcMethod::L2)
-			{
-				dist = SPTAG::COMMON::DistanceUtils::ComputeL2Distance(curQuery.data(), curVector.data(), curQuery.size());
-			}
-			else {
-				dist = SPTAG::COMMON::DistanceUtils::ComputeCosineDistance(curQuery.data(), curVector.data(), curQuery.size());
-			}
-
-			Neighbor nei(j, dist);
-			neighbours.push_back(nei);
-			if (neighbours.size() == K && isFirst)
-			{
-				make_heap(neighbours.begin(), neighbours.end());
-				isFirst = false;
-			}
-			if (neighbours.size() > K)
-			{
-				push_heap(neighbours.begin(), neighbours.end());
-				pop_heap(neighbours.begin(), neighbours.end());
-				neighbours.pop_back();
-			}
-		}
-		
-		if (K != neighbours.size())
-		{
-			fprintf(stderr, "K is too big.\n");
-			BOOST_CHECK(false);
-			return;
-		}
-
-		std::sort(neighbours.begin(), neighbours.end());
-
-		for (size_t k = 0; k < neighbours.size(); k++)
-		{
-			of << neighbours[k].key;
-			if (k != neighbours.size() - 1)
+			of << truthset[i][k];
+			if (k != K - 1)
 			{
 				of << " ";
 			}
 		}
 		of << endl;
-		
 	}
 
 	of.close();
@@ -382,8 +398,7 @@ void TestSearchSSDIndex(string configName,
 	string p_logFile,
 	string p_ExtraMaxCheck,
 	int p_qpsLimit,
-	int p_queryCountLimit,
-	string p_parallelLoadPercentage
+	int p_queryCountLimit
 ) {
 	ofstream config(configName);
 	if (!config.is_open())
@@ -432,7 +447,6 @@ void TestSearchSSDIndex(string configName,
 	config << "QpsLimit=" << p_qpsLimit << endl;
 	config << "ResultNum=" << p_resultNum << endl;
 	config << "QueryCountLimit=" << p_queryCountLimit << endl;
-	config << "ParallelLoadPercentage=" << p_parallelLoadPercentage << endl;
 
 	config.close();
 
@@ -471,7 +485,7 @@ BOOST_AUTO_TEST_SUITE(SSDServingTest)
 BOOST_AUTO_TEST_CASE(GenerateVectorsQueries##VT) { \
 boost::filesystem::create_directory(SSDTEST_DIRECTORY_NAME); \
 GenVec(VECTORS(VT), SPTAG::VectorValueType::VT, 1000, 100); \
-GenVec(QUERIES(VT), SPTAG::VectorValueType::VT, 100, 100); \
+GenVec(QUERIES(VT), SPTAG::VectorValueType::VT, 10, 100); \
 } \
 
 GVQ(Float)
@@ -554,7 +568,7 @@ TestBuildHead( \
 	builderFile, \
 	SPTAG::VectorValueType::VT, \
 	H_BKTKmeansK, H_BKTLeafSize, H_Samples, \
-	2 \
+	3 \
 );} \
 
 BDHD(Float, L2, BKT, 
@@ -660,7 +674,7 @@ string resultFileName = SEARCH_SSD_RESULT(VT, DM, ALGO); \
 TestSearchSSDIndex( \
 	configName, \
 	HEAD_IDS(VT, DM), HEAD_INDEX(VT, DM, ALGO), SSD_INDEX(VT, DM, ALGO), SEARCH_SSD_BUILDER_CONFIG(VT, DM, ALGO), queryFileName, \
-	SS_internalResultNum, SS_resultNum, 1, \
+	SS_internalResultNum, SS_resultNum, 16, \
 	resultFileName, \
 	"",  \
 	"", \
@@ -669,8 +683,7 @@ TestSearchSSDIndex( \
 	"", \
 	"10240", \
 	0, \
-	100000, \
-	"20" \
+	100000 \
 );} \
 
 SCSSD(Float, L2, BKT, 64, 64)

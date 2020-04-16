@@ -1,6 +1,6 @@
 #pragma once
-
-#include "inc/SSDServing/Common/stdafx.h"
+#include "inc/Core/Common/BKTree.h"
+#include "inc/Core/Common/DistanceUtils.h"
 
 namespace SPTAG {
 	namespace SSDServing {

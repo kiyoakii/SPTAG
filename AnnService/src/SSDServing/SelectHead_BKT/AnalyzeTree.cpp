@@ -1,4 +1,3 @@
-#include "inc/SSDServing/Common/stdafx.h"
 #include "inc/SSDServing/SelectHead_BKT/AnalyzeTree.h"
 
 namespace SPTAG {

@@ -1,4 +1,8 @@
-#include "inc/SSDServing/Common/stdafx.h"
+#include <unordered_set>
+#include <queue>
+
+#include "inc/Core/Common/BKTree.h"
+
 #include "inc/SSDServing/SelectHead_BKT/SelectHead.h"
 #include "inc/SSDServing/SelectHead_BKT/BKTNodeInfo.h"
 #include "inc/SSDServing/Common/Utils.h"

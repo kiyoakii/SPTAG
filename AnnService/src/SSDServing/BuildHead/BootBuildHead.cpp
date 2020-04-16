@@ -1,5 +1,8 @@
-#include "inc/SSDServing/Common/stdafx.h"
+#include "inc/Core/Common.h"
+#include "inc/Core/VectorIndex.h"
+
 #include "inc/SSDServing/BuildHead/BootBuildHead.h"
+
 
 namespace SPTAG {
 	namespace SSDServing {
