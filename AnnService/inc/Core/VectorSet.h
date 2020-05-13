@@ -42,7 +42,8 @@ public:
                    DimensionType p_dimension,
                    SizeType p_vectorCount);
 
-    BasicVectorSet(const char* p_filePath, VectorValueType p_valueType);
+    BasicVectorSet(const char* p_filePath, VectorValueType p_valueType,
+        DimensionType p_dimension, SizeType p_vectorCount, VectorFileType p_fileType);
 
     virtual ~BasicVectorSet();
 
@@ -72,6 +73,12 @@ private:
     SizeType m_vectorCount;
 
     SizeType m_perVectorDataSize;
+
+    void readXvec(const char* p_filePath, VectorValueType p_valueType,
+        DimensionType p_dimension, SizeType p_vectorCount);
+
+    void readDefault(const char* p_filePath, VectorValueType p_valueType,
+        DimensionType p_dimension, SizeType p_vectorCount);
 };
 
 } // namespace SPTAG

@@ -359,7 +359,7 @@ namespace SPTAG {
                 fprintf(stderr, "Setup index finish, start setup hint...\n");
                 searcher.SetHint(numThreads, candidateNum, false, p_opts);
 
-                BasicVectorSet fullVectors(queryFile.c_str(), headIndex->GetVectorValueType());
+                BasicVectorSet fullVectors(queryFile.c_str(), headIndex->GetVectorValueType(), p_opts.m_iQueryDimension, p_opts.m_iQueryNumber, p_opts.m_queryFileType);
 
                 fprintf(stderr, "Full vector loaded.\n");
 

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "inc/Core/VectorSet.h"
+#include "inttypes.h"
 #include <fstream>
 
 using namespace SPTAG;
@@ -30,29 +31,111 @@ BasicVectorSet::BasicVectorSet(const ByteArray& p_bytesArray,
 {
 }
 
-// copied from src/IndexBuilder/main.cpp
-BasicVectorSet::BasicVectorSet(const char* p_filePath, VectorValueType p_valueType)
-    : m_valueType(p_valueType) 
+void BasicVectorSet::readXvec(const char* p_filePath, VectorValueType p_valueType,
+    DimensionType p_dimension, SizeType p_vectorCount) 
 {
-    std::ifstream inputStream(p_filePath, std::ifstream::binary);
-    if (!inputStream.is_open()) {
-        fprintf(stderr, "Failed to read input file.\n");
+
+    SizeType vectorDataSize = GetValueTypeSize(p_valueType) * p_dimension;
+    size_t totalRecordVectorBytes = vectorDataSize * p_vectorCount;
+    ByteArray l_data = std::move(ByteArray::Alloc(totalRecordVectorBytes));
+    char* vecBuf = reinterpret_cast<char*>(l_data.Data());
+
+    std::ifstream in(p_filePath, std::ifstream::binary);
+    if (!in.is_open()) {
+        fprintf(stderr, "Error: Failed to read input file: %s \n", p_filePath);
         exit(1);
     }
+
+    DimensionType dim = p_dimension;
+    for (size_t i = 0; i < p_vectorCount; i++) {
+        in.read((char*)&dim, 4);
+        if (dim != p_dimension) {
+            fprintf(stderr, "Error: Xvec file %s has No." PRId64 " vector whose dims are not as many as expected. Expected: " PRId32 ", Fact: " PRId32 "\n", p_filePath, i, p_dimension, dim);
+            exit(1);
+        }
+        in.read(vecBuf + i * vectorDataSize, vectorDataSize);
+    }
+
+    in.close();
+
+    m_data = std::move(l_data);
+    m_valueType = p_valueType;
+    m_dimension = p_dimension;
+    m_vectorCount = p_vectorCount;
+    m_perVectorDataSize = vectorDataSize;
+
+    //std::vector<int8_t> temp(reinterpret_cast<int8_t*>(GetVector(0)), reinterpret_cast<int8_t*>(GetVector(0)) + p_dimension);
+    //for (size_t i = 0; i < temp.size(); i++)
+    //{
+    //    printf("%d\n", temp[i]);
+    //}
+}
+
+void BasicVectorSet::readDefault(const char* p_filePath, VectorValueType p_valueType,
+    DimensionType p_dimension, SizeType p_vectorCount) 
+{
+
+    std::ifstream in(p_filePath, std::ifstream::binary);
+    if (!in.is_open()) {
+        fprintf(stderr, "Error: Failed to read input file: %s \n", p_filePath);
+        exit(1);
+    }
+
     SizeType row;
     DimensionType col;
-    inputStream.read((char*)&row, sizeof(SizeType));
-    inputStream.read((char*)&col, sizeof(DimensionType));
-    std::uint64_t totalRecordVectorBytes = ((std::uint64_t)GetValueTypeSize(p_valueType)) * row * col;
+    in.read((char*)&row, 4);
+    in.read((char*)&col, 4);
 
-    m_data = ByteArray::Alloc(totalRecordVectorBytes);
-    char* vecBuf = reinterpret_cast<char*>(m_data.Data());
-    inputStream.read(vecBuf, totalRecordVectorBytes);
-    inputStream.close();
+    if (row != p_vectorCount)
+    {
+        fprintf(stderr, "Error: vector number of file: %s is not as expected. Expected: " PRId32 ", Fact: " PRId32 " \n", p_filePath, p_vectorCount, row);
+        exit(1);
+    }
 
-    m_dimension = col;
-    m_vectorCount = row;
-    m_perVectorDataSize = static_cast<SizeType>(col * GetValueTypeSize(p_valueType));
+    if (col != p_dimension)
+    {
+        fprintf(stderr, "Error: vector dimension of file: %s is not as expected. Expected: " PRId32 ", Fact: " PRId32 " \n", p_filePath, p_dimension, col);
+        exit(1);
+    }
+
+    SizeType vectorDataSize = GetValueTypeSize(p_valueType) * p_dimension;
+    std::uint64_t totalRecordVectorBytes = vectorDataSize * p_vectorCount;
+    ByteArray l_data = std::move(ByteArray::Alloc(totalRecordVectorBytes));
+    char* vecBuf = reinterpret_cast<char*>(l_data.Data());
+    in.read(vecBuf, totalRecordVectorBytes);
+
+    in.close();
+
+    m_data = std::move(l_data);
+    m_valueType = p_valueType;
+    m_dimension = p_dimension;
+    m_vectorCount = p_vectorCount;
+    m_perVectorDataSize = vectorDataSize;
+
+    //std::vector<int8_t> temp(reinterpret_cast<int8_t*>(GetVector(0)), reinterpret_cast<int8_t*>(GetVector(0)) + p_dimension);
+    //for (size_t i = 0; i < temp.size(); i++)
+    //{
+    //    printf("%d\n", temp[i]);
+    //}
+}
+
+// copied from src/IndexBuilder/main.cpp
+BasicVectorSet::BasicVectorSet(const char* p_filePath, VectorValueType p_valueType,
+    DimensionType p_dimension, SizeType p_vectorCount, VectorFileType p_fileType)
+{
+    if (p_fileType == VectorFileType::XVEC)
+    {
+        readXvec(p_filePath, p_valueType, p_dimension, p_vectorCount);
+    }
+    else if (p_fileType == VectorFileType::DEFAULT)
+    {
+        readDefault(p_filePath, p_valueType, p_dimension, p_vectorCount);
+    }
+    else
+    {
+        fprintf(stderr, "VectorFileType Unsupported.\n");
+        exit(1);
+    }
 }
 
 BasicVectorSet::~BasicVectorSet()

@@ -6,6 +6,9 @@
 DefineSelectHeadParameter(m_vectorFile, std::string, std::string("vectors.bin"), "VectorFilePath")
 DefineSelectHeadParameter(m_valueType, SPTAG::VectorValueType, SPTAG::VectorValueType::Float, "VectorValueType")
 DefineSelectHeadParameter(m_iDistCalcMethod, SPTAG::DistCalcMethod, SPTAG::DistCalcMethod::L2, "DistCalcMethod")
+DefineSelectHeadParameter(m_vectorFileType, SPTAG::VectorFileType, SPTAG::VectorFileType::Undefined, "VectorFileType")
+DefineSelectHeadParameter(m_iVectorNumber, SPTAG::SizeType, -1, "VectorNumber")
+DefineSelectHeadParameter(m_iDimension, SPTAG::DimensionType, -1, "Dimension")
 
 DefineSelectHeadParameter(m_iTreeNumber, int, 1, "TreeNumber")
 DefineSelectHeadParameter(m_iBKTKmeansK, int, 32, "BKTKmeansK")

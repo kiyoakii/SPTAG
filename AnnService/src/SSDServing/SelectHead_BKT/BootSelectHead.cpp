@@ -12,7 +12,7 @@ namespace SPTAG {
 				auto start = std::chrono::system_clock::now();
 
 				fprintf(stdout, "Start loading vector file.\n");
-				BasicVectorSet vectorSet(opts.m_vectorFile.c_str(), opts.m_valueType);
+				BasicVectorSet vectorSet(opts.m_vectorFile.c_str(), opts.m_valueType, opts.m_iDimension, opts.m_iVectorNumber, opts.m_vectorFileType);
 				fprintf(stdout, "Finish loading vector file.\n");
 
 				fprintf(stdout, "Start generating BKT.\n");

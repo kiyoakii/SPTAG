@@ -19,13 +19,13 @@
 using namespace std;
 
 template<typename T>
-void GenerateVectors(string fileName, SPTAG::SizeType rows, SPTAG::DimensionType dims) {
+void GenerateVectors(string fileName, SPTAG::SizeType rows, SPTAG::DimensionType dims, SPTAG::VectorFileType fileType) {
 	if (boost::filesystem::exists(fileName))
 	{
 		fprintf(stdout, "%s was generated. Skip generation.", fileName.c_str());
 		return;
 	}
-	uniform_real_distribution<float> ud(0, 126);
+	
 	ofstream of(fileName, ofstream::binary);
 	if (!of.is_open())
 	{
@@ -33,32 +33,53 @@ void GenerateVectors(string fileName, SPTAG::SizeType rows, SPTAG::DimensionType
 		BOOST_CHECK(false);
 		return;
 	}
-	of.write(reinterpret_cast<char*>(&rows), sizeof(rows));
-	of.write(reinterpret_cast<char*>(&dims), sizeof(dims));
-	
+
+	uniform_real_distribution<float> ud(0, 126);
 	mt19937 mt(543);
-	for (size_t i = 0; i < rows; i++)
+	vector<T> tmp(dims);
+
+	if (fileType == SPTAG::VectorFileType::DEFAULT)
 	{
-		vector<T> tmp(dims, 0);
-		for (size_t j = 0; j < dims; j++)
+		of.write(reinterpret_cast<char*>(&rows), 4);
+		of.write(reinterpret_cast<char*>(&dims), 4);
+
+		for (size_t i = 0; i < rows; i++)
 		{
-			float smt = ud(mt);
-			tmp[j] = static_cast<T>(smt);
+			for (size_t j = 0; j < dims; j++)
+			{
+				float smt = ud(mt);
+				tmp[j] = static_cast<T>(smt);
+			}
+
+			SPTAG::COMMON::Utils::Normalize(tmp.data(), dims, SPTAG::COMMON::Utils::GetBase<T>());
+			of.write(reinterpret_cast<char*>(tmp.data()), dims * sizeof(T));
+		}
+	}
+	else if (fileType == SPTAG::VectorFileType::XVEC)
+	{
+		for (size_t i = 0; i < rows; i++)
+		{
+			for (size_t j = 0; j < dims; j++)
+			{
+				float smt = ud(mt);
+				tmp[j] = static_cast<T>(smt);
+			}
+
+			SPTAG::COMMON::Utils::Normalize(tmp.data(), dims, SPTAG::COMMON::Utils::GetBase<T>());
+			of.write(reinterpret_cast<char*>(&dims), 4);
+			of.write(reinterpret_cast<char*>(tmp.data()), dims * sizeof(T));
 		}
 
-		SPTAG::COMMON::Utils::Normalize(tmp.data(), dims, SPTAG::COMMON::Utils::GetBase<T>());
-		of.write(reinterpret_cast<char*>(tmp.data()), tmp.size() * sizeof(T));
 	}
 
-	of.close();
 }
 
-void GenVec(string vectorsName, SPTAG::VectorValueType vecType, SPTAG::SizeType rows = 1000, SPTAG::DimensionType dims = 100) {
+void GenVec(string vectorsName, SPTAG::VectorValueType vecType, SPTAG::VectorFileType vecFileType, SPTAG::SizeType rows = 1000, SPTAG::DimensionType dims = 100) {
 	switch (vecType)
 	{
 #define DefineVectorValueType(Name, Type) \
 case SPTAG::VectorValueType::Name: \
-GenerateVectors<Type>(vectorsName, rows, dims); \
+GenerateVectors<Type>(vectorsName, rows, dims, vecFileType); \
 break; \
 
 #include "inc/Core/DefinitionList.h"
@@ -69,7 +90,7 @@ break; \
 }
 
 template<typename T>
-void FillVectors(const string binName, vector<vector<T>>& bins) {
+void FillVectors(const string binName, vector<vector<T>>& bins, SPTAG::VectorFileType vft) {
 	ifstream f(binName, ifstream::binary);
 	if (!f.is_open())
 	{
@@ -77,17 +98,39 @@ void FillVectors(const string binName, vector<vector<T>>& bins) {
 		BOOST_CHECK(false);
 		return;
 	}
-	SPTAG::SizeType rowNum;
-	SPTAG::DimensionType dimNum;
-	f.read(reinterpret_cast<char*>(&rowNum), sizeof(SPTAG::SizeType));
-	f.read(reinterpret_cast<char*>(&dimNum), sizeof(SPTAG::DimensionType));
-	for (size_t i = 0; i < rowNum; i++)
+
+	if (vft == SPTAG::VectorFileType::DEFAULT)
 	{
-		vector<T> cur(dimNum, 0);
-		f.read(reinterpret_cast<char*>(cur.data()), dimNum * sizeof(T));
-		bins.push_back(cur);
+		SPTAG::SizeType rowNum;
+		SPTAG::DimensionType dimNum;
+		f.read(reinterpret_cast<char*>(&rowNum), sizeof(SPTAG::SizeType));
+		f.read(reinterpret_cast<char*>(&dimNum), sizeof(SPTAG::DimensionType));
+		vector<T> cur(dimNum);
+		for (size_t i = 0; i < rowNum; i++)
+		{
+			f.read(reinterpret_cast<char*>(cur.data()), dimNum * sizeof(T));
+			bins.push_back(cur);
+		}
+		
 	}
-	f.close();
+	else if(vft == SPTAG::VectorFileType::XVEC)
+	{
+		vector<T> cur;
+		SPTAG::DimensionType dimNum;
+		do {
+			f.read(reinterpret_cast<char*>(&dimNum), 4);
+			if (f.eof()) break;
+			if (!f.good())
+			{
+				fprintf(stderr, "ERROR: file %s isn't good.\n", binName.c_str());
+				exit(1);
+			}
+			cur.resize(dimNum);
+			f.read(reinterpret_cast<char*>(cur.data()), dimNum * sizeof(T));
+			bins.push_back(cur);
+		} while (true);
+
+	}
 }
 
 struct Neighbor
@@ -103,9 +146,38 @@ struct Neighbor
 	}
 };
 
+void writeTruthFile(const string truthFile, size_t queryNumber, const int K, vector<vector<SPTAG::SizeType>>& truthset, SPTAG::TruthFileType TFT) {
+	
+	if (TFT == SPTAG::TruthFileType::TXT)
+	{
+		ofstream of(truthFile);
+		for (size_t i = 0; i < queryNumber; i++)
+		{
+			for (size_t k = 0; k < K; k++)
+			{
+				of << truthset[i][k];
+				if (k != K - 1)
+				{
+					of << " ";
+				}
+			}
+			of << endl;
+		}
+	}
+	else if (TFT == SPTAG::TruthFileType::XVEC)
+	{
+		ofstream of(truthFile, ios_base::binary);
+		for (size_t i = 0; i < queryNumber; i++)
+		{
+			of.write(reinterpret_cast<const char*>(&K), 4);
+			of.write(reinterpret_cast<char*>(truthset[i].data()), K * 4);
+		}
+	}
+}
+
 template<typename T>
 void GenerateTruth(const string queryFile, const string vectorFile, const string truthFile,
-	const SPTAG::DistCalcMethod distMethod, const int K) {
+	const SPTAG::DistCalcMethod distMethod, const int K, SPTAG::VectorFileType p_vecFileType, const SPTAG::TruthFileType p_truthFileType) {
 	if (boost::filesystem::exists(truthFile))
 	{
 		fprintf(stdout, "truthFile: %s was generated. Skip generation.", truthFile.c_str());
@@ -113,10 +185,9 @@ void GenerateTruth(const string queryFile, const string vectorFile, const string
 	}
 	vector<vector<T>> querys;
 	vector<vector<T>> vectors;
-	FillVectors<T>(queryFile, querys);
-	FillVectors<T>(vectorFile, vectors);
+	FillVectors<T>(queryFile, querys, p_vecFileType);
+	FillVectors<T>(vectorFile, vectors, p_vecFileType);
 	vector<vector<SPTAG::SizeType>> truthset(querys.size(), vector<SPTAG::SizeType>(K, 0));
-	ofstream of(truthFile);
 	std::atomic_uint32_t processed = 0;
 
 	concurrency::parallel_for(0, 16, [&](int tid)
@@ -178,29 +249,15 @@ void GenerateTruth(const string queryFile, const string vectorFile, const string
 
 			}
 		});
-
-	for (size_t i = 0; i < querys.size(); i++)
-	{
-		for (size_t k = 0; k < K; k++)
-		{
-			of << truthset[i][k];
-			if (k != K - 1)
-			{
-				of << " ";
-			}
-		}
-		of << endl;
-	}
-
-	of.close();
 	
+	writeTruthFile(truthFile, querys.size(), K, truthset, p_truthFileType);
 }
 
 void GenerateTruth(const string queryFile, const string vectorFile, const string truthFile,
-	const SPTAG::DistCalcMethod distMethod, const int K, SPTAG::VectorValueType vvt) {
+	const SPTAG::DistCalcMethod distMethod, const int K, SPTAG::VectorValueType vvt, SPTAG::VectorFileType p_vecFileType, SPTAG::TruthFileType p_truthFileType) {
 #define DefineVectorValueType(Name, Type) \
 	if (vvt == SPTAG::VectorValueType::Name) { \
-		GenerateTruth<Type>(queryFile, vectorFile, truthFile, distMethod, K); \
+		GenerateTruth<Type>(queryFile, vectorFile, truthFile, distMethod, K, p_vecFileType, p_truthFileType); \
 	} \
 
 #include "inc/Core/DefinitionList.h"
@@ -208,7 +265,8 @@ void GenerateTruth(const string queryFile, const string vectorFile, const string
 }
 
 void TestHead(string vectorsName, string configName, string OutputIDFile, string OutputVectorFile, 
-	SPTAG::VectorValueType vecType, SPTAG::DistCalcMethod distMethod,
+	SPTAG::VectorValueType vecType, SPTAG::DistCalcMethod distMethod, 
+	SPTAG::VectorFileType p_vectorFileType, SPTAG::SizeType p_iVectorNumber, SPTAG::DimensionType p_iDimension,
 	int p_BKTKmeansK, int p_BKTLeafSize, int p_SamplesNumber,
 	int p_SelectThreshold, int p_SplitFactor, int p_SplitThreshold) {
 
@@ -224,10 +282,15 @@ void TestHead(string vectorsName, string configName, string OutputIDFile, string
 	config << "VectorValueType=" << SPTAG::Helper::Convert::ConvertToString(vecType) << endl;
 	config << "DistCalcMethod=" << SPTAG::Helper::Convert::ConvertToString(distMethod) << endl;
 
+	config << "VectorFileType=" << SPTAG::Helper::Convert::ConvertToString(p_vectorFileType) << endl;
+	config << "VectorNumber=" << p_iVectorNumber << endl;
+	config << "Dimension=" << p_iDimension << endl;
+
 	config << "TreeNumber=" << "1" << endl;
 	config << "BKTKmeansK=" << p_BKTKmeansK << endl;
 	config << "BKTLeafSize=" << p_BKTLeafSize << endl;
 	config << "SamplesNumber=" << p_SamplesNumber << endl;
+	config << "NumberOfThreads=" << "1" << endl;
 	config << "SaveBKT=" << "true" <<endl;
 
 	config << "AnalyzeOnly=" << "false" << endl;
@@ -327,6 +390,11 @@ void TestBuildSSDIndex(string configName,
 	string p_queryFile,
 	string p_ssdIndex,
 	string p_headConfig,
+
+	SPTAG::VectorFileType p_queryFileType,
+	SPTAG::SizeType p_iQueryNumber,
+	SPTAG::DimensionType p_iQueryDimension,
+
 	int p_internalResultNum,
 	int p_numberOfThreads,
 	int p_replicaCount,
@@ -367,9 +435,13 @@ void TestBuildSSDIndex(string configName,
 	config << "QueryFile=" << p_queryFile << endl;
 	config << "InternalResultNum=" << p_internalResultNum << endl;
 	config << "NumberOfThreads=" << p_numberOfThreads << endl;
-
-	config << "SsdIndex=" << p_ssdIndex << endl;
 	config << "HeadConfig=" << p_headConfig << endl;
+
+	config << "QueryFileType=" << SPTAG::Helper::Convert::ConvertToString(p_queryFileType) << endl;
+	config << "QueryNumber=" << p_iQueryNumber << endl;
+	config << "QueryDimension=" << p_iQueryDimension << endl;
+	
+	config << "SsdIndex=" << p_ssdIndex << endl;
 	config << "ReplicaCount=" << p_replicaCount << endl;
 	config << "PostingPageLimit=" << p_postingPageLimit << endl;
 	config << "OutputEmptyReplicaID=" << p_outputEmptyReplicaID << endl;
@@ -398,7 +470,11 @@ void TestSearchSSDIndex(string configName,
 	string p_logFile,
 	string p_ExtraMaxCheck,
 	int p_qpsLimit,
-	int p_queryCountLimit
+	int p_queryCountLimit,
+
+	SPTAG::VectorFileType p_queryFileType, SPTAG::SizeType p_iQueryNumber, SPTAG::DimensionType p_iQueryDimension,
+	SPTAG::VectorFileType p_warmupFileType, SPTAG::SizeType p_iWarmupNumber, SPTAG::DimensionType p_iWarmupDimension,
+	SPTAG::TruthFileType p_truthFileType, SPTAG::SizeType p_iTruthNumber
 ) {
 	ofstream config(configName);
 	if (!config.is_open())
@@ -448,6 +524,16 @@ void TestSearchSSDIndex(string configName,
 	config << "ResultNum=" << p_resultNum << endl;
 	config << "QueryCountLimit=" << p_queryCountLimit << endl;
 
+
+	config << "QueryFileType=" << SPTAG::Helper::Convert::ConvertToString(p_queryFileType) << endl;
+	config << "QueryNumber=" << p_iQueryNumber << endl;
+	config << "QueryDimension=" << p_iQueryDimension << endl;
+	config << "WarmupFileType=" << SPTAG::Helper::Convert::ConvertToString(p_warmupFileType) << endl;
+	config << "WarmupNumber=" << p_iWarmupNumber << endl;
+	config << "WarmupDimension=" << p_iWarmupDimension << endl;
+	config << "TruthFileType=" << SPTAG::Helper::Convert::ConvertToString(p_truthFileType) << endl;
+	config << "TruthNumber=" << p_iTruthNumber << endl;
+
 	config.close();
 
 	char* arg1 = new char[100];
@@ -463,106 +549,150 @@ void TestSearchSSDIndex(string configName,
 BOOST_AUTO_TEST_SUITE(SSDServingTest)
 
 #define SSDTEST_DIRECTORY_NAME "sddtest"
+#define VECTOR_NUM 1000
+#define QUERY_NUM 10
+#define VECTOR_DIM 100
 #define SSDTEST_DIRECTORY SSDTEST_DIRECTORY_NAME "\\"
-#define VECTORS(VT) SSDTEST_DIRECTORY "vectors_"#VT".bin"
-#define QUERIES(VT) SSDTEST_DIRECTORY "vectors_"#VT".query"
-#define TRUTHSET(VT, DM) SSDTEST_DIRECTORY "vectors_"#VT"_"#DM".truth"
-#define HEAD_IDS(VT, DM) SSDTEST_DIRECTORY "head_ids_"#VT"_"#DM".bin"
-#define HEAD_VECTORS(VT, DM) SSDTEST_DIRECTORY "head_vectors_"#VT"_"#DM".bin"
-#define HEAD_INDEX(VT, DM, ALGO) SSDTEST_DIRECTORY "head_"#VT"_"#DM"_"#ALGO".head_index"
-#define SSD_INDEX(VT, DM, ALGO) SSDTEST_DIRECTORY "ssd_"#VT"_"#DM"_"#ALGO".ssd_index"
+#define VECTORS(VT, FT) SSDTEST_DIRECTORY "vectors_"#VT"_"#FT".bin"
+#define QUERIES(VT, FT) SSDTEST_DIRECTORY "vectors_"#VT"_"#FT".query"
+#define TRUTHSET(VT, DM, FT, TFT) SSDTEST_DIRECTORY "vectors_"#VT"_"#DM"_"#FT"_"#TFT".truth"
+#define HEAD_IDS(VT, DM, FT) SSDTEST_DIRECTORY "head_ids_"#VT"_"#DM"_"#FT".bin"
+#define HEAD_VECTORS(VT, DM, FT) SSDTEST_DIRECTORY "head_vectors_"#VT"_"#DM"_"#FT".bin"
+#define HEAD_INDEX(VT, DM, ALGO, FT) SSDTEST_DIRECTORY "head_"#VT"_"#DM"_"#ALGO"_"#FT".head_index"
+#define SSD_INDEX(VT, DM, ALGO, FT) SSDTEST_DIRECTORY "ssd_"#VT"_"#DM"_"#ALGO"_"#FT".ssd_index"
 
-#define SELECT_HEAD_CONFIG(VT, DM) SSDTEST_DIRECTORY "test_head_"#VT"_"#DM".ini"
+#define SELECT_HEAD_CONFIG(VT, DM, FT) SSDTEST_DIRECTORY "test_head_"#VT"_"#DM"_"#FT".ini"
 #define BUILD_HEAD_CONFIG(VT, DM, ALGO) SSDTEST_DIRECTORY "test_build_head_"#VT"_"#DM"_"#ALGO".ini"
 #define BUILD_HEAD_BUILDER_CONFIG(VT, DM, ALGO) SSDTEST_DIRECTORY "test_build_head_"#VT"_"#DM"_"#ALGO".builder.ini"
 #define BUILD_SSD_CONFIG(VT, DM, ALGO) SSDTEST_DIRECTORY "test_build_ssd"#VT"_"#DM"_"#ALGO".ini"
 #define BUILD_SSD_BUILDER_CONFIG(VT, DM, ALGO) SSDTEST_DIRECTORY "test_build_ssd"#VT"_"#DM"_"#ALGO".builder.ini"
 #define SEARCH_SSD_CONFIG(VT, DM, ALGO) SSDTEST_DIRECTORY "test_search_ssd_"#VT"_"#DM"_"#ALGO".ini"
 #define SEARCH_SSD_BUILDER_CONFIG(VT, DM, ALGO) SSDTEST_DIRECTORY "test_search_ssd_"#VT"_"#DM"_"#ALGO".builder.ini"
-#define SEARCH_SSD_RESULT(VT, DM, ALGO) SSDTEST_DIRECTORY "test_search_ssd_"#VT"_"#DM"_"#ALGO".result"
+#define SEARCH_SSD_RESULT(VT, DM, ALGO, FT, TFT) SSDTEST_DIRECTORY "test_search_ssd_"#VT"_"#DM"_"#ALGO"_"#FT"_"#TFT".result"
 
-#define GVQ(VT) \
-BOOST_AUTO_TEST_CASE(GenerateVectorsQueries##VT) { \
+#define GVQ(VT, FT) \
+BOOST_AUTO_TEST_CASE(GenerateVectorsQueries##VT##FT) { \
 boost::filesystem::create_directory(SSDTEST_DIRECTORY_NAME); \
-GenVec(VECTORS(VT), SPTAG::VectorValueType::VT, 1000, 100); \
-GenVec(QUERIES(VT), SPTAG::VectorValueType::VT, 10, 100); \
+GenVec(VECTORS(VT, FT), SPTAG::VectorValueType::VT, SPTAG::VectorFileType::FT, VECTOR_NUM, VECTOR_DIM); \
+GenVec(QUERIES(VT, FT), SPTAG::VectorValueType::VT, SPTAG::VectorFileType::FT, QUERY_NUM, VECTOR_DIM); \
 } \
 
-GVQ(Float)
-GVQ(Int16)
-GVQ(UInt8)
-GVQ(Int8)
+GVQ(Float, DEFAULT)
+GVQ(Int16, DEFAULT)
+GVQ(UInt8, DEFAULT)
+GVQ(Int8, DEFAULT)
+
+GVQ(Float, XVEC)
+GVQ(Int16, XVEC)
+GVQ(UInt8, XVEC)
+GVQ(Int8, XVEC)
 #undef GVQ
 
-#define GTR(VT, DM) \
-BOOST_AUTO_TEST_CASE(GenerateTruth##VT##DM) { \
-GenerateTruth(QUERIES(VT), VECTORS(VT), TRUTHSET(VT, DM), \
-	SPTAG::DistCalcMethod::DM, 128, SPTAG::VectorValueType::VT); \
+#define GTR(VT, DM, FT, TFT) \
+BOOST_AUTO_TEST_CASE(GenerateTruth##VT##DM##FT##TFT) { \
+GenerateTruth(QUERIES(VT, FT), VECTORS(VT, FT), TRUTHSET(VT, DM, FT, TFT), \
+	SPTAG::DistCalcMethod::DM, 128, SPTAG::VectorValueType::VT, SPTAG::VectorFileType::FT, SPTAG::TruthFileType::TFT); \
 } \
 
-GTR(Float, L2)
-GTR(Float, Cosine)
-GTR(Int16, L2)
-GTR(Int16, Cosine)
-GTR(UInt8, L2)
-GTR(UInt8, Cosine)
-GTR(Int8, L2)
-GTR(Int8, Cosine)
+GTR(Float, L2, DEFAULT, TXT)
+GTR(Float, Cosine, DEFAULT, TXT)
+GTR(Int16, L2, DEFAULT, TXT)
+GTR(Int16, Cosine, DEFAULT, TXT)
+GTR(UInt8, L2, DEFAULT, TXT)
+GTR(UInt8, Cosine, DEFAULT, TXT)
+GTR(Int8, L2, DEFAULT, TXT)
+GTR(Int8, Cosine, DEFAULT, TXT)
+
+GTR(Float, L2, XVEC, XVEC)
+GTR(Float, Cosine, XVEC, XVEC)
+GTR(Int16, L2, XVEC, XVEC)
+GTR(Int16, Cosine, XVEC, XVEC)
+GTR(UInt8, L2, XVEC, XVEC)
+GTR(UInt8, Cosine, XVEC, XVEC)
+GTR(Int8, L2, XVEC, XVEC)
+GTR(Int8, Cosine, XVEC, XVEC)
 #undef GTR
 
-#define WTEV(VT, DM, \
+#define WTEV(VT, DM, FT, \
 	S_BKTKmeansK, S_BKTLeafSize, S_SamplesNumber, \
 S_SelectThreshold, S_SplitFactor, S_SplitThreshold) \
-BOOST_AUTO_TEST_CASE(TestHead##VT##DM) \
+BOOST_AUTO_TEST_CASE(TestHead##VT##DM##FT) \
 { \
-	string vectorsName = VECTORS(VT); \
-	string configName = SELECT_HEAD_CONFIG(VT, DM); \
-	string OutputIDFile = HEAD_IDS(VT, DM); \
-	string OutputVectorFile = HEAD_VECTORS(VT, DM); \
+	string vectorsName = VECTORS(VT, FT); \
+	string configName = SELECT_HEAD_CONFIG(VT, DM, FT); \
+	string OutputIDFile = HEAD_IDS(VT, DM, FT); \
+	string OutputVectorFile = HEAD_VECTORS(VT, DM, FT); \
 \
 	TestHead(vectorsName, configName, OutputIDFile, OutputVectorFile, \
 		SPTAG::VectorValueType::VT, SPTAG::DistCalcMethod::DM, \
+		SPTAG::VectorFileType::FT, VECTOR_NUM, VECTOR_DIM, \
 		S_BKTKmeansK, S_BKTLeafSize, S_SamplesNumber, \
 		S_SelectThreshold, S_SplitFactor, S_SplitThreshold \
 	); \
 } \
 
-WTEV(Float, L2, 
+WTEV(Float, L2, DEFAULT,
 	3, 6, 100, 
 	12, 9, 18)
-WTEV(Float, Cosine,
+WTEV(Float, Cosine, DEFAULT,
 	3, 6, 100, 
 	12, 9, 18)
-WTEV(Int16, L2,
+WTEV(Int16, L2, DEFAULT,
 	3, 6, 100,
 	12, 9, 18)
-WTEV(Int16, Cosine,
+WTEV(Int16, Cosine, DEFAULT,
 	3, 6, 100,
 	12, 9, 18)
-WTEV(UInt8, L2,
+WTEV(UInt8, L2, DEFAULT,
 	3, 6, 100,
 	12, 9, 18)
-WTEV(UInt8, Cosine,
+WTEV(UInt8, Cosine, DEFAULT,
 	3, 6, 100,
 	12, 9, 18)
-WTEV(Int8, L2,
+WTEV(Int8, L2, DEFAULT,
 	3, 6, 100,
 	12, 9, 18)
-WTEV(Int8, Cosine,
+WTEV(Int8, Cosine, DEFAULT,
+	3, 6, 100,
+	12, 9, 18)
+
+
+WTEV(Float, L2, XVEC,
+	3, 6, 100,
+	12, 9, 18)
+WTEV(Float, Cosine, XVEC,
+	3, 6, 100,
+	12, 9, 18)
+WTEV(Int16, L2, XVEC,
+	3, 6, 100,
+	12, 9, 18)
+WTEV(Int16, Cosine, XVEC,
+	3, 6, 100,
+	12, 9, 18)
+WTEV(UInt8, L2, XVEC,
+	3, 6, 100,
+	12, 9, 18)
+WTEV(UInt8, Cosine, XVEC,
+	3, 6, 100,
+	12, 9, 18)
+WTEV(Int8, L2, XVEC,
+	3, 6, 100,
+	12, 9, 18)
+WTEV(Int8, Cosine, XVEC,
 	3, 6, 100,
 	12, 9, 18)
 
 #undef WTEV
 
-#define BDHD(VT, DM, ALGO, \
+#define BDHD(VT, DM, ALGO, FT, \
 H_BKTKmeansK, H_BKTLeafSize, H_Samples) \
-BOOST_AUTO_TEST_CASE(TestBuildHead##VT##DM##ALGO) { \
+BOOST_AUTO_TEST_CASE(TestBuildHead##VT##DM##ALGO##FT) { \
 string configName = BUILD_HEAD_CONFIG(VT, DM, ALGO); \
 string builderFile = BUILD_HEAD_BUILDER_CONFIG(VT, DM, ALGO); \
 TestBuildHead( \
 	configName, \
-	HEAD_VECTORS(VT, DM), \
-	HEAD_INDEX(VT, DM, ALGO), \
+	HEAD_VECTORS(VT, DM, FT), \
+	HEAD_INDEX(VT, DM, ALGO, FT), \
 	SPTAG::IndexAlgoType::ALGO, \
 	SPTAG::DistCalcMethod::DM, \
 	builderFile, \
@@ -571,55 +701,96 @@ TestBuildHead( \
 	3 \
 );} \
 
-BDHD(Float, L2, BKT, 
+BDHD(Float, L2, BKT, DEFAULT,
 	2, 4, 20)
-BDHD(Float, L2, KDT,
+BDHD(Float, L2, KDT, DEFAULT,
 	2, 4, 20)
-BDHD(Float, Cosine, BKT,
+BDHD(Float, Cosine, BKT, DEFAULT,
 	2, 4, 20)
-BDHD(Float, Cosine, KDT,
-	2, 4, 20)
-
-BDHD(Int8, L2, BKT,
-	2, 4, 20)
-BDHD(Int8, L2, KDT,
-	2, 4, 20)
-BDHD(Int8, Cosine, BKT,
-	2, 4, 20)
-BDHD(Int8, Cosine, KDT,
+BDHD(Float, Cosine, KDT, DEFAULT,
 	2, 4, 20)
 
-BDHD(UInt8, L2, BKT,
+BDHD(Int8, L2, BKT, DEFAULT,
 	2, 4, 20)
-BDHD(UInt8, L2, KDT,
+BDHD(Int8, L2, KDT, DEFAULT,
 	2, 4, 20)
-BDHD(UInt8, Cosine, BKT,
+BDHD(Int8, Cosine, BKT, DEFAULT,
 	2, 4, 20)
-BDHD(UInt8, Cosine, KDT,
+BDHD(Int8, Cosine, KDT, DEFAULT,
 	2, 4, 20)
 
-BDHD(Int16, L2, BKT,
+BDHD(UInt8, L2, BKT, DEFAULT,
 	2, 4, 20)
-BDHD(Int16, L2, KDT,
+BDHD(UInt8, L2, KDT, DEFAULT,
 	2, 4, 20)
-BDHD(Int16, Cosine, BKT,
+BDHD(UInt8, Cosine, BKT, DEFAULT,
 	2, 4, 20)
-BDHD(Int16, Cosine, KDT,
+BDHD(UInt8, Cosine, KDT, DEFAULT,
+	2, 4, 20)
+
+BDHD(Int16, L2, BKT, DEFAULT,
+	2, 4, 20)
+BDHD(Int16, L2, KDT, DEFAULT,
+	2, 4, 20)
+BDHD(Int16, Cosine, BKT, DEFAULT,
+	2, 4, 20)
+BDHD(Int16, Cosine, KDT, DEFAULT,
+	2, 4, 20)
+
+
+//XVEC
+BDHD(Float, L2, BKT, XVEC,
+	2, 4, 20)
+BDHD(Float, L2, KDT, XVEC,
+	2, 4, 20)
+BDHD(Float, Cosine, BKT, XVEC,
+	2, 4, 20)
+BDHD(Float, Cosine, KDT, XVEC,
+	2, 4, 20)
+
+BDHD(Int8, L2, BKT, XVEC,
+	2, 4, 20)
+BDHD(Int8, L2, KDT, XVEC,
+	2, 4, 20)
+BDHD(Int8, Cosine, BKT, XVEC,
+	2, 4, 20)
+BDHD(Int8, Cosine, KDT, XVEC,
+	2, 4, 20)
+
+BDHD(UInt8, L2, BKT, XVEC,
+	2, 4, 20)
+BDHD(UInt8, L2, KDT, XVEC,
+	2, 4, 20)
+BDHD(UInt8, Cosine, BKT, XVEC,
+	2, 4, 20)
+BDHD(UInt8, Cosine, KDT, XVEC,
+	2, 4, 20)
+
+BDHD(Int16, L2, BKT, XVEC,
+	2, 4, 20)
+BDHD(Int16, L2, KDT, XVEC,
+	2, 4, 20)
+BDHD(Int16, Cosine, BKT, XVEC,
+	2, 4, 20)
+BDHD(Int16, Cosine, KDT, XVEC,
 	2, 4, 20)
 
 #undef BDHD
 
-#define BDSSD(VT, DM, ALGO, \
+#define BDSSD(VT, DM, ALGO, FT, \
 	BS_internalResultNum, BS_numberOfThreads, BS_replicaCount, BS_postingPageLimit) \
-BOOST_AUTO_TEST_CASE(TestBuildSSDIndex##VT##DM##ALGO) { \
+BOOST_AUTO_TEST_CASE(TestBuildSSDIndex##VT##DM##ALGO##FT) { \
 string configName = BUILD_SSD_CONFIG(VT, DM, ALGO); \
 TestBuildSSDIndex(\
 	configName, \
-	HEAD_IDS(VT, DM), \
-	HEAD_INDEX(VT, DM, ALGO), \
-	VECTORS(VT), \
-	SSD_INDEX(VT, DM, ALGO), \
+	HEAD_IDS(VT, DM, FT), \
+	HEAD_INDEX(VT, DM, ALGO, FT), \
+	VECTORS(VT, FT), \
+	SSD_INDEX(VT, DM, ALGO, FT), \
 	BUILD_SSD_BUILDER_CONFIG(VT, DM, ALGO), \
+	SPTAG::VectorFileType::FT, \
+	VECTOR_NUM, \
+	VECTOR_DIM, \
 	BS_internalResultNum, \
 	BS_numberOfThreads, \
 	BS_replicaCount, \
@@ -627,84 +798,149 @@ TestBuildSSDIndex(\
 	true \
 );} \
 
-BDSSD(Float, L2, BKT, 
+// DEFAULT
+BDSSD(Float, L2, BKT, DEFAULT,
 	60, 1, 4, 2)
-BDSSD(Float, L2, KDT,
+BDSSD(Float, L2, KDT, DEFAULT,
 	60, 1, 4, 2)
-BDSSD(Float, Cosine, BKT,
+BDSSD(Float, Cosine, BKT, DEFAULT,
 	60, 1, 4, 2)
-BDSSD(Float, Cosine, KDT,
-	60, 1, 4, 2)
-
-BDSSD(Int8, L2, BKT,
-	60, 1, 4, 2)
-BDSSD(Int8, L2, KDT,
-	60, 1, 4, 2)
-BDSSD(Int8, Cosine, BKT,
-	60, 1, 4, 2)
-BDSSD(Int8, Cosine, KDT,
+BDSSD(Float, Cosine, KDT, DEFAULT,
 	60, 1, 4, 2)
 
-BDSSD(UInt8, L2, BKT,
+BDSSD(Int8, L2, BKT, DEFAULT,
 	60, 1, 4, 2)
-BDSSD(UInt8, L2, KDT,
+BDSSD(Int8, L2, KDT, DEFAULT,
 	60, 1, 4, 2)
-BDSSD(UInt8, Cosine, BKT,
+BDSSD(Int8, Cosine, BKT, DEFAULT,
 	60, 1, 4, 2)
-BDSSD(UInt8, Cosine, KDT,
+BDSSD(Int8, Cosine, KDT, DEFAULT,
 	60, 1, 4, 2)
 
-BDSSD(Int16, L2, BKT,
+BDSSD(UInt8, L2, BKT, DEFAULT,
 	60, 1, 4, 2)
-BDSSD(Int16, L2, KDT,
+BDSSD(UInt8, L2, KDT, DEFAULT,
 	60, 1, 4, 2)
-BDSSD(Int16, Cosine, BKT,
+BDSSD(UInt8, Cosine, BKT, DEFAULT,
 	60, 1, 4, 2)
-BDSSD(Int16, Cosine, KDT,
+BDSSD(UInt8, Cosine, KDT, DEFAULT,
+	60, 1, 4, 2)
+
+BDSSD(Int16, L2, BKT, DEFAULT,
+	60, 1, 4, 2)
+BDSSD(Int16, L2, KDT, DEFAULT,
+	60, 1, 4, 2)
+BDSSD(Int16, Cosine, BKT, DEFAULT,
+	60, 1, 4, 2)
+BDSSD(Int16, Cosine, KDT, DEFAULT,
+	60, 1, 4, 2)
+
+
+// XVEC
+BDSSD(Float, L2, BKT, XVEC,
+	60, 1, 4, 2)
+BDSSD(Float, L2, KDT, XVEC,
+	60, 1, 4, 2)
+BDSSD(Float, Cosine, BKT, XVEC,
+	60, 1, 4, 2)
+BDSSD(Float, Cosine, KDT, XVEC,
+	60, 1, 4, 2)
+
+BDSSD(Int8, L2, BKT, XVEC,
+	60, 1, 4, 2)
+BDSSD(Int8, L2, KDT, XVEC,
+	60, 1, 4, 2)
+BDSSD(Int8, Cosine, BKT, XVEC,
+	60, 1, 4, 2)
+BDSSD(Int8, Cosine, KDT, XVEC,
+	60, 1, 4, 2)
+
+BDSSD(UInt8, L2, BKT, XVEC,
+	60, 1, 4, 2)
+BDSSD(UInt8, L2, KDT, XVEC,
+	60, 1, 4, 2)
+BDSSD(UInt8, Cosine, BKT, XVEC,
+	60, 1, 4, 2)
+BDSSD(UInt8, Cosine, KDT, XVEC,
+	60, 1, 4, 2)
+
+BDSSD(Int16, L2, BKT, XVEC,
+	60, 1, 4, 2)
+BDSSD(Int16, L2, KDT, XVEC,
+	60, 1, 4, 2)
+BDSSD(Int16, Cosine, BKT, XVEC,
+	60, 1, 4, 2)
+BDSSD(Int16, Cosine, KDT, XVEC,
 	60, 1, 4, 2)
 #undef BDSSD
 
 
-#define SCSSD(VT, DM, ALGO, SS_internalResultNum, SS_resultNum) \
-BOOST_AUTO_TEST_CASE(TestSearchSSDIndex##VT##DM##ALGO) { \
+#define SCSSD(VT, DM, ALGO, FT, TFT, \
+SS_internalResultNum, SS_resultNum) \
+BOOST_AUTO_TEST_CASE(TestSearchSSDIndex##VT##DM##ALGO##FT##TFT) { \
 string configName = SEARCH_SSD_CONFIG(VT, DM, ALGO); \
-string queryFileName = QUERIES(VT); \
-string truthFileName = TRUTHSET(VT, DM); \
-string resultFileName = SEARCH_SSD_RESULT(VT, DM, ALGO); \
+string queryFileName = QUERIES(VT, FT); \
+string truthFileName = TRUTHSET(VT, DM, FT, TFT); \
+string resultFileName = SEARCH_SSD_RESULT(VT, DM, ALGO, FT, TFT); \
 TestSearchSSDIndex( \
 	configName, \
-	HEAD_IDS(VT, DM), HEAD_INDEX(VT, DM, ALGO), SSD_INDEX(VT, DM, ALGO), SEARCH_SSD_BUILDER_CONFIG(VT, DM, ALGO), queryFileName, \
+	HEAD_IDS(VT, DM, FT), HEAD_INDEX(VT, DM, ALGO, FT), SSD_INDEX(VT, DM, ALGO, FT), SEARCH_SSD_BUILDER_CONFIG(VT, DM, ALGO), queryFileName, \
 	SS_internalResultNum, SS_resultNum, 16, \
 	resultFileName, \
 	"",  \
 	"", \
 	truthFileName, \
-	"", \
+	queryFileName, \
 	"", \
 	"10240", \
 	0, \
-	100000 \
+	100000, \
+	SPTAG::VectorFileType::FT, QUERY_NUM, VECTOR_DIM, \
+	SPTAG::VectorFileType::FT, QUERY_NUM, VECTOR_DIM, \
+	SPTAG::TruthFileType::TFT, QUERY_NUM \
 );} \
 
-SCSSD(Float, L2, BKT, 64, 64)
-SCSSD(Float, L2, KDT, 64, 64)
-SCSSD(Float, Cosine, BKT, 64, 64)
-SCSSD(Float, Cosine, KDT, 64, 64)
+SCSSD(Float, L2, BKT, DEFAULT, TXT, 64, 64)
+SCSSD(Float, L2, KDT, DEFAULT, TXT, 64, 64)
+SCSSD(Float, Cosine, BKT, DEFAULT, TXT, 64, 64)
+SCSSD(Float, Cosine, KDT, DEFAULT, TXT, 64, 64)
 
-SCSSD(Int8, L2, BKT, 64, 64)
-SCSSD(Int8, L2, KDT, 64, 64)
-SCSSD(Int8, Cosine, BKT, 64, 64)
-SCSSD(Int8, Cosine, KDT, 64, 64)
+SCSSD(Int8, L2, BKT, DEFAULT, TXT, 64, 64)
+SCSSD(Int8, L2, KDT, DEFAULT, TXT, 64, 64)
+SCSSD(Int8, Cosine, BKT, DEFAULT, TXT, 64, 64)
+SCSSD(Int8, Cosine, KDT, DEFAULT, TXT, 64, 64)
 
-SCSSD(UInt8, L2, BKT, 64, 64)
-SCSSD(UInt8, L2, KDT, 64, 64)
-SCSSD(UInt8, Cosine, BKT, 64, 64)
-SCSSD(UInt8, Cosine, KDT, 64, 64)
+SCSSD(UInt8, L2, BKT, DEFAULT, TXT, 64, 64)
+SCSSD(UInt8, L2, KDT, DEFAULT, TXT, 64, 64)
+SCSSD(UInt8, Cosine, BKT, DEFAULT, TXT, 64, 64)
+SCSSD(UInt8, Cosine, KDT, DEFAULT, TXT, 64, 64)
 
-SCSSD(Int16, L2, BKT, 64, 64)
-SCSSD(Int16, L2, KDT, 64, 64)
-SCSSD(Int16, Cosine, BKT, 64, 64)
-SCSSD(Int16, Cosine, KDT, 64, 64)
+SCSSD(Int16, L2, BKT, DEFAULT, TXT, 64, 64)
+SCSSD(Int16, L2, KDT, DEFAULT, TXT, 64, 64)
+SCSSD(Int16, Cosine, BKT, DEFAULT, TXT, 64, 64)
+SCSSD(Int16, Cosine, KDT, DEFAULT, TXT, 64, 64)
+
+
+//Another
+SCSSD(Float, L2, BKT, XVEC, XVEC, 64, 64)
+SCSSD(Float, L2, KDT, XVEC, XVEC, 64, 64)
+SCSSD(Float, Cosine, BKT, XVEC, XVEC, 64, 64)
+SCSSD(Float, Cosine, KDT, XVEC, XVEC, 64, 64)
+
+SCSSD(Int8, L2, BKT, XVEC, XVEC, 64, 64)
+SCSSD(Int8, L2, KDT, XVEC, XVEC, 64, 64)
+SCSSD(Int8, Cosine, BKT, XVEC, XVEC, 64, 64)
+SCSSD(Int8, Cosine, KDT, XVEC, XVEC, 64, 64)
+
+SCSSD(UInt8, L2, BKT, XVEC, XVEC, 64, 64)
+SCSSD(UInt8, L2, KDT, XVEC, XVEC, 64, 64)
+SCSSD(UInt8, Cosine, BKT, XVEC, XVEC, 64, 64)
+SCSSD(UInt8, Cosine, KDT, XVEC, XVEC, 64, 64)
+
+SCSSD(Int16, L2, BKT, XVEC, XVEC, 64, 64)
+SCSSD(Int16, L2, KDT, XVEC, XVEC, 64, 64)
+SCSSD(Int16, Cosine, BKT, XVEC, XVEC, 64, 64)
+SCSSD(Int16, Cosine, KDT, XVEC, XVEC, 64, 64)
 #undef SCSSD
 
 BOOST_AUTO_TEST_SUITE_END()

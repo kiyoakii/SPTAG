@@ -4,6 +4,7 @@
 #include "inc/Helper/Concurrent.h"
 #include "inc/SSDServing/VectorSearch/SearchStats.h"
 #include <ppl.h>
+#include "inttypes.h"
 
 namespace SPTAG {
 	namespace SSDServing {
@@ -32,7 +33,7 @@ namespace SPTAG {
                 return recall;
             }
 
-            void LoadTruth(std::string truthPath, vector<set<int>>& truth, int NumQuerys, int K)
+            void LoadTruthTXT(std::string truthPath, vector<set<int>>& truth, int K, SizeType p_iTruthNumber)
             {
                 int get;
                 ifstream fp(truthPath);
@@ -43,8 +44,8 @@ namespace SPTAG {
                 }
 
                 string line;
-                truth.resize(NumQuerys);
-                for (int i = 0; i < NumQuerys; ++i)
+                truth.resize(p_iTruthNumber);
+                for (int i = 0; i < p_iTruthNumber; ++i)
                 {
                     truth[i].clear();
                     for (int j = 0; j < K; ++j)
@@ -56,6 +57,54 @@ namespace SPTAG {
                     std::getline(fp, line);
                 }
                 fp.close();
+            }
+
+            void LoadTruthXVEC(std::string truthPath, vector<set<int>>& truth, int K, SizeType p_iTruthNumber)
+            {
+                std::ifstream in(truthPath, std::ifstream::binary);
+                if (!in.is_open()) {
+                    fprintf(stderr, "Error: Failed to read input file: %s \n", truthPath.c_str());
+                    exit(1);
+                }
+
+                DimensionType dim = K;
+                vector<int> temp_vec(K);
+                truth.resize(p_iTruthNumber);
+                for (size_t i = 0; i < p_iTruthNumber; i++) {
+                    in.read((char*)&dim, 4);
+                    if (dim < K) {
+                        fprintf(stderr, "Error: Xvec file %s has No.%" PRId64 " vector whose dims are fewer than expected. Expected: %" PRId32 ", Fact: %" PRId32 "\n", truthPath.c_str(), i, K, dim);
+                        exit(1);
+                    }
+
+                    in.read(reinterpret_cast<char*>(temp_vec.data()), K * 4);
+                    in.seekg((dim - K) * 4, ios_base::cur);
+                    truth[i].insert(temp_vec.begin(), temp_vec.end());
+                }
+
+                in.close();
+            }
+
+            void LoadTruth(std::string truthPath, vector<set<int>>& truth, int NumQuerys, int K, SizeType p_iTruthNumber, TruthFileType p_truthFileType)
+            {
+                if (NumQuerys != p_iTruthNumber)
+                {
+                    fprintf(stderr, "Queries and truthset have no same number of vectors. Query: %d, Truthset: %d.\n", NumQuerys, p_iTruthNumber);
+                }
+
+                if (p_truthFileType == TruthFileType::TXT)
+                {
+                    LoadTruthTXT(truthPath, truth, K, p_iTruthNumber);
+                } 
+                else if (p_truthFileType == TruthFileType::XVEC)
+                {
+                    LoadTruthXVEC(truthPath, truth, K, p_iTruthNumber);
+                }
+                else
+                {
+                    fprintf(stderr, "TruthFileType Unsupported.\n");
+                    exit(1);
+                }
             }
 
             template <typename ValueType>
@@ -295,7 +344,7 @@ namespace SPTAG {
                 if (!warmupFile.empty())
                 {
                     fprintf(stderr, "Start loading warmup query set...\n");
-                    BasicVectorSet warmupQuerySet(warmupFile.c_str(), GetEnumValueType<ValueType>());
+                    BasicVectorSet warmupQuerySet(warmupFile.c_str(), GetEnumValueType<ValueType>(), p_opts.m_iWarmupDimension, p_opts.m_iWarmupNumber, p_opts.m_warmupFileType);
 
                     int warmupNumQueries = warmupQuerySet.Count();
 
@@ -321,7 +370,7 @@ namespace SPTAG {
                 }
 
                 fprintf(stderr, "Start loading QuerySet...\n");
-                BasicVectorSet querySet(queryFile.c_str(), GetEnumValueType<ValueType>());
+                BasicVectorSet querySet(queryFile.c_str(), GetEnumValueType<ValueType>(), p_opts.m_iQueryDimension, p_opts.m_iQueryNumber, p_opts.m_queryFileType);
 
                 int numQueries = querySet.Count();
 
@@ -330,7 +379,7 @@ namespace SPTAG {
                 {
 
                     fprintf(stderr, "Start loading TruthFile...\n");
-                    LoadTruth(truthFile, truth, numQueries, K);
+                    LoadTruth(truthFile, truth, numQueries, K, p_opts.m_iTruthNumber, p_opts.m_truthFileType);
                 }
 
                 vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));

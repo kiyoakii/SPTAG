@@ -1,7 +1,6 @@
 #pragma once
 #include "inc/SSDServing/VectorSearch/IExtraSearcher.h"
 #include "inc/SSDServing/VectorSearch/ExtraFullGraphSearcher.h"
-#include "inc/SSDServing/VectorSearch/ExtraGraphSearcher.h"
 #include "inc/Helper/ThreadPool.h"
 #include "inc/SSDServing/VectorSearch/SearchProcessor.h"
 #include "inc/Core/VectorIndex.h"
@@ -33,8 +32,6 @@ namespace SPTAG {
                 virtual void Setup(Options& p_config)
                 {   
                     std::string vectorTranslateMap = p_config.m_vectorIDTranslate;
-                    std::string extraGraphFile = p_config.m_extraGraphFile;
-                    std::string extraGraphVectorsetFile = p_config.m_extraGraphVectorSetFile;
                     std::string extraFullGraphFile = p_config.m_extraFullGraphFile;
 
                     if (!vectorTranslateMap.empty())
@@ -54,12 +51,7 @@ namespace SPTAG {
                         fprintf(stderr, "Loaded %llu Vector IDs\n", input.gcount() / sizeof(long long));
                     }
 
-                    if (!extraGraphFile.empty() && !extraGraphVectorsetFile.empty())
-                    {
-                        m_extraSearcher.reset(new ExtraGraphSearcher<ValueType>(extraGraphVectorsetFile, extraGraphFile));
-                        m_extraSearcher->Setup(p_config);
-                    }
-                    else if (!extraFullGraphFile.empty())
+                    if (!extraFullGraphFile.empty())
                     {
                         fprintf(stderr, "Using FullGraph without cache.\n");
                         m_extraSearcher.reset(new ExtraFullGraphSearcher<ValueType>(extraFullGraphFile));

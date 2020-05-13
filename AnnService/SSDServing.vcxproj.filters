@@ -100,9 +100,6 @@
     <ClInclude Include="inc\SSDServing\VectorSearch\ExtraFullGraphSearcher.h">
       <Filter>VectorSearch\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="inc\SSDServing\VectorSearch\ExtraGraphSearcher.h">
-      <Filter>VectorSearch\Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="inc\SSDServing\VectorSearch\SearchProcessor.h">
       <Filter>VectorSearch\Header Files</Filter>
     </ClInclude>

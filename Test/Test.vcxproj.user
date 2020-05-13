@@ -6,7 +6,7 @@
     <LocalDebuggerCommandArguments>--log_level=test_suite --run_test=SSDServingTest</LocalDebuggerCommandArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <LocalDebuggerCommandArguments>--log_level=test_suite --run_test=SSDServingTest/GenerateVectorsQueriesInt8,GenerateTruthInt8L2,TestHeadInt8L2,TestBuildHeadInt8L2KDT,TestBuildSSDIndexInt8L2KDT,TestSearchSSDIndexInt8L2KDT</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>--log_level=test_suite --run_test=SSDServingTest/*</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
 </Project>
