@@ -15,7 +15,8 @@ namespace SPTAG {
 			if (argc < 2)
 			{
 				fprintf(stderr,
-					"SSDServing.exe configFilePath\n");
+					"ssdserving configFilePath\n");
+				exit(-1);
 			}
 
 			Helper::IniReader iniReader;

@@ -2,21 +2,21 @@
 #include "inc/SSDServing/SelectHead_BKT/BuildBKT.h"
 #include "inc/SSDServing/SelectHead_BKT/AnalyzeTree.h"
 #include "inc/SSDServing/SelectHead_BKT/SelectHead.h"
-
-using namespace std;
+#include "inc/SSDServing/VectorSearch/TimeUtils.h"
 
 namespace SPTAG {
 	namespace SSDServing {
 		namespace SelectHead_BKT {
 			ErrorCode Bootstrap(Options& opts) {
-				auto start = std::chrono::system_clock::now();
+
+				VectorSearch::TimeUtils::StopW sw;
 
 				fprintf(stdout, "Start loading vector file.\n");
 				BasicVectorSet vectorSet(opts.m_vectorFile.c_str(), opts.m_valueType, opts.m_iDimension, opts.m_iVectorNumber, opts.m_vectorFileType);
 				fprintf(stdout, "Finish loading vector file.\n");
 
 				fprintf(stdout, "Start generating BKT.\n");
-				shared_ptr<COMMON::BKTree> bkt;
+				std::shared_ptr<COMMON::BKTree> bkt;
 				switch (opts.m_valueType)
 				{
 #define DefineVectorValueType(Name, Type) \
@@ -31,7 +31,7 @@ namespace SPTAG {
 				}
 				fprintf(stdout, "Finish generating BKT.\n");
 
-				unordered_map<int, int> counter;
+				std::unordered_map<int, int> counter;
 
 				if (opts.m_calcStd)
 				{
@@ -56,9 +56,8 @@ namespace SPTAG {
 					}
 				}
 
-				auto end = std::chrono::system_clock::now();
-				std::chrono::minutes elapsedMinutes = std::chrono::duration_cast<std::chrono::minutes>(end - start);
-				fprintf(stderr, "Total used time: %d minutes (about %.2lf hours).\n", elapsedMinutes.count(), elapsedMinutes.count() / 60.0);
+				double elapsedMinutes = sw.getElapsedMin();
+				fprintf(stderr, "Total used time: %.2lf minutes (about %.2lf hours).\n", elapsedMinutes, elapsedMinutes / 60.0);
 
 				return ErrorCode::Success;
 			}

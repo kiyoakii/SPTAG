@@ -5,8 +5,8 @@ namespace SPTAG {
         namespace SelectHead_BKT {
 
             void CalcLeafSize(int p_nodeID,
-                const shared_ptr<COMMON::BKTree> p_tree,
-                unordered_map<int, int>& p_counter) {
+                const std::shared_ptr<COMMON::BKTree> p_tree,
+                std::unordered_map<int, int>& p_counter) {
 
                 SPTAG::COMMON::BKTNode& node = (*p_tree)[p_nodeID];
 
@@ -25,7 +25,7 @@ namespace SPTAG {
             }
 
             void DfsAnalyze(int p_nodeID,
-                const shared_ptr<COMMON::BKTree> p_tree,
+                const std::shared_ptr<COMMON::BKTree> p_tree,
                 const BasicVectorSet& p_vectorSet,
                 const Options& p_opts,
                 int p_height,

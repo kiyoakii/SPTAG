@@ -1,7 +1,6 @@
 #include "inc/Test.h"
 #include <string>
 #include <fstream>
-#include <atlstr.h>
 #include <random>
 #include <type_traits>
 #include <functional>
@@ -14,7 +13,6 @@
 #include "inc/SSDServing/IndexBuildManager/main.h"
 #include "inc/Core/Common/DistanceUtils.h"
 #include "inc/Core/Common/CommonUtils.h"
-#include <ppl.h>
 
 using namespace std;
 
@@ -188,67 +186,61 @@ void GenerateTruth(const string queryFile, const string vectorFile, const string
 	FillVectors<T>(queryFile, querys, p_vecFileType);
 	FillVectors<T>(vectorFile, vectors, p_vecFileType);
 	vector<vector<SPTAG::SizeType>> truthset(querys.size(), vector<SPTAG::SizeType>(K, 0));
-	std::atomic_uint32_t processed = 0;
 
-	concurrency::parallel_for(0, 16, [&](int tid)
+#pragma omp parallel for
+	for (int i = 0; i < querys.size(); ++i)
+	{
+		vector<T> curQuery = querys[i];
+		vector<Neighbor> neighbours;
+		bool isFirst = true;
+		for (size_t j = 0; j < vectors.size(); j++)
 		{
-			// LARGE_INTEGER timePoint;
-			for (uint32_t i = processed.fetch_add(1); i < querys.size(); i = processed.fetch_add(1))
+			vector<T> curVector = vectors[j];
+			if (curQuery.size() != curVector.size())
 			{
-				vector<T> curQuery = querys[i];
-				vector<Neighbor> neighbours;
-				bool isFirst = true;
-				for (size_t j = 0; j < vectors.size(); j++)
-				{
-					vector<T> curVector = vectors[j];
-					if (curQuery.size() != curVector.size())
-					{
-						fprintf(stderr, "query and vector have different dimensions.");
-						BOOST_CHECK(false);
-						return;
-					}
-
-					float dist;
-
-					if (distMethod == SPTAG::DistCalcMethod::L2)
-					{
-						dist = SPTAG::COMMON::DistanceUtils::ComputeL2Distance(curQuery.data(), curVector.data(), curQuery.size());
-					}
-					else {
-						dist = SPTAG::COMMON::DistanceUtils::ComputeCosineDistance(curQuery.data(), curVector.data(), curQuery.size());
-					}
-
-					Neighbor nei(j, dist);
-					neighbours.push_back(nei);
-					if (neighbours.size() == K && isFirst)
-					{
-						make_heap(neighbours.begin(), neighbours.end());
-						isFirst = false;
-					}
-					if (neighbours.size() > K)
-					{
-						push_heap(neighbours.begin(), neighbours.end());
-						pop_heap(neighbours.begin(), neighbours.end());
-						neighbours.pop_back();
-					}
-				}
-
-				if (K != neighbours.size())
-				{
-					fprintf(stderr, "K is too big.\n");
-					BOOST_CHECK(false);
-					return;
-				}
-
-				std::sort(neighbours.begin(), neighbours.end());
-
-				for (size_t k = 0; k < K; k++)
-				{
-					truthset[i][k] = neighbours[k].key;
-				}
-
+				fprintf(stderr, "query and vector have different dimensions.");
+				exit(-1);
 			}
-		});
+
+			float dist;
+
+			if (distMethod == SPTAG::DistCalcMethod::L2)
+			{
+				dist = SPTAG::COMMON::DistanceUtils::ComputeL2Distance(curQuery.data(), curVector.data(), curQuery.size());
+			}
+			else {
+				dist = SPTAG::COMMON::DistanceUtils::ComputeCosineDistance(curQuery.data(), curVector.data(), curQuery.size());
+			}
+
+			Neighbor nei(j, dist);
+			neighbours.push_back(nei);
+			if (neighbours.size() == K && isFirst)
+			{
+				make_heap(neighbours.begin(), neighbours.end());
+				isFirst = false;
+			}
+			if (neighbours.size() > K)
+			{
+				push_heap(neighbours.begin(), neighbours.end());
+				pop_heap(neighbours.begin(), neighbours.end());
+				neighbours.pop_back();
+			}
+		}
+
+		if (K != neighbours.size())
+		{
+			fprintf(stderr, "K is too big.\n");
+			exit(-1);
+		}
+
+		std::sort(neighbours.begin(), neighbours.end());
+
+		for (size_t k = 0; k < K; k++)
+		{
+			truthset[i][k] = neighbours[k].key;
+		}
+
+	}
 	
 	writeTruthFile(truthFile, querys.size(), K, truthset, p_truthFileType);
 }
@@ -290,7 +282,7 @@ void TestHead(string vectorsName, string configName, string OutputIDFile, string
 	config << "BKTKmeansK=" << p_BKTKmeansK << endl;
 	config << "BKTLeafSize=" << p_BKTLeafSize << endl;
 	config << "SamplesNumber=" << p_SamplesNumber << endl;
-	config << "NumberOfThreads=" << "1" << endl;
+	config << "NumberOfThreads=" << "2" << endl;
 	config << "SaveBKT=" << "true" <<endl;
 
 	config << "AnalyzeOnly=" << "false" << endl;
@@ -310,14 +302,11 @@ void TestHead(string vectorsName, string configName, string OutputIDFile, string
 
 	config.close();
 
-	char* arg1 = new char[100];
-	char* arg2 = new char[100];
-	strcpy_s(arg1, 100, "SSDServing.exe");
-	strcpy_s(arg2, 100, configName.c_str());
+	char arg1[255], arg2[255];
+	strncpy(arg1, "SSDServing", 255);
+	strncpy(arg2, configName.c_str(), 255);
 	char* params[2] = { arg1, arg2 };
 	SPTAG::SSDServing::internalMain(2, params);
-	delete[] arg1;
-	delete[] arg2;
 }
 
 void TestBuildHead(
@@ -374,14 +363,11 @@ void TestBuildHead(
 
 	config.close();
 
-	char* arg1 = new char[100];
-	char* arg2 = new char[100];
-	strcpy_s(arg1, 100, "SSDServing.exe");
-	strcpy_s(arg2, 100, configName.c_str());
+	char arg1[255], arg2[255];
+	strncpy(arg1, "SSDServing", 255);
+	strncpy(arg2, configName.c_str(), 255);
 	char* params[2] = { arg1, arg2 };
 	SPTAG::SSDServing::internalMain(2, params);
-	delete[] arg1;
-	delete[] arg2;
 }
 
 void TestBuildSSDIndex(string configName,
@@ -448,14 +434,11 @@ void TestBuildSSDIndex(string configName,
 
 	config.close();
 
-	char* arg1 = new char[100];
-	char* arg2 = new char[100];
-	strcpy_s(arg1, 100, "SSDServing.exe");
-	strcpy_s(arg2, 100, configName.c_str());
+	char arg1[255], arg2[255];
+	strncpy(arg1, "SSDServing", 255);
+	strncpy(arg2, configName.c_str(), 255);
 	char* params[2] = { arg1, arg2 };
 	SPTAG::SSDServing::internalMain(2, params);
-	delete[] arg1;
-	delete[] arg2;
 }
 
 void TestSearchSSDIndex(string configName,
@@ -536,14 +519,11 @@ void TestSearchSSDIndex(string configName,
 
 	config.close();
 
-	char* arg1 = new char[100];
-	char* arg2 = new char[100];
-	strcpy_s(arg1, 100, "SSDServing.exe");
-	strcpy_s(arg2, 100, configName.c_str());
+	char arg1[255], arg2[255];
+	strncpy(arg1, "SSDServing", 255);
+	strncpy(arg2, configName.c_str(), 255);
 	char* params[2] = { arg1, arg2 };
 	SPTAG::SSDServing::internalMain(2, params);
-	delete[] arg1;
-	delete[] arg2;
 }
 
 BOOST_AUTO_TEST_SUITE(SSDServingTest)
@@ -552,7 +532,13 @@ BOOST_AUTO_TEST_SUITE(SSDServingTest)
 #define VECTOR_NUM 1000
 #define QUERY_NUM 10
 #define VECTOR_DIM 100
-#define SSDTEST_DIRECTORY SSDTEST_DIRECTORY_NAME "\\"
+//#if defined(_WIN32)
+//#define SSDTEST_DIRECTORY SSDTEST_DIRECTORY_NAME "\\"
+//#else
+//#define SSDTEST_DIRECTORY SSDTEST_DIRECTORY_NAME "/"
+//#endif
+#define SSDTEST_DIRECTORY SSDTEST_DIRECTORY_NAME "/"
+
 #define VECTORS(VT, FT) SSDTEST_DIRECTORY "vectors_"#VT"_"#FT".bin"
 #define QUERIES(VT, FT) SSDTEST_DIRECTORY "vectors_"#VT"_"#FT".query"
 #define TRUTHSET(VT, DM, FT, TFT) SSDTEST_DIRECTORY "vectors_"#VT"_"#DM"_"#FT"_"#TFT".truth"

@@ -28,6 +28,8 @@
     <ClCompile Include="src\SSDServing\VectorSearch\DiskAccessUtils.cpp" />
     <ClCompile Include="src\SSDServing\VectorSearch\DiskFileReader.cpp" />
     <ClCompile Include="src\SSDServing\VectorSearch\PrioritizedDiskFileReader.cpp" />
+    <ClCompile Include="src\SSDServing\VectorSearch\TimeUtils.cpp" />
+    <ClCompile Include="src\SSDServing\VectorSearch\VectorSearchUtils.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="inc\SSDServing\BuildHead\BootBuildHead.h" />
@@ -52,6 +54,7 @@
     <ClInclude Include="inc\SSDServing\VectorSearch\ParameterDefinitionList.h" />
     <ClInclude Include="inc\SSDServing\VectorSearch\PrioritizedDiskFileReader.h" />
     <ClInclude Include="inc\SSDServing\VectorSearch\SearchSsdIndex.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\TimeUtils.h" />
     <ClInclude Include="inc\SSDServing\VectorSearch\VectorSearchUtils.h" />
     <ClInclude Include="inc\SSDServing\VectorSearch\Options.h" />
     <ClInclude Include="inc\SSDServing\VectorSearch\SearchDefault.h" />

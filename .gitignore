@@ -90,3 +90,8 @@ dkms.conf
 /AnnService.users - Copy.props
 /.vs
 *vcxproj.user
+CMakeSettings.json
+Debug/
+Release/
+out/
+

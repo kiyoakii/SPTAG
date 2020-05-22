@@ -1,21 +1,15 @@
 #pragma once
-#include "inc/Core/VectorIndex.h"
+#include <memory>
+#include <vector>
 
 #include "inc/SSDServing/VectorSearch/SearchStats.h"
 #include "inc/SSDServing/VectorSearch/VectorSearchUtils.h"
-#include "inc/SSDServing/VectorSearch/Options.h"
 #include "inc/Core/Common/QueryResultSet.h"
-#include "inc/SSDServing/VectorSearch/DiskListCommonUtils.h"
-#include "inc/SSDServing/VectorSearch/DiskFileReader.h"
-
-#include <memory>
-#include <vector>
-#include <functional>
-#include <windows.h>
+#include "inc/Core/VectorIndex.h"
 
 namespace SPTAG {
     namespace SSDServing {
-        namespace VectorSearch{
+        namespace VectorSearch {
             template<typename T>
             class PageBuffer
             {
@@ -46,17 +40,10 @@ namespace SPTAG {
                 std::size_t m_pageBufferSize;
             };
 
-            struct DiskListRequest : public DiskFileReadRequest
-            {
-                bool m_success;
 
-                uint32_t m_requestID;
-            };
-            
             struct ExtraWorkSpace
             {
                 ExtraWorkSpace() {
-                    m_processIocp.Reset(::CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, NULL, 0));
                 }
 
                 ~ExtraWorkSpace() {
@@ -67,11 +54,7 @@ namespace SPTAG {
 
                 HashBasedDeduper m_deduper;
 
-                HandleWrapper m_processIocp;
-
                 std::vector<PageBuffer<std::uint8_t>> m_pageBuffers;
-
-                std::vector<DiskListRequest> m_diskRequests;
             };
 
 
@@ -97,7 +80,7 @@ namespace SPTAG {
                 }
 
                 virtual void Search(ExtraWorkSpace* p_exWorkSpace,
-                    COMMON::QueryResultSet<ValueType>& p_queryResults,
+                    SPTAG::COMMON::QueryResultSet<ValueType>& p_queryResults,
                     shared_ptr<VectorIndex> p_index,
                     SearchStats& p_stats) = 0;
             };

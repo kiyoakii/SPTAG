@@ -133,6 +133,9 @@
     <ClInclude Include="inc\SSDServing\VectorSearch\DiskAccessUtils.h">
       <Filter>VectorSearch\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="inc\SSDServing\VectorSearch\TimeUtils.h">
+      <Filter>VectorSearch\Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\SSDServing\SelectHead_BKT\SelectHead.cpp">
@@ -160,6 +163,12 @@
       <Filter>VectorSearch\Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\SSDServing\VectorSearch\DiskAccessUtils.cpp">
+      <Filter>VectorSearch\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SSDServing\VectorSearch\TimeUtils.cpp">
+      <Filter>VectorSearch\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SSDServing\VectorSearch\VectorSearchUtils.cpp">
       <Filter>VectorSearch\Source Files</Filter>
     </ClCompile>
   </ItemGroup>

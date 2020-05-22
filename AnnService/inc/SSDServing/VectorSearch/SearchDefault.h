@@ -1,9 +1,21 @@
 #pragma once
+
+#ifdef _MSC_VER
 #include "inc/SSDServing/VectorSearch/IExtraSearcher.h"
 #include "inc/SSDServing/VectorSearch/ExtraFullGraphSearcher.h"
+#else // non windows
+#include "inc/SSDServing/VectorSearch/IExtraSearcherLinux.h"
+#include "inc/SSDServing/VectorSearch/ExtraFullGraphSearcherLinux.h"
+#endif
+
 #include "inc/Helper/ThreadPool.h"
 #include "inc/SSDServing/VectorSearch/SearchProcessor.h"
 #include "inc/Core/VectorIndex.h"
+#include "inc/SSDServing/VectorSearch/TimeUtils.h"
+
+#include <boost/lockfree/stack.hpp>
+
+#include <atomic>
 
 using namespace std;
 
@@ -17,10 +29,6 @@ namespace SPTAG {
             public:
                 SearchDefault(shared_ptr<VectorIndex> p_index): m_index(p_index)
                 {
-                    ::QueryPerformanceFrequency(&Frequency);
-
-                    ::QueryPerformanceCounter(&StartTime);
-
                     m_tids = 0;
                 }
 
@@ -48,7 +56,7 @@ namespace SPTAG {
                         input.read(reinterpret_cast<char*>(m_vectorTranslateMap.get()), sizeof(long long)* m_index->GetNumSamples());
                         input.close();
 
-                        fprintf(stderr, "Loaded %llu Vector IDs\n", input.gcount() / sizeof(long long));
+                        fprintf(stderr, "Loaded %lu Vector IDs\n", input.gcount() / sizeof(long long));
                     }
 
                     if (!extraFullGraphFile.empty())
@@ -60,26 +68,29 @@ namespace SPTAG {
                 }
 
 
-                virtual void Search(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, int p_threadID)
+                virtual void Search(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats)
                 {
-                    LARGE_INTEGER StartingTime, EndingTime, ExEndingTime;
+                    TimeUtils::StopW sw;
+                    double StartingTime, EndingTime, ExEndingTime;
 
-                    QueryPerformanceCounter(&StartingTime);
+                    StartingTime = sw.getElapsedMs();
 
                     m_index->SearchIndex(p_queryResults);
 
-                    QueryPerformanceCounter(&EndingTime);
+                    EndingTime = sw.getElapsedMs();
 
+                    ExtraWorkSpace* auto_ws = nullptr;
                     if (nullptr != m_extraSearcher)
                     {
-                        m_extraWorkSpaces[p_threadID]->m_postingIDs.clear();
+                        auto_ws = GetWs();
+                        auto_ws->m_postingIDs.clear();
 
                         for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
                         {
                             auto res = p_queryResults.GetResult(i);
                             if (res->VID != -1)
                             {
-                                m_extraWorkSpaces[p_threadID]->m_postingIDs.emplace_back(res->VID);
+                                auto_ws->m_postingIDs.emplace_back(res->VID);
                             }
                         }
                     }
@@ -100,13 +111,14 @@ namespace SPTAG {
                     {
                         p_queryResults.Reverse();
 
-                        m_extraSearcher->Search(m_extraWorkSpaces[p_threadID], p_queryResults, m_index, p_stats);
+                        m_extraSearcher->Search(auto_ws, p_queryResults, m_index, p_stats);
+                        RetWs(auto_ws);
                     }
 
-                    QueryPerformanceCounter(&ExEndingTime);
+                    ExEndingTime = sw.getElapsedMs();
 
-                    p_stats.m_exLatency = (ExEndingTime.QuadPart - EndingTime.QuadPart) * 1000.0 / Frequency.QuadPart;
-                    p_stats.m_totalSearchLatency = (ExEndingTime.QuadPart - StartingTime.QuadPart) * 1000.0 / Frequency.QuadPart;
+                    p_stats.m_exLatency = ExEndingTime - EndingTime;
+                    p_stats.m_totalSearchLatency = ExEndingTime - StartingTime;
                     p_stats.m_totalLatency = p_stats.m_totalSearchLatency;
                 }
 
@@ -132,9 +144,7 @@ namespace SPTAG {
 
                 virtual void SearchAsync(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, std::function<void()> p_callback)
                 {
-                    LARGE_INTEGER t;
-                    QueryPerformanceCounter(&t);
-                    p_stats.m_searchRequestTime = t.QuadPart;
+                    p_stats.m_searchRequestTime = std::chrono::steady_clock::now();
                     
                     SearchAsyncJob* curJob = new SearchAsyncJob(this, p_queryResults, p_stats, p_callback);
 
@@ -151,19 +161,26 @@ namespace SPTAG {
                         m_threadPool.reset(new Helper::ThreadPool());
                         m_threadPool->init(p_threadNum);
                     }
-
-                    if (nullptr != m_extraSearcher)
-                    {
-                        m_extraWorkSpaces.resize(p_threadNum, nullptr);
-                        for (size_t i = 0; i < p_threadNum; i++)
-                        {
-                            m_extraWorkSpaces[i] = new ExtraWorkSpace();
-                        }
-                    }
                 }
 
                 virtual shared_ptr<VectorIndex> HeadIndex() {
                     return m_index;
+                }
+
+                virtual ExtraWorkSpace* GetWs() {
+                    ExtraWorkSpace* ws = nullptr;
+                    if (!m_workspaces.pop(ws)) {
+                        ws = new ExtraWorkSpace();
+                    }
+
+                    return ws;
+                }
+
+                virtual void RetWs(ExtraWorkSpace* ws) {
+                    if (ws != nullptr)
+                    {
+                        m_workspaces.push(ws);
+                    }
                 }
 
             private:
@@ -171,27 +188,21 @@ namespace SPTAG {
                 {
                     static thread_local int tid = m_tids.fetch_add(1);
 
-                    LARGE_INTEGER t;
-                    QueryPerformanceCounter(&t);
-                    p_stats.m_queueLatency = (t.QuadPart - p_stats.m_searchRequestTime) * 1000.0 / Frequency.QuadPart;
+                    std::chrono::steady_clock::time_point startPoint = std::chrono::steady_clock::now();
+                    p_stats.m_queueLatency = TimeUtils::getMsInterval(p_stats.m_searchRequestTime, startPoint);
 
                     p_stats.m_threadID = tid;
-                    p_stats.m_outQueueTS = t.QuadPart;
 
-                    static thread_local LARGE_INTEGER m_lastQuit{ t };
-                    p_stats.m_sleepLatency = (t.QuadPart - m_lastQuit.QuadPart) * 1000.0 / Frequency.QuadPart;
+                    static thread_local std::chrono::steady_clock::time_point m_lastQuit = startPoint;
+                    p_stats.m_sleepLatency = TimeUtils::getMsInterval(m_lastQuit, startPoint);
 
-                    Search(p_queryResults, p_stats, tid);
+                    Search(p_queryResults, p_stats);
 
-                    QueryPerformanceCounter(&t);
-
-                    p_stats.m_totalLatency = (t.QuadPart - p_stats.m_searchRequestTime) * 1000.0 / Frequency.QuadPart;
+                    p_stats.m_totalLatency = TimeUtils::getMsInterval(p_stats.m_searchRequestTime, std::chrono::steady_clock::now());
 
                     p_callback();
 
-                    QueryPerformanceCounter(&m_lastQuit);
-
-                    p_stats.m_exitThreadTS = m_lastQuit.QuadPart;
+                    m_lastQuit = std::chrono::steady_clock::now();
                 }
 
                 shared_ptr<VectorIndex> m_index;
@@ -200,15 +211,11 @@ namespace SPTAG {
 
                 std::unique_ptr<IExtraSearcher<ValueType>> m_extraSearcher;
                 
-                std::vector<ExtraWorkSpace*> m_extraWorkSpaces;
-
-                LARGE_INTEGER Frequency;
-
-                LARGE_INTEGER StartTime;
-
                 std::unique_ptr<Helper::ThreadPool> m_threadPool;
 
-                std::atomic_int32_t m_tids;
+                std::atomic<std::int32_t> m_tids;
+
+                boost::lockfree::stack<ExtraWorkSpace*> m_workspaces;
             };
         }
     }

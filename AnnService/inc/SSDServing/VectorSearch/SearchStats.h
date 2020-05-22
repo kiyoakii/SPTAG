@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 
 namespace SPTAG {
     namespace SSDServing {
@@ -19,7 +20,6 @@ namespace SPTAG {
                     m_asyncLatency1(0),
                     m_asyncLatency2(0),
                     m_queueLatency(0),
-                    m_searchRequestTime(0),
                     m_sleepLatency(0)
                 {
                 }
@@ -52,11 +52,7 @@ namespace SPTAG {
 
                 double m_sleepLatency;
 
-                int64_t m_searchRequestTime;
-
-                int64_t m_outQueueTS;
-
-                int64_t m_exitThreadTS;
+                std::chrono::steady_clock::time_point m_searchRequestTime;
 
                 int m_threadID;
             };

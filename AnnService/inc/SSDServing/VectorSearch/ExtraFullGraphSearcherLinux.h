@@ -1,8 +1,6 @@
 #pragma once
-#include "inc/SSDServing/VectorSearch/IExtraSearcher.h"
+#include "inc/SSDServing/VectorSearch/IExtraSearcherLinux.h"
 #include "inc/SSDServing/VectorSearch/SearchStats.h"
-#include "inc/SSDServing/VectorSearch/DiskListCommonUtils.h"
-#include "inc/SSDServing/VectorSearch/PrioritizedDiskFileReader.h"
 
 #include <fstream>
 #include <map>
@@ -10,36 +8,20 @@
 #include <vector>
 #include <future>
 
-#include <fileapi.h>
-
-
+#include <fcntl.h>
+#include <errno.h>
+#include <stdio.h>
+#include <unistd.h>
 
 namespace SPTAG {
     namespace SSDServing {
         namespace VectorSearch {
-            void ErrorExit()
+
+            void ErrorExit(const char* p_str, int p_errno)
             {
-                // Retrieve the system error message for the last-error code
-
-                LPVOID lpMsgBuf;
-                DWORD dw = GetLastError();
-
-                FormatMessage(
-                    FORMAT_MESSAGE_ALLOCATE_BUFFER |
-                    FORMAT_MESSAGE_FROM_SYSTEM |
-                    FORMAT_MESSAGE_IGNORE_INSERTS,
-                    NULL,
-                    dw,
-                    0,
-                    (LPTSTR)&lpMsgBuf,
-                    0, NULL);
-
-                // Display the error message and exit the process
-
-                std::fprintf(stderr, "Failed with: %s\n", (char*)lpMsgBuf);
-
-                LocalFree(lpMsgBuf);
-                ExitProcess(dw);
+                errno = p_errno;
+                perror(p_str);
+                exit(-1);
             }
 
             template <typename ValueType>
@@ -50,7 +32,14 @@ namespace SPTAG {
                 {
                     m_extraFullGraphFile = p_extraFullGraphFile;
                     LoadingHeadInfo(p_extraFullGraphFile);
-                    m_indexFile = std::make_shared<PrioritizedDiskFileReader>(p_extraFullGraphFile.c_str());
+                    m_fd = open(p_extraFullGraphFile.c_str(), O_RDONLY);
+                    if (m_fd == -1) {
+                        // function between perror may change errno.
+                        int errsv = errno;
+                        char input[4096];
+                        snprintf(input, 4096, "File %s can't be opened", p_extraFullGraphFile.c_str());
+                        ErrorExit(input, errsv);
+                    }
                 }
 
                 virtual ~ExtraFullGraphSearcher()
@@ -65,11 +54,6 @@ namespace SPTAG {
                     {
                         p_space->m_pageBuffers.resize(p_resNumHint);
                     }
-
-                    if (p_space->m_diskRequests.size() < p_resNumHint)
-                    {
-                        p_space->m_diskRequests.resize(p_resNumHint);
-                    }
                 }
 
                 virtual void Setup(Options& p_config)
@@ -77,7 +61,7 @@ namespace SPTAG {
                 }
 
                 virtual void Search(ExtraWorkSpace* p_exWorkSpace,
-                    COMMON::QueryResultSet<ValueType>& p_queryResults,
+                    SPTAG::COMMON::QueryResultSet<ValueType>& p_queryResults,
                     shared_ptr<VectorIndex> p_index,
                     SearchStats& p_stats)
                 {
@@ -85,15 +69,11 @@ namespace SPTAG {
 
                     InitWorkSpace(p_exWorkSpace, postingListCount);
 
-                    std::atomic<int> unprocessed = 0;
-                    std::atomic_int32_t diskRead = 0;
+                    std::atomic<std::int32_t> diskRead(0);
                     int curCheck = 0;
 
                     for (uint32_t pi = 0; pi < postingListCount; ++pi)
                     {
-                        auto& request = p_exWorkSpace->m_diskRequests[pi];
-                        request.m_requestID = pi;
-                        request.m_success = false;
 
                         if (p_exWorkSpace->m_postingIDs[pi] >= m_listCount)
                         {
@@ -106,85 +86,45 @@ namespace SPTAG {
                             continue;
                         }
 
-                        ++unprocessed;
                         diskRead += listInfo.listPageCount;
 
-                        size_t totalBytes = static_cast<size_t>(listInfo.listPageCount)* c_pageSize;
+                        size_t totalBytes = static_cast<size_t>(listInfo.listPageCount) * c_pageSize;
                         auto& buffer = p_exWorkSpace->m_pageBuffers[pi];
                         buffer.ReservePageBuffer(totalBytes);
+                        void* bufferVoidPtr = reinterpret_cast<void*>(buffer.GetBuffer());
+                        off_t offset = (m_listPageOffset + listInfo.pageNum) * c_pageSize;
 
-                        request.m_buffer = buffer.GetBuffer();
-                        request.m_offset = (m_listPageOffset + listInfo.pageNum) * c_pageSize;
-                        request.m_readSize = totalBytes;
-                        
-                        request.m_callback = [&p_exWorkSpace, &request]()
-                        {
-                            request.m_success = true;
-                            ::PostQueuedCompletionStatus(p_exWorkSpace->m_processIocp.GetHandle(),
-                                0,
-                                NULL,
-                                reinterpret_cast<LPOVERLAPPED>(&request));
-                        };
-
-                        if (!m_indexFile->ReadFileAsync(request))
-                        {
-                            ::PostQueuedCompletionStatus(p_exWorkSpace->m_processIocp.GetHandle(),
-                                0,
-                                NULL,
-                                reinterpret_cast<LPOVERLAPPED>(&request));
+                        ssize_t numRead = pread(m_fd, bufferVoidPtr, totalBytes, offset);
+                        if (numRead == -1) {
+                            // function between perror may change errno.
+                            int errsv = errno;
+                            char input[4096];
+                            snprintf(input, 4096, "Read error: offset, %ld, bytes, %ld", offset, totalBytes);
+                            ErrorExit(input, errsv);
                         }
-                    }
-
-                    // NEW SECTION
-                    DWORD cBytes;
-                    ULONG_PTR key;
-                    OVERLAPPED* ol;
-                    HANDLE iocp = p_exWorkSpace->m_processIocp.GetHandle();
-
-                    while (unprocessed > 0)
-                    {
-                        BOOL ret = ::GetQueuedCompletionStatus(iocp,
-                            &cBytes,
-                            &key,
-                            &ol,
-                            INFINITE);
-
-                        if (FALSE == ret || nullptr == ol)
-                        {
-                            break;
+                        if (numRead != totalBytes) {
+                            fprintf(stderr, "File %s read bytes, expected: %ld, acutal: %ld.\n", m_extraFullGraphFile.c_str(), totalBytes, numRead);
+                            exit(-1);
                         }
 
-                        auto request = reinterpret_cast<DiskListRequest*>(ol);
-                        uint32_t pi = request->m_requestID;
-
-                        --unprocessed;
-
-                        if (request->m_success)
+                        for (int i = 0; i < listInfo.listEleCount; ++i)
                         {
-                            const auto& vi = p_exWorkSpace->m_postingIDs[pi];
-                            const auto& listInfo = m_listInfos[vi];
-                            auto& buffer = p_exWorkSpace->m_pageBuffers[pi];
+                            std::uint8_t* vectorInfo = buffer.GetBuffer() + listInfo.pageOffset + i * m_vectorInfoSize;
+                            int vectorID = *(reinterpret_cast<int*>(vectorInfo));
+                            vectorInfo += sizeof(int);
 
-                            for (int i = 0; i < listInfo.listEleCount; ++i)
+                            if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID))
                             {
-                                std::uint8_t* vectorInfo = buffer.GetBuffer() + listInfo.pageOffset + i * m_vectorInfoSize;
-                                int vectorID = *(reinterpret_cast<int*>(vectorInfo));
-                                vectorInfo += sizeof(int);
-
-                                if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID))
-                                {
-                                    continue;
-                                }
-
-                                auto distance2leaf = p_index->ComputeDistance(p_queryResults.GetTarget(),
-                                    vectorInfo);
-
-                                p_queryResults.AddPoint(vectorID, distance2leaf);
-
+                                continue;
                             }
+
+                            auto distance2leaf = p_index->ComputeDistance(p_queryResults.GetTarget(),
+                                vectorInfo);
+
+                            p_queryResults.AddPoint(vectorID, distance2leaf);
+
                         }
                     }
-                    // OLD SECTION
 
                     p_stats.m_exCheck = curCheck;
                     p_stats.m_diskAccessCount = diskRead;
@@ -204,32 +144,6 @@ namespace SPTAG {
 
                     std::uint16_t listPageCount = 0;
                 };
-
-                void ReadList(HANDLE& p_fileHandle, PageBuffer<std::uint8_t>& p_buffer, const ListInfo& p_listInfo)
-                {
-                    size_t totalBytes = static_cast<size_t>(p_listInfo.listPageCount)* c_pageSize;
-
-                    p_buffer.ReservePageBuffer(totalBytes);
-
-                    DWORD bytesRead = 0;
-
-                    LARGE_INTEGER li;
-                    li.QuadPart = (m_listPageOffset + p_listInfo.pageNum) * c_pageSize;
-
-                    if (!::SetFilePointerEx(p_fileHandle, li, NULL, FILE_BEGIN))
-                    {
-                        ErrorExit();
-                    }
-
-                    if (!::ReadFile(p_fileHandle,
-                        p_buffer.GetBuffer(),
-                        static_cast<DWORD>(totalBytes),
-                        &bytesRead,
-                        NULL))
-                    {
-                        ErrorExit();
-                    }
-                }
 
             private:
                 void LoadingHeadInfo(const std::string& p_file)
@@ -295,7 +209,7 @@ namespace SPTAG {
                         biglistCount,
                         biglistElementCount);
 
-                    fprintf(stderr, "Total Element Count: %llu\n", totalListElementCount);
+                    fprintf(stderr, "Total Element Count: %lu\n", totalListElementCount);
 
                     for (auto& ele : pageCountDist)
                     {
@@ -312,12 +226,6 @@ namespace SPTAG {
 
                 const static std::uint64_t c_pageSize = 4096;
 
-                std::shared_ptr<IDiskFileReader> m_indexFile;
-
-                int m_parallelLoadPercentage;
-
-                int m_maxCheck;
-
                 int m_iDataDimension;
 
                 int m_listCount;
@@ -329,6 +237,8 @@ namespace SPTAG {
                 size_t m_vectorInfoSize;
 
                 std::unique_ptr<ListInfo[]> m_listInfos;
+
+                int m_fd;
             };
         }
     }

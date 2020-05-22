@@ -23,7 +23,7 @@ namespace SPTAG {
 
                 virtual void Setup(Options& p_config) = 0;
 
-                virtual void Search(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, int p_threadID) = 0;
+                virtual void Search(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats) = 0;
 
                 virtual void SearchAsync(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, std::function<void()> p_callback) = 0;
 

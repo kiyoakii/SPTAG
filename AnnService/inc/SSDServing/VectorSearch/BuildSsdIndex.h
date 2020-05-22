@@ -5,10 +5,12 @@
 #include <memory>
 #include <vector>
 #include <set>
+#include <float.h>
 
 #include "inc/SSDServing/VectorSearch/Options.h"
 #include "inc/SSDServing/VectorSearch/SearchDefault.h"
 #include "inc/Core/Common/QueryResultSet.h"
+#include "inc/SSDServing/VectorSearch/TimeUtils.h"
 
 namespace SPTAG {
     namespace SSDServing {
@@ -166,7 +168,7 @@ namespace SPTAG {
                         }
                     }
 
-                    fprintf(stderr, "TotalPageNumbers: %d, IndexSize: %llu\n", currPageNum, static_cast<uint64_t>(currPageNum)* c_pageSize + currOffset);
+                    fprintf(stderr, "TotalPageNumbers: %d, IndexSize: %lu\n", currPageNum, static_cast<uint64_t>(currPageNum)* c_pageSize + currOffset);
                 }
 
 
@@ -203,8 +205,6 @@ namespace SPTAG {
                     {
                         listOffset += paddingSize;
                     }
-
-                    float fltVal = 0;
 
                     // Number of lists.
                     int i32Val = static_cast<int>(p_postingListSizes.size());
@@ -258,7 +258,7 @@ namespace SPTAG {
                         exit(1);
                     }
 
-                    fprintf(stdout, "SubIndex Size: %llu bytes, %llu MBytes\n", listOffset, listOffset >> 20);
+                    fprintf(stdout, "SubIndex Size: %lu bytes, %lu MBytes\n", listOffset, listOffset >> 20);
 
                     listOffset = 0;
 
@@ -323,7 +323,7 @@ namespace SPTAG {
 
                     output.close();
 
-                    fprintf(stdout, "Padded Size: %llu, final total size: %llu.\n", paddedSize, listOffset);
+                    fprintf(stdout, "Padded Size: %lu, final total size: %lu.\n", paddedSize, listOffset);
 
                     fprintf(stdout, "Output done...\n");
                 }
@@ -334,7 +334,7 @@ namespace SPTAG {
             {
                 using namespace Local;
 
-                auto start = std::chrono::system_clock::now();
+                TimeUtils::StopW sw;
 
                 std::string queryFile = p_opts.m_queryFile;
                 std::string outputFile = p_opts.m_ssdIndex;
@@ -376,7 +376,7 @@ namespace SPTAG {
                 threads.reserve(numThreads);
 
                 std::atomic_int nextFullID(0);
-                std::atomic_size_t rngFailedCountTotal = 0;
+                std::atomic_size_t rngFailedCountTotal(0);
 
                 for (int tid = 0; tid < numThreads; ++tid)
                 {
@@ -404,7 +404,7 @@ namespace SPTAG {
                                 resultSet.SetTarget(buffer);
                                 resultSet.Reset();
 
-                                searcher.Search(resultSet, searchStats, tid);
+                                searcher.Search(resultSet, searchStats);
 
                                 size_t selectionOffset = static_cast<size_t>(fullID)* p_opts.m_replicaCount;
 
@@ -458,7 +458,7 @@ namespace SPTAG {
                     threads[tid].join();
                 }
 
-                fprintf(stderr, "Searching replicas ended. RNG failed count: %llu\n", static_cast<uint64_t>(rngFailedCountTotal.load()));
+                fprintf(stderr, "Searching replicas ended. RNG failed count: %lu\n", static_cast<uint64_t>(rngFailedCountTotal.load()));
 
                 std::sort(selections.begin(), selections.end(), g_edgeComparer);
 
@@ -550,9 +550,8 @@ namespace SPTAG {
                     postingOrderInIndex,
                     fullVectors);
 
-                auto end = std::chrono::system_clock::now();
-                std::chrono::minutes elapsedMinutes = std::chrono::duration_cast<std::chrono::minutes>(end - start);
-                fprintf(stderr, "Total used time: %d minutes (about %.2lf hours).\n", elapsedMinutes.count(), elapsedMinutes.count() / 60.0);
+                double elapsedMinutes = sw.getElapsedMin();
+                fprintf(stderr, "Total used time: %.2lf minutes (about %.2lf hours).\n", elapsedMinutes, elapsedMinutes / 60.0);
             }
         }
     }

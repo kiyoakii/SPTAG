@@ -5,6 +5,7 @@
 #define _SPTAG_COMMON_QUERYRESULTSET_H_
 
 #include "../SearchQuery.h"
+#include <algorithm>
 
 namespace SPTAG
 {

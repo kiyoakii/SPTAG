@@ -3,7 +3,7 @@
 #include "inc/Core/Common/QueryResultSet.h"
 #include "inc/Helper/Concurrent.h"
 #include "inc/SSDServing/VectorSearch/SearchStats.h"
-#include <ppl.h>
+#include "inc/SSDServing/VectorSearch/TimeUtils.h"
 #include "inttypes.h"
 
 namespace SPTAG {
@@ -90,6 +90,7 @@ namespace SPTAG {
                 if (NumQuerys != p_iTruthNumber)
                 {
                     fprintf(stderr, "Queries and truthset have no same number of vectors. Query: %d, Truthset: %d.\n", NumQuerys, p_iTruthNumber);
+                    exit(-1);
                 }
 
                 if (p_truthFileType == TruthFileType::TXT)
@@ -181,36 +182,22 @@ namespace SPTAG {
                 FILE* p_logOut)
             {
                 uint32_t numQueries = std::min<uint32_t>(static_cast<uint32_t>(p_results.size()), p_maxQueryCount);
-                // uint32_t subSize = (numQueries - 1) / p_numThreads + 1;
 
-                LARGE_INTEGER frequency;
-                ::QueryPerformanceFrequency(&frequency);
-
-                LARGE_INTEGER startTime;
-                ::QueryPerformanceCounter(&startTime);
-
-                std::atomic_uint32_t processed = 0;
+                TimeUtils::StopW sw;
 
                 fprintf(stdout, "Searching: numThread: %d, numQueries: %d.\n", p_numThreads, numQueries);
-                concurrency::parallel_for(0, p_numThreads, [&](int tid)
+#pragma omp parallel for num_threads(p_numThreads)
+                for (int next = 0; next < numQueries; ++next)
+                {
+                    if ((next & ((1 << 14) - 1)) == 0)
                     {
-                        // LARGE_INTEGER timePoint;
-                        for (uint32_t next = processed.fetch_add(1); next < numQueries; next = processed.fetch_add(1))
-                        {
-                            if ((next & ((1 << 14) - 1)) == 0)
-                            {
-                                fprintf(stderr, "Processed %.2lf%%...\r", next * 100.0 / numQueries);
-                            }
+                        fprintf(stderr, "Processed %.2lf%%...\r", next * 100.0 / numQueries);
+                    }
 
-                            p_searcher.Search(p_results[next], p_stats[next], tid);
-                        }
-                    });
+                    p_searcher.Search(p_results[next], p_stats[next]);
+                }
 
-                LARGE_INTEGER finishSearch;
-
-                ::QueryPerformanceCounter(&finishSearch);
-
-                double sendingCost = (finishSearch.QuadPart - startTime.QuadPart) * 1.0 / frequency.QuadPart;
+                double sendingCost = sw.getElapsedSec();
 
                 fprintf(p_logOut,
                     "Finish sending in %.3lf seconds, actuallQPS is %.2lf, query count %u.\n",
@@ -240,13 +227,9 @@ namespace SPTAG {
                     waitFinish.FinishOne();
                 };
 
-                std::atomic_size_t queriesSent = 0;
+                std::atomic_size_t queriesSent(0);
 
-                LARGE_INTEGER frequency;
-                ::QueryPerformanceFrequency(&frequency);
-
-                LARGE_INTEGER startTime;
-                ::QueryPerformanceCounter(&startTime);
+                TimeUtils::SteadClock::time_point startTime = TimeUtils::SteadClock::now();
 
                 auto func = [&]()
                 {
@@ -254,10 +237,9 @@ namespace SPTAG {
 
                     while (true)
                     {
-                        LARGE_INTEGER currentTime;
-                        ::QueryPerformanceCounter(&currentTime);
+                        TimeUtils::SteadClock::time_point currentTime = TimeUtils::SteadClock::now();
 
-                        float timeElapsedSec = (float)(currentTime.QuadPart - startTime.QuadPart) / frequency.QuadPart;
+                        float timeElapsedSec = TimeUtils::getMsInterval(startTime, currentTime);
 
                         size_t targetQueries = std::min<size_t>(static_cast<size_t>(p_qps * timeElapsedSec), numQueries);
 
@@ -279,8 +261,6 @@ namespace SPTAG {
                                 return;
                             }
                         }
-
-                        Sleep(0);
                     }
                 };
 
@@ -288,16 +268,12 @@ namespace SPTAG {
                 std::thread thread2(func);
                 std::thread thread3(func);
 
-                LARGE_INTEGER finishSending;
-                LARGE_INTEGER finishSearch;
-
                 thread1.join();
                 thread2.join();
                 thread3.join();
 
-                ::QueryPerformanceCounter(&finishSending);
-
-                double sendingCost = (finishSending.QuadPart - startTime.QuadPart) * 1.0 / frequency.QuadPart;
+                TimeUtils::SteadClock::time_point finishSending = TimeUtils::SteadClock::now();
+                double sendingCost = TimeUtils::getSecInterval(startTime, finishSending);
 
                 fprintf(p_logOut,
                     "Finish sending in %.3lf seconds, QPS setting is %u, actuallQPS is %.2lf, query count %u.\n",
@@ -307,11 +283,13 @@ namespace SPTAG {
                     static_cast<uint32_t>(numQueries));
 
                 waitFinish.Wait();
-                ::QueryPerformanceCounter(&finishSearch);
+
+                TimeUtils::SteadClock::time_point finishSearch = TimeUtils::SteadClock::now();
+                double searchCost = TimeUtils::getSecInterval(startTime, finishSearch);
 
                 fprintf(p_logOut,
                     "Finish searching in %.3lf seconds.\n",
-                    (finishSearch.QuadPart - startTime.QuadPart) * 1.0 / frequency.QuadPart);
+                    searchCost);
             }
 
             template <typename ValueType>
@@ -393,11 +371,6 @@ namespace SPTAG {
 
                 fprintf(stderr, "Start ANN Search...\n");
 
-                LARGE_INTEGER startTime;
-                LARGE_INTEGER frequency;
-                ::QueryPerformanceCounter(&startTime);
-                ::QueryPerformanceFrequency(&frequency);
-
                 if (asyncCallQPS == 0)
                 {
                     SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit, logOut);
@@ -408,18 +381,6 @@ namespace SPTAG {
                 }
 
                 fprintf(stderr, "\nFinish ANN Search...\n");
-                /*
-                for (int i = 0; i < p_opts.m_queryCountLimit && i < stats.size(); ++i)
-                {
-                    fprintf(stderr,
-                            "InQueue: %.3lf,\t OutQueue %.3lf,\t Run %.3lf,\t Exit %.3lf,\t TID %d\n",
-                            (stats[i].m_searchRequestTime - startTime.QuadPart) * 1000.0 / frequency.QuadPart,
-                            (stats[i].m_outQueueTS - startTime.QuadPart) * 1000.0 / frequency.QuadPart,
-                            stats[i].m_totalSearchLatency,
-                            (stats[i].m_exitThreadTS - startTime.QuadPart) * 1000.0 / frequency.QuadPart,
-                            stats[i].m_threadID);
-                }
-                */
 
                 float recall = 0;
 

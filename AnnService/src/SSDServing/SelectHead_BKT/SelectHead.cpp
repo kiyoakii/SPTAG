@@ -26,7 +26,7 @@ namespace SPTAG {
 
             // Return height of current Node.
             void DfsSelect(int p_nodeID,
-                const shared_ptr<SPTAG::COMMON::BKTree> p_tree,
+                const std::shared_ptr<SPTAG::COMMON::BKTree> p_tree,
                 std::vector<HeadCandidate>& p_candidates,
                 std::vector<BKTNodeInfo>& p_nodeInfos)
             {
@@ -73,7 +73,7 @@ namespace SPTAG {
 
             // Return height of current Node.
             int DfsCovered(int p_nodeID,
-                const shared_ptr<SPTAG::COMMON::BKTree> p_tree,
+                const std::shared_ptr<SPTAG::COMMON::BKTree> p_tree,
                 const std::unordered_set<int>& p_candidates,
                 bool p_covered)
             {
@@ -100,7 +100,7 @@ namespace SPTAG {
             }
 
 
-            void SelectHeadStatically(const shared_ptr<COMMON::BKTree> p_tree, const int p_vectorCount, const Options& p_opts, std::vector<int>& p_selected)
+            void SelectHeadStatically(const std::shared_ptr<COMMON::BKTree> p_tree, const int p_vectorCount, const Options& p_opts, std::vector<int>& p_selected)
             {
                 std::vector<HeadCandidate> candidates;
                 candidates.reserve(p_tree->size());
@@ -281,7 +281,7 @@ namespace SPTAG {
             }
 
 
-            int SelectHeadDynamicallyInternal(const shared_ptr<COMMON::BKTree> p_tree,
+            int SelectHeadDynamicallyInternal(const std::shared_ptr<COMMON::BKTree> p_tree,
                 int p_nodeID,
                 const Options& p_opts,
                 std::vector<int>& p_selected)
@@ -336,7 +336,7 @@ namespace SPTAG {
 
 
 
-            void SelectHeadDynamically(const shared_ptr<COMMON::BKTree> p_tree,
+            void SelectHeadDynamically(const std::shared_ptr<COMMON::BKTree> p_tree,
                 int p_vectorCount,
                 const Options& p_opts,
                 std::vector<int>& p_selected)
@@ -410,7 +410,7 @@ namespace SPTAG {
 
             }
 
-			ErrorCode SelectHead(BasicVectorSet vectorSet, shared_ptr<COMMON::BKTree> bkt, Options& opts, unordered_map<int, int>& counter) {
+			ErrorCode SelectHead(BasicVectorSet vectorSet, std::shared_ptr<COMMON::BKTree> bkt, Options& opts, std::unordered_map<int, int>& counter) {
                 std::vector<int> selected;
                 selected.reserve(vectorSet.Count());
 
@@ -432,7 +432,7 @@ namespace SPTAG {
                     selected.size() * 100.0 / vectorSet.Count());
 
                 if (opts.m_calcStd) {
-                    vector<int> leafSizes;
+                    std::vector<int> leafSizes;
                     for (SizeType& item: selected)
                     {
                         if (counter.count(item) <= 0)
@@ -442,7 +442,7 @@ namespace SPTAG {
                         }
                         leafSizes.push_back(counter[item]);
                     }
-                    map<int, int> leafDict;
+                    std::map<int, int> leafDict;
                     for (int item : leafSizes) {
                         if (leafDict.count(item) > 0)
                         {

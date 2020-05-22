@@ -17,6 +17,7 @@
 #include "WorkSpace.h"
 
 #include "DataSet.h"
+#include "DistanceUtils.h"
 
 #pragma warning(disable:4996)  // 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
 
@@ -120,7 +121,7 @@ namespace SPTAG
             VectorIndex* m_index;
         public:
             DefaultSimp(VectorIndex* p_index) : m_index(p_index) {}
-            ~DefaultSimp() {}
+            virtual ~DefaultSimp() {}
 
             SizeType GetNumSamples() {
                 return m_index->GetNumSamples();
@@ -370,28 +371,27 @@ namespace SPTAG
 
             template <typename T>
             float KmeansAssign(Simp* p_index,
-                               std::vector<SizeType>& indices,
-                               const SizeType first, const SizeType last, KmeansArgs<T>& args, const bool updateCenters) const {
+                std::vector<SizeType>& indices,
+                const SizeType first, const SizeType last, KmeansArgs<T>& args, const bool updateCenters) const {
                 float currDist = 0;
-                int threads = args._T;
                 float lambda = (updateCenters) ? COMMON::Utils::GetBase<T>() * COMMON::Utils::GetBase<T>() / (100.0f * (last - first)) : 0.0f;
-                SizeType subsize = (last - first - 1) / threads + 1;
+                SizeType subsize = (last - first - 1) / args._T + 1;
 
-#pragma omp parallel for num_threads(threads)
-                for (int tid = 0; tid < threads; tid++)
+#pragma omp parallel for num_threads(args._T) shared(indices) reduction(+:currDist)
+                for (int tid = 0; tid < args._T; tid++)
                 {
                     SizeType istart = first + tid * subsize;
                     SizeType iend = min(first + (tid + 1) * subsize, last);
-                    SizeType *inewCounts = args.newCounts + tid * m_iBKTKmeansK;
-                    float *inewCenters = args.newCenters + tid * m_iBKTKmeansK * p_index->GetFeatureDim();
-                    SizeType * iclusterIdx = args.clusterIdx + tid * m_iBKTKmeansK;
-                    float * iclusterDist = args.clusterDist + tid * m_iBKTKmeansK;
+                    SizeType* inewCounts = args.newCounts + tid * m_iBKTKmeansK;
+                    float* inewCenters = args.newCenters + tid * m_iBKTKmeansK * p_index->GetFeatureDim();
+                    SizeType* iclusterIdx = args.clusterIdx + tid * m_iBKTKmeansK;
+                    float* iclusterDist = args.clusterDist + tid * m_iBKTKmeansK;
                     float idist = 0;
                     for (SizeType i = istart; i < iend; i++) {
                         int clusterid = 0;
                         float smallestDist = MaxDist;
                         for (int k = 0; k < m_iCurrBKTKmeansK; k++) {
-                            float dist = p_index->ComputeDistance(p_index->GetSample(indices[i]), (const void*)(args.centers + k*p_index->GetFeatureDim())) + lambda*args.counts[k];
+                            float dist = p_index->ComputeDistance(p_index->GetSample(indices[i]), (const void*)(args.centers + k * p_index->GetFeatureDim())) + lambda * args.counts[k];
                             if (dist > -MaxDist && dist < smallestDist) {
                                 clusterid = k; smallestDist = dist;
                             }
@@ -401,7 +401,7 @@ namespace SPTAG
                         idist += smallestDist;
                         if (updateCenters) {
                             const T* v = (const T*)p_index->GetSample(indices[i]);
-                            float* center = inewCenters + clusterid*p_index->GetFeatureDim();
+                            float* center = inewCenters + clusterid * p_index->GetFeatureDim();
                             for (DimensionType j = 0; j < p_index->GetFeatureDim(); j++) center[j] += v[j];
                             if (smallestDist > iclusterDist[clusterid]) {
                                 iclusterDist[clusterid] = smallestDist;
@@ -415,23 +415,23 @@ namespace SPTAG
                             }
                         }
                     }
-                    COMMON::Utils::atomic_float_add(&currDist, idist);
+                    currDist += idist;
                 }
 
-                for (int i = 1; i < threads; i++) {
+                for (int i = 1; i < args._T; i++) {
                     for (int k = 0; k < m_iCurrBKTKmeansK; k++)
-                        args.newCounts[k] += args.newCounts[i*m_iBKTKmeansK + k];
+                        args.newCounts[k] += args.newCounts[i * m_iBKTKmeansK + k];
                 }
 
                 if (updateCenters) {
-                    for (int i = 1; i < threads; i++) {
-                        float* currCenter = args.newCenters + i*m_iBKTKmeansK*p_index->GetFeatureDim();
+                    for (int i = 1; i < args._T; i++) {
+                        float* currCenter = args.newCenters + i * m_iBKTKmeansK * p_index->GetFeatureDim();
                         for (size_t j = 0; j < ((size_t)m_iCurrBKTKmeansK) * p_index->GetFeatureDim(); j++) args.newCenters[j] += currCenter[j];
 
                         for (int k = 0; k < m_iCurrBKTKmeansK; k++) {
-                            if (args.clusterIdx[i*m_iBKTKmeansK + k] != -1 && args.clusterDist[i*m_iBKTKmeansK + k] > args.clusterDist[k]) {
-                                args.clusterDist[k] = args.clusterDist[i*m_iBKTKmeansK + k];
-                                args.clusterIdx[k] = args.clusterIdx[i*m_iBKTKmeansK + k];
+                            if (args.clusterIdx[i * m_iBKTKmeansK + k] != -1 && args.clusterDist[i * m_iBKTKmeansK + k] > args.clusterDist[k]) {
+                                args.clusterDist[k] = args.clusterDist[i * m_iBKTKmeansK + k];
+                                args.clusterIdx[k] = args.clusterIdx[i * m_iBKTKmeansK + k];
                             }
                         }
                     }
@@ -456,10 +456,10 @@ namespace SPTAG
                                 //int nextid = Utils::rand_int(last, first);
                                 //while (args.label[nextid] != maxcluster) nextid = Utils::rand_int(last, first);
                                 SizeType nextid = args.clusterIdx[maxcluster];
-                                std::memcpy(TCenter, p_index->GetSample(nextid), sizeof(T)*p_index->GetFeatureDim());
+                                std::memcpy(TCenter, p_index->GetSample(nextid), sizeof(T) * p_index->GetFeatureDim());
                             }
                             else {
-                                std::memcpy(TCenter, args.centers + k * p_index->GetFeatureDim(), sizeof(T)*p_index->GetFeatureDim());
+                                std::memcpy(TCenter, args.centers + k * p_index->GetFeatureDim(), sizeof(T) * p_index->GetFeatureDim());
                             }
                         }
                         else {
@@ -474,11 +474,11 @@ namespace SPTAG
                     }
                 }
                 else {
-                    for (int i = 1; i < threads; i++) {
+                    for (int i = 1; i < args._T; i++) {
                         for (int k = 0; k < m_iCurrBKTKmeansK; k++) {
-                            if (args.clusterIdx[i*m_iBKTKmeansK + k] != -1 && args.clusterDist[i*m_iBKTKmeansK + k] <= args.clusterDist[k]) {
-                                args.clusterDist[k] = args.clusterDist[i*m_iBKTKmeansK + k];
-                                args.clusterIdx[k] = args.clusterIdx[i*m_iBKTKmeansK + k];
+                            if (args.clusterIdx[i * m_iBKTKmeansK + k] != -1 && args.clusterDist[i * m_iBKTKmeansK + k] <= args.clusterDist[k]) {
+                                args.clusterDist[k] = args.clusterDist[i * m_iBKTKmeansK + k];
+                                args.clusterIdx[k] = args.clusterIdx[i * m_iBKTKmeansK + k];
                             }
                         }
                     }

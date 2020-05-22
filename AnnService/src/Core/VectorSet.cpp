@@ -50,7 +50,7 @@ void BasicVectorSet::readXvec(const char* p_filePath, VectorValueType p_valueTyp
     for (size_t i = 0; i < p_vectorCount; i++) {
         in.read((char*)&dim, 4);
         if (dim != p_dimension) {
-            fprintf(stderr, "Error: Xvec file %s has No." PRId64 " vector whose dims are not as many as expected. Expected: " PRId32 ", Fact: " PRId32 "\n", p_filePath, i, p_dimension, dim);
+            fprintf(stderr, "Error: Xvec file %s has No.%ld vector whose dims are not as many as expected. Expected: %d, Fact: %d\n", p_filePath, i, p_dimension, dim);
             exit(1);
         }
         in.read(vecBuf + i * vectorDataSize, vectorDataSize);
@@ -88,13 +88,13 @@ void BasicVectorSet::readDefault(const char* p_filePath, VectorValueType p_value
 
     if (row != p_vectorCount)
     {
-        fprintf(stderr, "Error: vector number of file: %s is not as expected. Expected: " PRId32 ", Fact: " PRId32 " \n", p_filePath, p_vectorCount, row);
+        fprintf(stderr, "Error: vector number of file: %s is not as expected. Expected: %d, Fact: %d \n", p_filePath, p_vectorCount, row);
         exit(1);
     }
 
     if (col != p_dimension)
     {
-        fprintf(stderr, "Error: vector dimension of file: %s is not as expected. Expected: " PRId32 ", Fact: " PRId32 " \n", p_filePath, p_dimension, col);
+        fprintf(stderr, "Error: vector dimension of file: %s is not as expected. Expected: %d, Fact: %d \n", p_filePath, p_dimension, col);
         exit(1);
     }
 

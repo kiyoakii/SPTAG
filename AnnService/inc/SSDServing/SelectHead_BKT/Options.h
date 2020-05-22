@@ -2,15 +2,13 @@
 #include "inc/Core/Common.h"
 #include "inc/Helper/StringConvert.h"
 
-using namespace std;
-
 namespace SPTAG {
 	namespace SSDServing {
 		namespace SelectHead_BKT {
 			class Options {
 			public:
 				// Section 1: for vectors
-				string m_vectorFile;
+				std::string m_vectorFile;
 				VectorValueType m_valueType;
 				DistCalcMethod m_iDistCalcMethod;
 				VectorFileType m_vectorFileType;
@@ -37,8 +35,8 @@ namespace SPTAG {
 				bool m_recursiveCheckSmallCluster;
 				bool m_printSizeCount;
 				// output
-				string m_outputIDFile;
-				string m_outputVectorFile;
+				std::string m_outputIDFile;
+				std::string m_outputVectorFile;
 				
 				Options() {
 #define DefineSelectHeadParameter(VarName, VarType, DefaultValue, RepresentStr) \
