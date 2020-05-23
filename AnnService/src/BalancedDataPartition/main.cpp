@@ -39,7 +39,7 @@ public:
     float m_lambda = 0.000001f;
     int m_seed = -1;
     int m_initIter = 3;
-    int m_clusterassign = 4;
+    int m_clusterassign = 1;
     float m_vectorfactor = 2.0f;
     float m_closurefactor = 1.2f;
     DistCalcMethod m_distMethod = DistCalcMethod::L2;
@@ -114,7 +114,9 @@ inline float MultipleClustersAssign(const COMMON::Dataset<T>& data,
                 centerDist[k].node = k;
                 centerDist[k].distance = dist;
             }
-            std::sort(centerDist.begin(), centerDist.end());
+			std::sort(centerDist.begin(), centerDist.end(), [](const COMMON::HeapCell &a, const COMMON::HeapCell &b) {
+				return (a.distance < b.distance) || (a.distance == b.distance && a.node < b.node);
+			});
             args.label[i] = 0;
             for (int k = 0; k < options.m_clusterassign; k++) {
                 if (centerDist[k].distance <= centerDist[0].distance * options.m_closurefactor) {
@@ -183,14 +185,15 @@ inline float MultipleClustersAssign(const COMMON::Dataset<T>& data,
 template <typename T>
 inline float HardMultipleClustersAssign(const COMMON::Dataset<T>& data,
 	std::vector<SizeType>& indices,
-	const SizeType first, const SizeType last, COMMON::KmeansArgs<T>& args, 
-	const unsigned long long maxCount, const int clusternum) {
+	const SizeType first, const SizeType last, COMMON::KmeansArgs<T>& args, SizeType* mylimit,
+	const int clusternum, const bool fill) {
 	float(*fComputeDistance)(const T* pX, const T* pY, DimensionType length) = COMMON::DistanceCalcSelector<T>(options.m_distMethod);
 	float currDist = 0;
-	SizeType subsize = (last - first - 1) / args._T + 1;
+	int threads = 1;
+	SizeType subsize = (last - first - 1) / threads + 1;
 
-#pragma omp parallel for num_threads(args._T) shared(data, indices) reduction(+:currDist)
-	for (int tid = 0; tid < args._T; tid++)
+#pragma omp parallel for num_threads(threads) shared(data, indices) reduction(+:currDist)
+	for (int tid = 0; tid < threads; tid++)
 	{
 		SizeType istart = first + tid * subsize;
 		SizeType iend = min(first + (tid + 1) * subsize, last);
@@ -203,23 +206,31 @@ inline float HardMultipleClustersAssign(const COMMON::Dataset<T>& data,
 				centerDist[k].node = k;
 				centerDist[k].distance = dist;
 			}
-			std::sort(centerDist.begin(), centerDist.end());
-			int k = clusternum - 1;
-			if (centerDist[k].distance <= centerDist[0].distance * options.m_closurefactor && 
-				args.counts[centerDist[k].node] < maxCount) {
-				args.label[i] |= ((centerDist[k].node & 0xff) << (k * 8));
-				inewCounts[centerDist[k].node]++;
-				idist += centerDist[k].distance;
+			std::sort(centerDist.begin(), centerDist.end(), [](const COMMON::HeapCell &a, const COMMON::HeapCell &b) {
+				return (a.distance < b.distance) || (a.distance == b.distance && a.node < b.node);
+			});
+
+			if (centerDist[clusternum].distance <= centerDist[0].distance * options.m_closurefactor &&
+				inewCounts[centerDist[clusternum].node] < mylimit[centerDist[clusternum].node]) {
+				args.label[i] |= ((centerDist[clusternum].node & 0xff) << (clusternum * 8));
+				inewCounts[centerDist[clusternum].node]++;
+				idist += centerDist[clusternum].distance;
 			}
 			else {
-				args.label[i] |= (0xff << (k * 8));
+				args.label[i] |= (0xff << (clusternum * 8));
+			}
+
+			if (fill) {
+				for (int k = clusternum + 1; k < 4; k++) {
+					args.label[i] |= (0xff << (k * 8));
+				}
 			}
 		}
 		currDist += idist;
 	}
 
 	std::memset(args.counts, 0, sizeof(SizeType) * args._K);
-	for (int i = 0; i < args._T; i++) {
+	for (int i = 0; i < threads; i++) {
 		for (int k = 0; k < args._K; k++)
 			args.counts[k] += args.newCounts[i*args._K + k];
 	}
@@ -263,7 +274,7 @@ void Process(MPI_Datatype type) {
     std::cout << "rank " << rank << " data:(" << data.R() << "," << data.C() << ") machines:" << size << 
         " clusters:" << options.m_clusterNum << " type:" << ((int)options.m_inputValueType) << 
         " threads:" << options.m_threadNum << " lambda:" << options.m_lambda << 
-        " samples:" << options.m_localSamples << std::endl << std::flush;
+        " samples:" << options.m_localSamples << " maxcountperpartition:" << totalCount << std::endl << std::flush;
     
     if (rank == 0) {
         std::cout << "rank 0 init centers" << std::endl << std::flush;
@@ -285,7 +296,6 @@ void Process(MPI_Datatype type) {
         args.ClearCenters();
         args.ClearCounts();
         args.ClearDists(-MaxDist);
-        //d = COMMON::KmeansAssign<T>(data, localindices, 0, data.R(), args, true, options.m_distMethod, (iteration == 0)? 0.0f : options.m_lambda);
         d = MultipleClustersAssign<T>(data, localindices, 0, data.R(), args, true, (iteration == 0) ? 0.0f : options.m_lambda);
         MPI_Allreduce(args.newCounts, args.counts, args._K, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
         MPI_Allreduce(&d, &currDist, 1, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
@@ -322,16 +332,23 @@ void Process(MPI_Datatype type) {
         }
     }
 	d = 0;
+	std::vector<SizeType> myLimit(args._K, totalCount);
 	std::memset(args.counts, 0, sizeof(SizeType)*args._K);
 	std::memset(args.label, 0, sizeof(int)*localCount);
     args.ClearCounts();
-    d += HardMultipleClustersAssign<T>(data, localindices, 0, data.R(), args, totalCount, 1);
-    MPI_Allreduce(MPI_IN_PLACE, args.counts, args._K, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-	d += HardMultipleClustersAssign<T>(data, localindices, 0, data.R(), args, totalCount, 2);
-	MPI_Allreduce(MPI_IN_PLACE, args.counts, args._K, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-	d += HardMultipleClustersAssign<T>(data, localindices, 0, data.R(), args, totalCount, 3);
-	MPI_Allreduce(MPI_IN_PLACE, args.counts, args._K, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-	d += HardMultipleClustersAssign<T>(data, localindices, 0, data.R(), args, totalCount, 4);
+	for (int i = 0; i < options.m_clusterassign - 1; i++) {
+		d += HardMultipleClustersAssign<T>(data, localindices, 0, data.R(), args, myLimit.data(), i, false);
+		std::memcpy(myLimit.data(), args.counts, sizeof(SizeType)*args._K);
+		MPI_Allreduce(MPI_IN_PLACE, args.counts, args._K, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+		if (rank == 0) {
+			std::cout << "assign " << i << "....................d:" << d << std::endl << std::flush;
+			for (int i = 0; i < args._K; i++)
+				std::cout << "cluster " << i << " contains vectors:" << args.counts[i] << std::endl << std::flush;
+		}
+		for (int k = 0; k < args._K; k++)
+			myLimit[k] += (totalCount - args.counts[k]) / size;
+	}
+	d += HardMultipleClustersAssign<T>(data, localindices, 0, data.R(), args, myLimit.data(), options.m_clusterassign - 1, true);
 	std::memcpy(args.newCounts, args.counts, sizeof(SizeType)*args._K);
 
 	MPI_Allreduce(args.newCounts, args.counts, args._K, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
