@@ -34,16 +34,15 @@ BasicVectorSet::BasicVectorSet(const ByteArray& p_bytesArray,
 void BasicVectorSet::readXvec(const char* p_filePath, VectorValueType p_valueType,
     DimensionType p_dimension, SizeType p_vectorCount) 
 {
-
     SizeType vectorDataSize = GetValueTypeSize(p_valueType) * p_dimension;
-    size_t totalRecordVectorBytes = vectorDataSize * p_vectorCount;
+    size_t totalRecordVectorBytes = static_cast<size_t>(vectorDataSize) * p_vectorCount;
     ByteArray l_data = std::move(ByteArray::Alloc(totalRecordVectorBytes));
     char* vecBuf = reinterpret_cast<char*>(l_data.Data());
 
     std::ifstream in(p_filePath, std::ifstream::binary);
     if (!in.is_open()) {
         fprintf(stderr, "Error: Failed to read input file: %s \n", p_filePath);
-        exit(1);
+        exit(-1);
     }
 
     DimensionType dim = p_dimension;
@@ -51,7 +50,7 @@ void BasicVectorSet::readXvec(const char* p_filePath, VectorValueType p_valueTyp
         in.read((char*)&dim, 4);
         if (dim != p_dimension) {
             fprintf(stderr, "Error: Xvec file %s has No.%ld vector whose dims are not as many as expected. Expected: %d, Fact: %d\n", p_filePath, i, p_dimension, dim);
-            exit(1);
+            exit(-1);
         }
         in.read(vecBuf + i * vectorDataSize, vectorDataSize);
     }
@@ -63,22 +62,15 @@ void BasicVectorSet::readXvec(const char* p_filePath, VectorValueType p_valueTyp
     m_dimension = p_dimension;
     m_vectorCount = p_vectorCount;
     m_perVectorDataSize = vectorDataSize;
-
-    //std::vector<int8_t> temp(reinterpret_cast<int8_t*>(GetVector(0)), reinterpret_cast<int8_t*>(GetVector(0)) + p_dimension);
-    //for (size_t i = 0; i < temp.size(); i++)
-    //{
-    //    printf("%d\n", temp[i]);
-    //}
 }
 
 void BasicVectorSet::readDefault(const char* p_filePath, VectorValueType p_valueType,
     DimensionType p_dimension, SizeType p_vectorCount) 
 {
-
     std::ifstream in(p_filePath, std::ifstream::binary);
     if (!in.is_open()) {
         fprintf(stderr, "Error: Failed to read input file: %s \n", p_filePath);
-        exit(1);
+        exit(-1);
     }
 
     SizeType row;
@@ -89,17 +81,17 @@ void BasicVectorSet::readDefault(const char* p_filePath, VectorValueType p_value
     if (row != p_vectorCount)
     {
         fprintf(stderr, "Error: vector number of file: %s is not as expected. Expected: %d, Fact: %d \n", p_filePath, p_vectorCount, row);
-        exit(1);
+        exit(-1);
     }
 
     if (col != p_dimension)
     {
         fprintf(stderr, "Error: vector dimension of file: %s is not as expected. Expected: %d, Fact: %d \n", p_filePath, p_dimension, col);
-        exit(1);
+        exit(-1);
     }
 
     SizeType vectorDataSize = GetValueTypeSize(p_valueType) * p_dimension;
-    std::uint64_t totalRecordVectorBytes = vectorDataSize * p_vectorCount;
+    std::size_t totalRecordVectorBytes = static_cast<std::size_t>(vectorDataSize) * p_vectorCount;
     ByteArray l_data = std::move(ByteArray::Alloc(totalRecordVectorBytes));
     char* vecBuf = reinterpret_cast<char*>(l_data.Data());
     in.read(vecBuf, totalRecordVectorBytes);
@@ -111,12 +103,6 @@ void BasicVectorSet::readDefault(const char* p_filePath, VectorValueType p_value
     m_dimension = p_dimension;
     m_vectorCount = p_vectorCount;
     m_perVectorDataSize = vectorDataSize;
-
-    //std::vector<int8_t> temp(reinterpret_cast<int8_t*>(GetVector(0)), reinterpret_cast<int8_t*>(GetVector(0)) + p_dimension);
-    //for (size_t i = 0; i < temp.size(); i++)
-    //{
-    //    printf("%d\n", temp[i]);
-    //}
 }
 
 // copied from src/IndexBuilder/main.cpp
@@ -134,7 +120,7 @@ BasicVectorSet::BasicVectorSet(const char* p_filePath, VectorValueType p_valueTy
     else
     {
         fprintf(stderr, "VectorFileType Unsupported.\n");
-        exit(1);
+        exit(-1);
     }
 }
 

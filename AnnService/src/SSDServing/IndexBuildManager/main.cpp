@@ -6,6 +6,7 @@
 #include "inc/SSDServing/BuildHead/Options.h"
 #include "inc/SSDServing/VectorSearch/BootVectorSearch.h"
 #include "inc/SSDServing/VectorSearch/Options.h"
+#include "inc/SSDServing/VectorSearch/TimeUtils.h"
 
 using namespace SPTAG;
 
@@ -22,6 +23,7 @@ namespace SPTAG {
 			Helper::IniReader iniReader;
 			iniReader.LoadIniFile(argv[1]);
 
+			VectorSearch::TimeUtils::StopW sw;
 			auto& selectHeadParameters = iniReader.GetParameters("SelectHead");
 			if (!selectHeadParameters.empty())
 			{
@@ -32,6 +34,8 @@ namespace SPTAG {
 				}
 				SSDServing::SelectHead_BKT::Bootstrap(slOpts);
 			}
+			double selectHeadTime = sw.getElapsedSec();
+			sw.reset();
 
 			auto& buildHeadParameters = iniReader.GetParameters("BuildHead");
 			if (!buildHeadParameters.empty())
@@ -43,6 +47,8 @@ namespace SPTAG {
 				}
 				SSDServing::BuildHead::Bootstrap(bhOpts);
 			}
+			double buildHeadTime = sw.getElapsedSec();
+			sw.reset();
 
 			auto& buildSSDParameters = iniReader.GetParameters("BuildSSDIndex");
 			if (!buildSSDParameters.empty())
@@ -54,6 +60,8 @@ namespace SPTAG {
 				}
 				SSDServing::VectorSearch::Bootstrap(vsOpts);
 			}
+			double buildSSDTime = sw.getElapsedSec();
+			sw.reset();
 
 			auto& searchSSDParameters = iniReader.GetParameters("SearchSSDIndex");
 			if (!searchSSDParameters.empty())
@@ -65,8 +73,16 @@ namespace SPTAG {
 				}
 				SSDServing::VectorSearch::Bootstrap(vsOpts);
 			}
+			double searchSSDTime = sw.getElapsedSec();
 
-			return 0;
+			fprintf(stderr, "select head time: %.2lf\nbuild head time: %.2lf\nbuild ssd time: %.2lf\nsearch ssd time: %.2lf\n", 
+				selectHeadTime,
+				buildHeadTime,
+				buildSSDTime,
+				searchSSDTime
+			);
+
+			exit(0);
 		}
 	}
 }
