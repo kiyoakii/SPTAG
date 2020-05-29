@@ -1,4 +1,6 @@
 #pragma once
+
+#include "inc/SSDServing/IndexBuildManager/CommonDefines.h"
 #include "inc/SSDServing/VectorSearch/Options.h"
 #include "inc/Core/Common/QueryResultSet.h"
 #include "inc/Helper/Concurrent.h"
@@ -85,21 +87,15 @@ namespace SPTAG {
                 in.close();
             }
 
-            void LoadTruth(std::string truthPath, vector<set<int>>& truth, int NumQuerys, int K, SizeType p_iTruthNumber, TruthFileType p_truthFileType)
+            void LoadTruth(std::string truthPath, vector<set<int>>& truth, int NumQuerys, int K)
             {
-                if (NumQuerys != p_iTruthNumber)
+                if (COMMON_OPTS.m_truthType == TruthFileType::TXT)
                 {
-                    fprintf(stderr, "Queries and truthset have no same number of vectors. Query: %d, Truthset: %d.\n", NumQuerys, p_iTruthNumber);
-                    exit(-1);
-                }
-
-                if (p_truthFileType == TruthFileType::TXT)
-                {
-                    LoadTruthTXT(truthPath, truth, K, p_iTruthNumber);
+                    LoadTruthTXT(truthPath, truth, K, NumQuerys);
                 } 
-                else if (p_truthFileType == TruthFileType::XVEC)
+                else if (COMMON_OPTS.m_truthType == TruthFileType::XVEC)
                 {
-                    LoadTruthXVEC(truthPath, truth, K, p_iTruthNumber);
+                    LoadTruthXVEC(truthPath, truth, K, NumQuerys);
                 }
                 else
                 {
@@ -295,10 +291,9 @@ namespace SPTAG {
             template <typename ValueType>
             void Search(Options& p_opts, shared_ptr<VectorIndex> headIndex)
             {
-                string queryFile = p_opts.m_queryFile;
                 string outputFile = p_opts.m_searchResult;
-                string truthFile = p_opts.m_truthFile;
-                string warmupFile = p_opts.m_warmupFile;
+                string truthFile = COMMON_OPTS.m_truthPath;
+                string warmupFile = COMMON_OPTS.m_warmupPath;
 
                 FILE* logOut = stdout;
                 if (!p_opts.m_logFile.empty())
@@ -322,7 +317,7 @@ namespace SPTAG {
                 if (!warmupFile.empty())
                 {
                     fprintf(stderr, "Start loading warmup query set...\n");
-                    BasicVectorSet warmupQuerySet(warmupFile.c_str(), GetEnumValueType<ValueType>(), p_opts.m_iWarmupDimension, p_opts.m_iWarmupNumber, p_opts.m_warmupFileType);
+                    BasicVectorSet warmupQuerySet(COMMON_OPTS.m_warmupPath.c_str(), COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_warmupSize, COMMON_OPTS.m_warmupType, COMMON_OPTS.m_warmupDelimiter, COMMON_OPTS.m_distCalcMethod);
 
                     int warmupNumQueries = warmupQuerySet.Count();
 
@@ -348,7 +343,7 @@ namespace SPTAG {
                 }
 
                 fprintf(stderr, "Start loading QuerySet...\n");
-                BasicVectorSet querySet(queryFile.c_str(), GetEnumValueType<ValueType>(), p_opts.m_iQueryDimension, p_opts.m_iQueryNumber, p_opts.m_queryFileType);
+                BasicVectorSet querySet(COMMON_OPTS.m_queryPath.c_str(), COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_querySize, COMMON_OPTS.m_queryType, COMMON_OPTS.m_queryDelimiter, COMMON_OPTS.m_distCalcMethod);
 
                 int numQueries = querySet.Count();
 
@@ -357,7 +352,7 @@ namespace SPTAG {
                 {
 
                     fprintf(stderr, "Start loading TruthFile...\n");
-                    LoadTruth(truthFile, truth, numQueries, K, p_opts.m_iTruthNumber, p_opts.m_truthFileType);
+                    LoadTruth(truthFile, truth, numQueries, K);
                 }
 
                 vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));

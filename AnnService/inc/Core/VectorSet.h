@@ -43,7 +43,7 @@ public:
                    SizeType p_vectorCount);
 
     BasicVectorSet(const char* p_filePath, VectorValueType p_valueType,
-        DimensionType p_dimension, SizeType p_vectorCount, VectorFileType p_fileType);
+        DimensionType p_dimension, SizeType p_vectorCount, VectorFileType p_fileType, std::string p_delimiter, DistCalcMethod p_distCalcMethod);
 
     virtual ~BasicVectorSet();
 
@@ -77,8 +77,10 @@ private:
     void readXvec(const char* p_filePath, VectorValueType p_valueType,
         DimensionType p_dimension, SizeType p_vectorCount);
 
-    void readDefault(const char* p_filePath, VectorValueType p_valueType,
-        DimensionType p_dimension, SizeType p_vectorCount);
+    void readDefault(const char* p_filePath, VectorValueType p_valueType);
+
+    void readTxt(const char* p_filePath, VectorValueType p_valueType, 
+        DimensionType p_dimension, std::string p_delimiter);
 };
 
 } // namespace SPTAG

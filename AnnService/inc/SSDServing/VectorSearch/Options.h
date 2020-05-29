@@ -15,24 +15,9 @@ namespace SPTAG {
 				bool m_buildSsdIndex;
 				string m_vectorIDTranslate;
 				string m_headIndexFolder;
-				string m_queryFile;
 				int m_internalResultNum;
 				int m_iNumberOfThreads;
 				string m_headConfig;
-				
-				// query file meta
-				VectorFileType m_queryFileType;
-				SizeType m_iQueryNumber;
-				DimensionType m_iQueryDimension;
-
-				// Warmup file meta
-				VectorFileType m_warmupFileType;
-				SizeType m_iWarmupNumber;
-				DimensionType m_iWarmupDimension;
-
-				// truth file meta
-				TruthFileType m_truthFileType;
-				SizeType m_iTruthNumber;
 
 				// Building
 				string m_ssdIndex;
@@ -43,10 +28,7 @@ namespace SPTAG {
 				// Searching
 				string m_searchResult;
 				string m_extraFullGraphFile;
-				string m_truthFile;
-				string m_warmupFile;
 				string m_logFile;
-				string m_extraMaxCheck;
 				int m_qpsLimit;
 				int m_resultNum;
 				int m_queryCountLimit;

@@ -3,6 +3,7 @@
 #include "inc/SSDServing/SelectHead_BKT/AnalyzeTree.h"
 #include "inc/SSDServing/SelectHead_BKT/SelectHead.h"
 #include "inc/SSDServing/VectorSearch/TimeUtils.h"
+#include "inc/SSDServing/IndexBuildManager/CommonDefines.h"
 
 namespace SPTAG {
 	namespace SSDServing {
@@ -12,12 +13,19 @@ namespace SPTAG {
 				VectorSearch::TimeUtils::StopW sw;
 
 				fprintf(stdout, "Start loading vector file.\n");
-				BasicVectorSet vectorSet(opts.m_vectorFile.c_str(), opts.m_valueType, opts.m_iDimension, opts.m_iVectorNumber, opts.m_vectorFileType);
+				BasicVectorSet vectorSet(
+					COMMON_OPTS.m_vectorPath.c_str(), 
+					COMMON_OPTS.m_valueType, 
+					COMMON_OPTS.m_dim, 
+					COMMON_OPTS.m_vectorSize,
+					COMMON_OPTS.m_vectorType,
+					COMMON_OPTS.m_vectorDelimiter,
+					COMMON_OPTS.m_distCalcMethod);
 				fprintf(stdout, "Finish loading vector file.\n");
 
 				fprintf(stdout, "Start generating BKT.\n");
 				std::shared_ptr<COMMON::BKTree> bkt;
-				switch (opts.m_valueType)
+				switch (COMMON_OPTS.m_valueType)
 				{
 #define DefineVectorValueType(Name, Type) \
     case VectorValueType::Name: \

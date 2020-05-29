@@ -2,13 +2,14 @@
 #include "inc/Core/VectorIndex.h"
 
 #include "inc/SSDServing/BuildHead/BootBuildHead.h"
+#include "inc/SSDServing/IndexBuildManager/CommonDefines.h"
 
 
 namespace SPTAG {
 	namespace SSDServing {
 		namespace BuildHead {
 			ErrorCode Bootstrap(Options& options) {
-                auto indexBuilder = SPTAG::VectorIndex::CreateInstance(options.m_indexAlgoType, options.m_inputValueType);
+                auto indexBuilder = SPTAG::VectorIndex::CreateInstance(options.m_indexAlgoType, COMMON_OPTS.m_valueType);
 
                 SPTAG::Helper::IniReader iniReader;
                 if (!options.m_builderConfigFile.empty())
@@ -19,6 +20,7 @@ namespace SPTAG {
                 if (!iniReader.DoesParameterExist("Index", "NumberOfThreads")) {
                     iniReader.SetParameter("Index", "NumberOfThreads", std::to_string(options.m_threadNum));
                 }
+                indexBuilder->SetParameter("DistCalcMethod", SPTAG::Helper::Convert::ConvertToString(COMMON_OPTS.m_distCalcMethod));
                 for (const auto& iter : iniReader.GetParameters("Index"))
                 {
                     indexBuilder->SetParameter(iter.first.c_str(), iter.second.c_str());
@@ -37,12 +39,12 @@ namespace SPTAG {
                     SPTAG::DimensionType col;
                     inputStream.read((char*)&row, sizeof(SPTAG::SizeType));
                     inputStream.read((char*)&col, sizeof(SPTAG::DimensionType));
-                    std::uint64_t totalRecordVectorBytes = ((std::uint64_t)GetValueTypeSize(options.m_inputValueType)) * row * col;
+                    std::uint64_t totalRecordVectorBytes = ((std::uint64_t)GetValueTypeSize(COMMON_OPTS.m_valueType)) * row * col;
                     SPTAG::ByteArray vectorSet = SPTAG::ByteArray::Alloc(totalRecordVectorBytes);
                     char* vecBuf = reinterpret_cast<char*>(vectorSet.Data());
                     inputStream.read(vecBuf, totalRecordVectorBytes);
                     inputStream.close();
-                    std::shared_ptr<SPTAG::VectorSet> p_vectorSet(new SPTAG::BasicVectorSet(vectorSet, options.m_inputValueType, col, row));
+                    std::shared_ptr<SPTAG::VectorSet> p_vectorSet(new SPTAG::BasicVectorSet(vectorSet, COMMON_OPTS.m_valueType, col, row));
 
                     std::shared_ptr<SPTAG::MetadataSet> p_metaSet = nullptr;
                     if (files.size() >= 3) {

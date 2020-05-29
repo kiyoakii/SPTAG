@@ -16,7 +16,6 @@ namespace SPTAG {
                 std::string m_outputFolder;
                 SPTAG::IndexAlgoType m_indexAlgoType;
                 std::string m_builderConfigFile;
-                VectorValueType m_inputValueType;
                 std::uint32_t m_threadNum;
 
                 Options() {

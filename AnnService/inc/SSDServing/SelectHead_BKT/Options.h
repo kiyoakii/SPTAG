@@ -7,13 +7,6 @@ namespace SPTAG {
 		namespace SelectHead_BKT {
 			class Options {
 			public:
-				// Section 1: for vectors
-				std::string m_vectorFile;
-				VectorValueType m_valueType;
-				DistCalcMethod m_iDistCalcMethod;
-				VectorFileType m_vectorFileType;
-				SizeType m_iVectorNumber;
-				DimensionType m_iDimension;
 				// Section 2: for building BKT
 				int m_iTreeNumber;
 				int m_iBKTKmeansK;

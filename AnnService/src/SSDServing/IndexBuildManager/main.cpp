@@ -1,5 +1,7 @@
 #include "inc/Helper/SimpleIniReader.h"
 
+#include "inc/SSDServing/IndexBuildManager/CommonDefines.h"
+#include "inc/SSDServing/IndexBuildManager/Options.h"
 #include "inc/SSDServing/SelectHead_BKT/BootSelectHead.h"
 #include "inc/SSDServing/SelectHead_BKT/Options.h"
 #include "inc/SSDServing/BuildHead/BootBuildHead.h"
@@ -12,6 +14,9 @@ using namespace SPTAG;
 
 namespace SPTAG {
 	namespace SSDServing {
+		
+		BaseOptions COMMON_OPTS;
+
 		int internalMain(int argc, char* argv[]) {
 			if (argc < 2)
 			{
@@ -24,6 +29,16 @@ namespace SPTAG {
 			iniReader.LoadIniFile(argv[1]);
 
 			VectorSearch::TimeUtils::StopW sw;
+
+			auto& baseParameters = iniReader.GetParameters("Base");
+			if (!baseParameters.empty())
+			{
+				for (const auto& iter : baseParameters)
+				{
+					COMMON_OPTS.SetParameter(iter.first.c_str(), iter.second.c_str());
+				}
+			}
+
 			auto& selectHeadParameters = iniReader.GetParameters("SelectHead");
 			if (!selectHeadParameters.empty())
 			{

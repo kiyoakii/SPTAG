@@ -7,6 +7,7 @@
 #include <set>
 #include <float.h>
 
+#include "inc/SSDServing/IndexBuildManager/CommonDefines.h"
 #include "inc/SSDServing/VectorSearch/Options.h"
 #include "inc/SSDServing/VectorSearch/SearchDefault.h"
 #include "inc/Core/Common/QueryResultSet.h"
@@ -336,7 +337,6 @@ namespace SPTAG {
 
                 TimeUtils::StopW sw;
 
-                std::string queryFile = p_opts.m_queryFile;
                 std::string outputFile = p_opts.m_ssdIndex;
 
                 if (outputFile.empty())
@@ -359,7 +359,7 @@ namespace SPTAG {
                 fprintf(stderr, "Setup index finish, start setup hint...\n");
                 searcher.SetHint(numThreads, candidateNum, false, p_opts);
 
-                BasicVectorSet fullVectors(queryFile.c_str(), headIndex->GetVectorValueType(), p_opts.m_iQueryDimension, p_opts.m_iQueryNumber, p_opts.m_queryFileType);
+                BasicVectorSet fullVectors(COMMON_OPTS.m_vectorPath.c_str(), COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_vectorSize, COMMON_OPTS.m_vectorType, COMMON_OPTS.m_vectorDelimiter, COMMON_OPTS.m_distCalcMethod);
 
                 fprintf(stderr, "Full vector loaded.\n");
 

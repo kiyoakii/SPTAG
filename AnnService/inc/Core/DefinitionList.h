@@ -70,6 +70,8 @@ DefineVectorFileType(DEFAULT)
 // dimension of 2nd vector(int32_t), 2nd vector
 // ...
 DefineVectorFileType(XVEC)
+// vectors that have names and are viewable
+DefineVectorFileType(TXT)
 
 #endif // DefineVectorFileType
 
