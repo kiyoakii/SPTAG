@@ -181,7 +181,7 @@ namespace SPTAG
             }
 
             template <typename T>
-            void BuildTrees(Simp* index, std::vector<SizeType>* indices = nullptr, std::vector<SizeType>* reverseIndices = nullptr, int numOfThreads = omp_get_num_threads())
+            inline void BuildTrees(Simp* index, std::vector<SizeType>* indices = nullptr, std::vector<SizeType>* reverseIndices = nullptr, int numOfThreads = omp_get_num_threads())
             {
                 struct  BKTStackItem {
                     SizeType index, first, last;
@@ -253,7 +253,7 @@ namespace SPTAG
             }
 
             template <typename T>
-            void BuildTrees(VectorIndex* index, std::vector<SizeType>* indices = nullptr, std::vector<SizeType>* reverseIndices = nullptr, int numOfThreads = omp_get_num_threads())
+            inline void BuildTrees(VectorIndex* index, std::vector<SizeType>* indices = nullptr, std::vector<SizeType>* reverseIndices = nullptr, int numOfThreads = omp_get_num_threads())
             {
                 DefaultSimp* ds = new DefaultSimp(index);
                 BuildTrees<T>(ds, indices, reverseIndices, numOfThreads);
@@ -370,7 +370,7 @@ namespace SPTAG
         private:
 
             template <typename T>
-            float KmeansAssign(Simp* p_index,
+            inline float KmeansAssign(Simp* p_index,
                 std::vector<SizeType>& indices,
                 const SizeType first, const SizeType last, KmeansArgs<T>& args, const bool updateCenters) const {
                 float currDist = 0;
@@ -487,12 +487,12 @@ namespace SPTAG
             }
 
             template <typename T>
-            int KmeansClustering(Simp* p_index, 
+            inline int KmeansClustering(Simp* p_index,
                 std::vector<SizeType>& indices, const SizeType first, const SizeType last, KmeansArgs<T>& args) const {
                 int iterLimit = 100;
 
                 SizeType batchEnd = min(first + m_iSamples, last);
-                float currDiff, currDist, minClusterDist = MaxDist;
+                float currDiff, currDist, minClusterDist = -1;
                 for (int numKmeans = 0; numKmeans < 3; numKmeans++) {
                     for (int k = 0; k < m_iCurrBKTKmeansK; k++) {
                         SizeType randid = COMMON::Utils::rand(last, first);
@@ -500,14 +500,14 @@ namespace SPTAG
                     }
                     args.ClearCounts();
                     currDist = KmeansAssign(p_index, indices, first, batchEnd, args, false);
-                    if (currDist < minClusterDist) {
+                    if (minClusterDist < 0 || currDist < minClusterDist) {
                         minClusterDist = currDist;
                         memcpy(args.newTCenters, args.centers, sizeof(T)*m_iBKTKmeansK*p_index->GetFeatureDim());
                         memcpy(args.counts, args.newCounts, sizeof(SizeType) * m_iBKTKmeansK);
                     }
                 }
 
-                minClusterDist = MaxDist;
+                minClusterDist = -1;
                 int noImprovement = 0;
                 for (int iter = 0; iter < iterLimit; iter++) {
                     std::memcpy(args.centers, args.newTCenters, sizeof(T)*m_iBKTKmeansK*p_index->GetFeatureDim());
@@ -524,7 +524,7 @@ namespace SPTAG
                         currDiff += p_index->ComputeDistance((const void*)(args.centers + k*p_index->GetFeatureDim()), (const void*)(args.newTCenters + k*p_index->GetFeatureDim()));
                     }
 
-                    if (currDist < minClusterDist) {
+                    if (minClusterDist < 0 || currDist < minClusterDist) {
                         noImprovement = 0;
                         minClusterDist = currDist;
                     }
