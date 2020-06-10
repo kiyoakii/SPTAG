@@ -16,6 +16,9 @@
 #include "QueryResultSet.h"
 #include "WorkSpace.h"
 
+#include "DataSet.h"
+#include "DistanceUtils.h"
+
 #pragma warning(disable:4996)  // 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
 
 namespace SPTAG
@@ -104,6 +107,43 @@ namespace SPTAG
             }
         };
 
+        class Simp {
+        public:
+            virtual SizeType GetNumSamples() = 0;
+            virtual DimensionType GetFeatureDim() = 0;
+            virtual float ComputeDistance(const void* pX, const void* pY) = 0;
+            virtual DistCalcMethod GetDistCalcMethod() = 0;
+            virtual const void* GetSample(const SizeType idx) = 0;
+        };
+
+        class DefaultSimp: public Simp{
+        private:
+            VectorIndex* m_index;
+        public:
+            DefaultSimp(VectorIndex* p_index) : m_index(p_index) {}
+            virtual ~DefaultSimp() {}
+
+            SizeType GetNumSamples() {
+                return m_index->GetNumSamples();
+            }
+            
+            DimensionType GetFeatureDim() {
+                return m_index->GetFeatureDim();
+            }
+            
+            float ComputeDistance(const void* pX, const void* pY) {
+                return m_index->ComputeDistance(pX, pY);
+            }
+            
+            DistCalcMethod GetDistCalcMethod() {
+                return m_index->GetDistCalcMethod();
+            }
+
+            const void* GetSample(const SizeType idx) {
+                return m_index->GetSample(idx);
+            }
+        };
+
         class BKTree
         {
         public:
@@ -141,7 +181,7 @@ namespace SPTAG
             }
 
             template <typename T>
-            void BuildTrees(VectorIndex* index, std::vector<SizeType>* indices = nullptr, std::vector<SizeType>* reverseIndices = nullptr, int numOfThreads = omp_get_num_threads())
+            void BuildTrees(Simp* index, std::vector<SizeType>* indices = nullptr, std::vector<SizeType>* reverseIndices = nullptr, int numOfThreads = omp_get_num_threads())
             {
                 struct  BKTStackItem {
                     SizeType index, first, last;
@@ -175,11 +215,14 @@ namespace SPTAG
                         m_pTreeRoots[item.index].childStart = newBKTid;
                         if (item.last - item.first <= m_iBKTLeafSize) {
                             for (SizeType j = item.first; j < item.last; j++) {
-                                SizeType cid = (reverseIndices == nullptr)? localindices[j]: reverseIndices->at(localindices[j]);
-                                m_pTreeRoots.push_back(BKTNode(cid));
+                                SizeType cid = (reverseIndices == nullptr) ? localindices[j] : reverseIndices->at(localindices[j]);
+                                m_pTreeRoots.emplace_back(cid);
                             }
                         }
                         else { // clustering the data into BKTKmeansK clusters
+                            m_iCurrBKTKmeansK = std::min<int>((item.last - item.first) / m_iBKTLeafSize + 1, m_iBKTKmeansK);
+                            m_iCurrBKTKmeansK = std::max<int>(m_iCurrBKTKmeansK, 2);
+
                             int numClusters = KmeansClustering(index, localindices, item.first, item.last, args);
                             if (numClusters <= 1) {
                                 SizeType end = min(item.last + 1, (SizeType)localindices.size());
@@ -207,6 +250,14 @@ namespace SPTAG
                     }
                     std::cout << i + 1 << " BKTree built, " << m_pTreeRoots.size() - m_pTreeStart[i] << " " << localindices.size() << std::endl;
                 }
+            }
+
+            template <typename T>
+            void BuildTrees(VectorIndex* index, std::vector<SizeType>* indices = nullptr, std::vector<SizeType>* reverseIndices = nullptr, int numOfThreads = omp_get_num_threads())
+            {
+                DefaultSimp* ds = new DefaultSimp(index);
+                BuildTrees<T>(ds, indices, reverseIndices, numOfThreads);
+                delete ds;
             }
 
             inline std::uint64_t BufferSize() const
@@ -319,29 +370,28 @@ namespace SPTAG
         private:
 
             template <typename T>
-            float KmeansAssign(VectorIndex* p_index,
-                               std::vector<SizeType>& indices,
-                               const SizeType first, const SizeType last, KmeansArgs<T>& args, const bool updateCenters) const {
+            float KmeansAssign(Simp* p_index,
+                std::vector<SizeType>& indices,
+                const SizeType first, const SizeType last, KmeansArgs<T>& args, const bool updateCenters) const {
                 float currDist = 0;
-                int threads = args._T;
                 float lambda = (updateCenters) ? COMMON::Utils::GetBase<T>() * COMMON::Utils::GetBase<T>() / (100.0f * (last - first)) : 0.0f;
-                SizeType subsize = (last - first - 1) / threads + 1;
+                SizeType subsize = (last - first - 1) / args._T + 1;
 
-#pragma omp parallel for num_threads(threads)
-                for (int tid = 0; tid < threads; tid++)
+#pragma omp parallel for num_threads(args._T) shared(indices) reduction(+:currDist)
+                for (int tid = 0; tid < args._T; tid++)
                 {
                     SizeType istart = first + tid * subsize;
                     SizeType iend = min(first + (tid + 1) * subsize, last);
-                    SizeType *inewCounts = args.newCounts + tid * m_iBKTKmeansK;
-                    float *inewCenters = args.newCenters + tid * m_iBKTKmeansK * p_index->GetFeatureDim();
-                    SizeType * iclusterIdx = args.clusterIdx + tid * m_iBKTKmeansK;
-                    float * iclusterDist = args.clusterDist + tid * m_iBKTKmeansK;
+                    SizeType* inewCounts = args.newCounts + tid * m_iBKTKmeansK;
+                    float* inewCenters = args.newCenters + tid * m_iBKTKmeansK * p_index->GetFeatureDim();
+                    SizeType* iclusterIdx = args.clusterIdx + tid * m_iBKTKmeansK;
+                    float* iclusterDist = args.clusterDist + tid * m_iBKTKmeansK;
                     float idist = 0;
                     for (SizeType i = istart; i < iend; i++) {
                         int clusterid = 0;
                         float smallestDist = MaxDist;
-                        for (int k = 0; k < m_iBKTKmeansK; k++) {
-                            float dist = p_index->ComputeDistance(p_index->GetSample(indices[i]), (const void*)(args.centers + k*p_index->GetFeatureDim())) + lambda*args.counts[k];
+                        for (int k = 0; k < m_iCurrBKTKmeansK; k++) {
+                            float dist = p_index->ComputeDistance(p_index->GetSample(indices[i]), (const void*)(args.centers + k * p_index->GetFeatureDim())) + lambda * args.counts[k];
                             if (dist > -MaxDist && dist < smallestDist) {
                                 clusterid = k; smallestDist = dist;
                             }
@@ -351,7 +401,7 @@ namespace SPTAG
                         idist += smallestDist;
                         if (updateCenters) {
                             const T* v = (const T*)p_index->GetSample(indices[i]);
-                            float* center = inewCenters + clusterid*p_index->GetFeatureDim();
+                            float* center = inewCenters + clusterid * p_index->GetFeatureDim();
                             for (DimensionType j = 0; j < p_index->GetFeatureDim(); j++) center[j] += v[j];
                             if (smallestDist > iclusterDist[clusterid]) {
                                 iclusterDist[clusterid] = smallestDist;
@@ -365,30 +415,30 @@ namespace SPTAG
                             }
                         }
                     }
-                    COMMON::Utils::atomic_float_add(&currDist, idist);
+                    currDist += idist;
                 }
 
-                for (int i = 1; i < threads; i++) {
-                    for (int k = 0; k < m_iBKTKmeansK; k++)
-                        args.newCounts[k] += args.newCounts[i*m_iBKTKmeansK + k];
+                for (int i = 1; i < args._T; i++) {
+                    for (int k = 0; k < m_iCurrBKTKmeansK; k++)
+                        args.newCounts[k] += args.newCounts[i * m_iBKTKmeansK + k];
                 }
 
                 if (updateCenters) {
-                    for (int i = 1; i < threads; i++) {
-                        float* currCenter = args.newCenters + i*m_iBKTKmeansK*p_index->GetFeatureDim();
-                        for (size_t j = 0; j < ((size_t)m_iBKTKmeansK) * p_index->GetFeatureDim(); j++) args.newCenters[j] += currCenter[j];
+                    for (int i = 1; i < args._T; i++) {
+                        float* currCenter = args.newCenters + i * m_iBKTKmeansK * p_index->GetFeatureDim();
+                        for (size_t j = 0; j < ((size_t)m_iCurrBKTKmeansK) * p_index->GetFeatureDim(); j++) args.newCenters[j] += currCenter[j];
 
-                        for (int k = 0; k < m_iBKTKmeansK; k++) {
-                            if (args.clusterIdx[i*m_iBKTKmeansK + k] != -1 && args.clusterDist[i*m_iBKTKmeansK + k] > args.clusterDist[k]) {
-                                args.clusterDist[k] = args.clusterDist[i*m_iBKTKmeansK + k];
-                                args.clusterIdx[k] = args.clusterIdx[i*m_iBKTKmeansK + k];
+                        for (int k = 0; k < m_iCurrBKTKmeansK; k++) {
+                            if (args.clusterIdx[i * m_iBKTKmeansK + k] != -1 && args.clusterDist[i * m_iBKTKmeansK + k] > args.clusterDist[k]) {
+                                args.clusterDist[k] = args.clusterDist[i * m_iBKTKmeansK + k];
+                                args.clusterIdx[k] = args.clusterIdx[i * m_iBKTKmeansK + k];
                             }
                         }
                     }
 
                     int maxcluster = -1;
                     SizeType maxCount = 0;
-                    for (int k = 0; k < m_iBKTKmeansK; k++) {
+                    for (int k = 0; k < m_iCurrBKTKmeansK; k++) {
                         if (args.newCounts[k] > maxCount && DistanceUtils::ComputeL2Distance((T*)p_index->GetSample(args.clusterIdx[k]), args.centers + k * p_index->GetFeatureDim(), p_index->GetFeatureDim()) > 1e-6)
                         {
                             maxcluster = k;
@@ -399,17 +449,17 @@ namespace SPTAG
                     if (maxcluster != -1 && (args.clusterIdx[maxcluster] < 0 || args.clusterIdx[maxcluster] >= p_index->GetNumSamples()))
                         std::cout << "first:" << first << " last:" << last << " maxcluster:" << maxcluster << "(" << args.newCounts[maxcluster] << ") Error dist:" << args.clusterDist[maxcluster] << std::endl;
 
-                    for (int k = 0; k < m_iBKTKmeansK; k++) {
+                    for (int k = 0; k < m_iCurrBKTKmeansK; k++) {
                         T* TCenter = args.newTCenters + k * p_index->GetFeatureDim();
                         if (args.newCounts[k] == 0) {
                             if (maxcluster != -1) {
                                 //int nextid = Utils::rand_int(last, first);
                                 //while (args.label[nextid] != maxcluster) nextid = Utils::rand_int(last, first);
                                 SizeType nextid = args.clusterIdx[maxcluster];
-                                std::memcpy(TCenter, p_index->GetSample(nextid), sizeof(T)*p_index->GetFeatureDim());
+                                std::memcpy(TCenter, p_index->GetSample(nextid), sizeof(T) * p_index->GetFeatureDim());
                             }
                             else {
-                                std::memcpy(TCenter, args.centers + k * p_index->GetFeatureDim(), sizeof(T)*p_index->GetFeatureDim());
+                                std::memcpy(TCenter, args.centers + k * p_index->GetFeatureDim(), sizeof(T) * p_index->GetFeatureDim());
                             }
                         }
                         else {
@@ -424,11 +474,11 @@ namespace SPTAG
                     }
                 }
                 else {
-                    for (int i = 1; i < threads; i++) {
-                        for (int k = 0; k < m_iBKTKmeansK; k++) {
-                            if (args.clusterIdx[i*m_iBKTKmeansK + k] != -1 && args.clusterDist[i*m_iBKTKmeansK + k] <= args.clusterDist[k]) {
-                                args.clusterDist[k] = args.clusterDist[i*m_iBKTKmeansK + k];
-                                args.clusterIdx[k] = args.clusterIdx[i*m_iBKTKmeansK + k];
+                    for (int i = 1; i < args._T; i++) {
+                        for (int k = 0; k < m_iCurrBKTKmeansK; k++) {
+                            if (args.clusterIdx[i * m_iBKTKmeansK + k] != -1 && args.clusterDist[i * m_iBKTKmeansK + k] <= args.clusterDist[k]) {
+                                args.clusterDist[k] = args.clusterDist[i * m_iBKTKmeansK + k];
+                                args.clusterIdx[k] = args.clusterIdx[i * m_iBKTKmeansK + k];
                             }
                         }
                     }
@@ -437,14 +487,14 @@ namespace SPTAG
             }
 
             template <typename T>
-            int KmeansClustering(VectorIndex* p_index, 
+            int KmeansClustering(Simp* p_index, 
                 std::vector<SizeType>& indices, const SizeType first, const SizeType last, KmeansArgs<T>& args) const {
                 int iterLimit = 100;
 
                 SizeType batchEnd = min(first + m_iSamples, last);
                 float currDiff, currDist, minClusterDist = MaxDist;
                 for (int numKmeans = 0; numKmeans < 3; numKmeans++) {
-                    for (int k = 0; k < m_iBKTKmeansK; k++) {
+                    for (int k = 0; k < m_iCurrBKTKmeansK; k++) {
                         SizeType randid = COMMON::Utils::rand(last, first);
                         std::memcpy(args.centers + k*p_index->GetFeatureDim(), p_index->GetSample(indices[randid]), sizeof(T)*p_index->GetFeatureDim());
                     }
@@ -470,7 +520,7 @@ namespace SPTAG
                     memcpy(args.counts, args.newCounts, sizeof(SizeType) * m_iBKTKmeansK);
 
                     currDiff = 0;
-                    for (int k = 0; k < m_iBKTKmeansK; k++) {
+                    for (int k = 0; k < m_iCurrBKTKmeansK; k++) {
                         currDiff += p_index->ComputeDistance((const void*)(args.centers + k*p_index->GetFeatureDim()), (const void*)(args.newTCenters + k*p_index->GetFeatureDim()));
                     }
 
@@ -504,6 +554,7 @@ namespace SPTAG
             std::vector<SizeType> m_pTreeStart;
             std::vector<BKTNode> m_pTreeRoots;
             std::unordered_map<SizeType, SizeType> m_pSampleCenterMap;
+            int m_iCurrBKTKmeansK;
 
         public:
             std::unique_ptr<std::shared_timed_mutex> m_lock;

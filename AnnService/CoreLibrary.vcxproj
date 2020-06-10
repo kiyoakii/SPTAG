@@ -123,7 +123,7 @@
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
       <OpenMPSupport>true</OpenMPSupport>
-      <PreprocessorDefinitions>_MBCS;_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>__AVX2__;_MBCS;_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
@@ -159,6 +159,7 @@
     <ClInclude Include="inc\Helper\CommonHelper.h" />
     <ClInclude Include="inc\Helper\Concurrent.h" />
     <ClInclude Include="inc\Helper\ConcurrentSet.h" />
+    <ClInclude Include="inc\Helper\DynamicNeighbors.h" />
     <ClInclude Include="inc\Helper\SimpleIniReader.h" />
     <ClInclude Include="inc\Helper\StringConvert.h" />
     <ClInclude Include="inc\Core\Common\NeighborhoodGraph.h" />
@@ -170,6 +171,7 @@
     <ClInclude Include="inc\Helper\VectorSetReaders\DefaultReader.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="inc\Helper\DynamicNeighbors.cpp" />
     <ClCompile Include="src\Core\BKT\BKTIndex.cpp" />
     <ClCompile Include="src\Core\Common\NeighborhoodGraph.cpp" />
     <ClCompile Include="src\Core\KDT\KDTIndex.cpp" />
