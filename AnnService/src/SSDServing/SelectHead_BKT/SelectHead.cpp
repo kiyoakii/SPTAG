@@ -5,7 +5,7 @@
 
 #include "inc/SSDServing/SelectHead_BKT/SelectHead.h"
 #include "inc/SSDServing/SelectHead_BKT/BKTNodeInfo.h"
-#include "inc/SSDServing/Common/Utils.h"
+#include "inc/SSDServing/IndexBuildManager/Utils.h"
 
 namespace SPTAG {
 	namespace SSDServing {
@@ -107,7 +107,7 @@ namespace SPTAG {
 
                 std::vector<BKTNodeInfo> bktNodeInfos(p_tree->size());
 
-                uint32_t selectLimit = static_cast<uint32_t>(p_vectorCount * p_opts.m_ratio) + 1;
+                int selectLimit = static_cast<int>(p_vectorCount * p_opts.m_ratio) + 1;
 
                 if (selectLimit > p_vectorCount)
                 {
@@ -115,7 +115,7 @@ namespace SPTAG {
                 }
 
                 std::unordered_set<int> overallSelected;
-                overallSelected.reserve(selectLimit * 2);
+                overallSelected.reserve(static_cast<size_t>(selectLimit) * 2);
                 // only use the first tree
                 int rootIdOfFirstTree = 0;
                 DfsSelect(rootIdOfFirstTree, p_tree, candidates, bktNodeInfos);

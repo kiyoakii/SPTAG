@@ -2,6 +2,7 @@
 
 #include "inc/SSDServing/IndexBuildManager/CommonDefines.h"
 #include "inc/SSDServing/IndexBuildManager/Options.h"
+#include "inc/SSDServing/IndexBuildManager/Utils.h"
 #include "inc/SSDServing/SelectHead_BKT/BootSelectHead.h"
 #include "inc/SSDServing/SelectHead_BKT/Options.h"
 #include "inc/SSDServing/BuildHead/BootBuildHead.h"
@@ -86,6 +87,25 @@ namespace SPTAG {
 				{
 					vsOpts.SetParameter(iter.first.c_str(), iter.second.c_str());
 				}
+
+				if (COMMON_OPTS.m_generateTruth)
+				{
+					BasicVectorSet* vectorSet = new BasicVectorSet(COMMON_OPTS.m_vectorPath, COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_vectorSize, COMMON_OPTS.m_vectorType, COMMON_OPTS.m_vectorDelimiter, COMMON_OPTS.m_distCalcMethod);
+					BasicVectorSet* querySet = new BasicVectorSet(COMMON_OPTS.m_queryPath, COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_querySize, COMMON_OPTS.m_queryType, COMMON_OPTS.m_queryDelimiter, COMMON_OPTS.m_distCalcMethod);
+
+#define DefineVectorValueType(Name, Type) \
+	if (COMMON_OPTS.m_valueType == SPTAG::VectorValueType::Name) { \
+		GenerateTruth<Type>(*querySet, *vectorSet, COMMON_OPTS.m_truthPath, \
+			COMMON_OPTS.m_distCalcMethod, vsOpts.m_resultNum, COMMON_OPTS.m_truthType); \
+	} \
+
+#include "inc/Core/DefinitionList.h"
+#undef DefineVectorValueType
+
+					delete vectorSet;
+					delete querySet;
+				}
+
 				SSDServing::VectorSearch::Bootstrap(vsOpts);
 			}
 			double searchSSDTime = sw.getElapsedSec();
@@ -97,7 +117,7 @@ namespace SPTAG {
 				searchSSDTime
 			);
 
-			exit(0);
+			return 0;
 		}
 	}
 }

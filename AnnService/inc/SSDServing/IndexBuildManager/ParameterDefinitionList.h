@@ -20,5 +20,7 @@ DefineBasicParameter(m_warmupSize, SPTAG::SizeType, -1, "WarmupSize")
 DefineBasicParameter(m_warmupDelimiter, std::string, std::string("|"), "WarmupDelimiter")
 DefineBasicParameter(m_truthPath, std::string, std::string(""), "TruthPath")
 DefineBasicParameter(m_truthType, SPTAG::TruthFileType, SPTAG::TruthFileType::Undefined, "TruthType")
+DefineBasicParameter(m_generateTruth, bool, false, "GenerateTruth")
+DefineBasicParameter(m_ssdIndex, std::string, std::string(""), "SsdIndex")
 
 #endif

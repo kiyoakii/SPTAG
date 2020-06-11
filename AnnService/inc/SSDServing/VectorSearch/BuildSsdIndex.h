@@ -337,7 +337,7 @@ namespace SPTAG {
 
                 TimeUtils::StopW sw;
 
-                std::string outputFile = p_opts.m_ssdIndex;
+                std::string outputFile = COMMON_OPTS.m_ssdIndex;
 
                 if (outputFile.empty())
                 {
@@ -350,7 +350,6 @@ namespace SPTAG {
 
                 std::unordered_set<int> headVectorIDS;
                 LoadHeadVectorIDSet(p_opts.m_vectorIDTranslate, headVectorIDS);
-                p_opts.m_vectorIDTranslate = "";
 
                 SearchDefault<ValueType> searcher(headIndex);
                 fprintf(stderr, "Start setup index...\n");
@@ -359,7 +358,7 @@ namespace SPTAG {
                 fprintf(stderr, "Setup index finish, start setup hint...\n");
                 searcher.SetHint(numThreads, candidateNum, false, p_opts);
 
-                BasicVectorSet fullVectors(COMMON_OPTS.m_vectorPath.c_str(), COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_vectorSize, COMMON_OPTS.m_vectorType, COMMON_OPTS.m_vectorDelimiter, COMMON_OPTS.m_distCalcMethod);
+                BasicVectorSet fullVectors(COMMON_OPTS.m_vectorPath, COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_vectorSize, COMMON_OPTS.m_vectorType, COMMON_OPTS.m_vectorDelimiter, COMMON_OPTS.m_distCalcMethod);
 
                 fprintf(stderr, "Full vector loaded.\n");
 

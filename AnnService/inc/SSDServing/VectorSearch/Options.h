@@ -20,14 +20,12 @@ namespace SPTAG {
 				string m_headConfig;
 
 				// Building
-				string m_ssdIndex;
 				int m_replicaCount;
 				int m_postingPageLimit;
 				bool m_outputEmptyReplicaID;
 
 				// Searching
 				string m_searchResult;
-				string m_extraFullGraphFile;
 				string m_logFile;
 				int m_qpsLimit;
 				int m_resultNum;

@@ -317,7 +317,7 @@ namespace SPTAG {
                 if (!warmupFile.empty())
                 {
                     fprintf(stderr, "Start loading warmup query set...\n");
-                    BasicVectorSet warmupQuerySet(COMMON_OPTS.m_warmupPath.c_str(), COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_warmupSize, COMMON_OPTS.m_warmupType, COMMON_OPTS.m_warmupDelimiter, COMMON_OPTS.m_distCalcMethod);
+                    BasicVectorSet warmupQuerySet(COMMON_OPTS.m_warmupPath, COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_warmupSize, COMMON_OPTS.m_warmupType, COMMON_OPTS.m_warmupDelimiter, COMMON_OPTS.m_distCalcMethod);
 
                     int warmupNumQueries = warmupQuerySet.Count();
 
@@ -343,7 +343,7 @@ namespace SPTAG {
                 }
 
                 fprintf(stderr, "Start loading QuerySet...\n");
-                BasicVectorSet querySet(COMMON_OPTS.m_queryPath.c_str(), COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_querySize, COMMON_OPTS.m_queryType, COMMON_OPTS.m_queryDelimiter, COMMON_OPTS.m_distCalcMethod);
+                BasicVectorSet querySet(COMMON_OPTS.m_queryPath, COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_querySize, COMMON_OPTS.m_queryType, COMMON_OPTS.m_queryDelimiter, COMMON_OPTS.m_distCalcMethod);
 
                 int numQueries = querySet.Count();
 
