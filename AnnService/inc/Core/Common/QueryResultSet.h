@@ -73,7 +73,7 @@ public:
         }
     }
 
-        void Reverse()
+    void Reverse()
     {
         std::reverse(m_results.Data(), m_results.Data() + m_resultNum);
     }

@@ -6,8 +6,8 @@ file(GLOB SRC_FILES ${PROJECT_SOURCE_DIR}/AnnService/src/Core/*.cpp ${PROJECT_SO
 
 include_directories(${PROJECT_SOURCE_DIR}/AnnService)
 
-# add_library (SPTAGLib SHARED ${SRC_FILES} ${HDR_FILES})
-# target_link_libraries (SPTAGLib)
+add_library (SPTAGLib SHARED ${SRC_FILES} ${HDR_FILES})
+target_link_libraries (SPTAGLib)
 add_library (SPTAGLibStatic STATIC ${SRC_FILES} ${HDR_FILES})
 # set_target_properties(SPTAGLibStatic PROPERTIES OUTPUT_NAME SPTAGLib)
 
@@ -73,7 +73,7 @@ target_compile_definitions(ssdserving PRIVATE _exe)
 add_library(ssdservingLib ${SSD_SERVING_HDR_FILES} ${SSD_SERVING_FILES})
 target_link_libraries(ssdservingLib SPTAGLibStatic ${Boost_LIBRARIES})
 
-install(TARGETS SPTAGLibStatic server client aggregator indexbuilder indexsearcher ssdserving
+install(TARGETS SPTAGLib SPTAGLibStatic server client aggregator indexbuilder indexsearcher ssdserving
   RUNTIME DESTINATION bin
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib)
