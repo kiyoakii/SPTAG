@@ -12,7 +12,7 @@ namespace SPTAG {
 	namespace SSDServing {
 		namespace VectorSearch {
             template <typename T>
-            float CalcRecall(vector<COMMON::QueryResultSet<T>>& results, const vector<set<int>>& truth, int K)
+            float CalcRecall(std::vector<COMMON::QueryResultSet<T>>& results, const std::vector<std::set<int>>& truth, int K)
             {
                 float recall = 0;
                 for (int i = 0; i < results.size(); i++)
@@ -35,17 +35,17 @@ namespace SPTAG {
                 return recall;
             }
 
-            void LoadTruthTXT(std::string truthPath, vector<set<int>>& truth, int K, SizeType p_iTruthNumber)
+            void LoadTruthTXT(std::string truthPath, std::vector<std::set<int>>& truth, int K, SizeType p_iTruthNumber)
             {
                 int get;
-                ifstream fp(truthPath);
+                std::ifstream fp(truthPath);
                 if (!fp.is_open())
                 {
                     fprintf(stderr, "Failed open truth file: %s\n", truthPath.c_str());
                     exit(1);
                 }
 
-                string line;
+                std::string line;
                 truth.resize(p_iTruthNumber);
                 for (int i = 0; i < p_iTruthNumber; ++i)
                 {
@@ -61,7 +61,7 @@ namespace SPTAG {
                 fp.close();
             }
 
-            void LoadTruthXVEC(std::string truthPath, vector<set<int>>& truth, int K, SizeType p_iTruthNumber)
+            void LoadTruthXVEC(std::string truthPath, std::vector<std::set<int>>& truth, int K, SizeType p_iTruthNumber)
             {
                 std::ifstream in(truthPath, std::ifstream::binary);
                 if (!in.is_open()) {
@@ -70,7 +70,7 @@ namespace SPTAG {
                 }
 
                 DimensionType dim = K;
-                vector<int> temp_vec(K);
+                std::vector<int> temp_vec(K);
                 truth.resize(p_iTruthNumber);
                 for (size_t i = 0; i < p_iTruthNumber; i++) {
                     in.read((char*)&dim, 4);
@@ -80,14 +80,14 @@ namespace SPTAG {
                     }
 
                     in.read(reinterpret_cast<char*>(temp_vec.data()), K * 4);
-                    in.seekg((dim - K) * 4, ios_base::cur);
+                    in.seekg((dim - K) * 4, std::ios_base::cur);
                     truth[i].insert(temp_vec.begin(), temp_vec.end());
                 }
 
                 in.close();
             }
 
-            void LoadTruth(std::string truthPath, vector<set<int>>& truth, int NumQuerys, int K)
+            void LoadTruth(std::string truthPath, std::vector<std::set<int>>& truth, int NumQuerys, int K)
             {
                 if (COMMON_OPTS.m_truthType == TruthFileType::TXT)
                 {
@@ -105,7 +105,7 @@ namespace SPTAG {
             }
 
             template <typename ValueType>
-            void OutputResult(const std::string& p_output, vector<COMMON::QueryResultSet<ValueType>>& p_results, int p_resultNum)
+            void OutputResult(const std::string& p_output, std::vector<COMMON::QueryResultSet<ValueType>>& p_results, int p_resultNum)
             {
                 if (!p_output.empty())
                 {
@@ -172,8 +172,8 @@ namespace SPTAG {
             template <typename ValueType>
             void SearchSequential(SearchProcessor<ValueType>& p_searcher,
                 int p_numThreads,
-                vector<COMMON::QueryResultSet<ValueType>>& p_results,
-                vector<SearchStats>& p_stats,
+                std::vector<COMMON::QueryResultSet<ValueType>>& p_results,
+                std::vector<SearchStats>& p_stats,
                 int p_maxQueryCount,
                 FILE* p_logOut)
             {
@@ -206,8 +206,8 @@ namespace SPTAG {
             template <typename ValueType>
             void SearchAsync(SearchProcessor<ValueType>& p_searcher,
                 uint32_t p_qps,
-                vector<COMMON::QueryResultSet<ValueType>>& p_results,
-                vector<SearchStats>& p_stats,
+                std::vector<COMMON::QueryResultSet<ValueType>>& p_results,
+                std::vector<SearchStats>& p_stats,
                 int p_maxQueryCount,
                 FILE* p_logOut)
             {
@@ -289,11 +289,11 @@ namespace SPTAG {
             }
 
             template <typename ValueType>
-            void Search(Options& p_opts, shared_ptr<VectorIndex> headIndex)
+            void Search(Options& p_opts)
             {
-                string outputFile = p_opts.m_searchResult;
-                string truthFile = COMMON_OPTS.m_truthPath;
-                string warmupFile = COMMON_OPTS.m_warmupPath;
+                std::string outputFile = p_opts.m_searchResult;
+                std::string truthFile = COMMON_OPTS.m_truthPath;
+                std::string warmupFile = COMMON_OPTS.m_warmupPath;
 
                 FILE* logOut = stdout;
                 if (!p_opts.m_logFile.empty())
@@ -307,7 +307,7 @@ namespace SPTAG {
                 int internalResultNum = std::max<int>(p_opts.m_internalResultNum, p_opts.m_resultNum);
                 int K = std::min<int>(p_opts.m_resultNum, internalResultNum);
 
-                SearchDefault<ValueType> searcher(headIndex);
+                SearchDefault<ValueType> searcher;
                 fprintf(stderr, "Start setup index...\n");
                 searcher.Setup(p_opts);
 
@@ -321,8 +321,8 @@ namespace SPTAG {
 
                     int warmupNumQueries = warmupQuerySet.Count();
 
-                    vector<COMMON::QueryResultSet<ValueType>> warmupResults(warmupNumQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
-                    vector<SearchStats> warmpUpStats(warmupNumQueries);
+                    std::vector<COMMON::QueryResultSet<ValueType>> warmupResults(warmupNumQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
+                    std::vector<SearchStats> warmpUpStats(warmupNumQueries);
                     for (int i = 0; i < warmupNumQueries; ++i)
                     {
                         warmupResults[i].SetTarget(reinterpret_cast<ValueType*>(warmupQuerySet.GetVector(i)));
@@ -347,7 +347,7 @@ namespace SPTAG {
 
                 int numQueries = querySet.Count();
 
-                vector<set<int>> truth;
+                std::vector<std::set<int>> truth;
                 if (!truthFile.empty())
                 {
 
@@ -355,8 +355,8 @@ namespace SPTAG {
                     LoadTruth(truthFile, truth, numQueries, K);
                 }
 
-                vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
-                vector<SearchStats> stats(numQueries);
+                std::vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
+                std::vector<SearchStats> stats(numQueries);
                 for (int i = 0; i < numQueries; ++i)
                 {
                     results[i].SetTarget(reinterpret_cast<ValueType*>(querySet.GetVector(i)));

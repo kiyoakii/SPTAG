@@ -1,3 +1,5 @@
+#pragma once
+
 #include "Options.h"
 
 namespace SPTAG {

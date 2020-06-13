@@ -6,6 +6,8 @@
 #include <algorithm>
 #include "inc/Core/Common/DistanceUtils.h"
 #include "inc/Core/VectorSet.h"
+#include "inc/SSDServing/VectorSearch/Options.h"
+#include "inc/Helper/SimpleIniReader.h"
 
 namespace SPTAG {
     namespace SSDServing {
@@ -97,5 +99,8 @@ namespace SPTAG {
 
 			writeTruthFile(truthFile, querySet.Count(), K, truthset, p_truthFileType);
 		}
+
+		bool readSearchSSDSec(const char* iniFile, VectorSearch::Options& opts);
+		bool readSearchSSDSec(const Helper::IniReader& iniFileReader, VectorSearch::Options& opts);
     }
 }

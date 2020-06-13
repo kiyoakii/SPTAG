@@ -26,7 +26,6 @@ namespace SPTAG {
                 std::string m_truthPath;
                 SPTAG::TruthFileType m_truthType;
                 bool m_generateTruth;
-				std::string m_ssdIndex;
 
                 BaseOptions() {
 #define DefineBasicParameter(VarName, VarType, DefaultValue, RepresentStr) \

@@ -8,16 +8,15 @@
 #include "inc/SSDServing/VectorSearch/ExtraFullGraphSearcherLinux.h"
 #endif
 
-#include "inc/Helper/ThreadPool.h"
+#include "inc/SSDServing/IndexBuildManager/Utils.h"
 #include "inc/SSDServing/VectorSearch/SearchProcessor.h"
-#include "inc/Core/VectorIndex.h"
 #include "inc/SSDServing/VectorSearch/TimeUtils.h"
+#include "inc/Helper/ThreadPool.h"
+#include "inc/Core/VectorIndex.h"
 
 #include <boost/lockfree/stack.hpp>
 
 #include <atomic>
-
-using namespace std;
 
 namespace SPTAG {
 	namespace SSDServing {
@@ -27,7 +26,7 @@ namespace SPTAG {
 			class SearchDefault : public SearchProcessor<ValueType>
 			{
 			public:
-				SearchDefault(shared_ptr<VectorIndex> p_index) : m_index(p_index)
+				SearchDefault()
 				{
 					m_tids = 0;
 				}
@@ -36,14 +35,44 @@ namespace SPTAG {
 				{
 				}
 
+				void LoadHeadIndex(Options& p_opts, std::shared_ptr<VectorIndex>& p_index) {
+					fprintf(stdout, "Start loading head index. \n");
+
+					if (VectorIndex::LoadIndex(p_opts.m_headIndexFolder, p_index) != ErrorCode::Success) {
+						std::cerr << "ERROR: Cannot Load index files!" << std::endl;
+						exit(1);
+					}
+					p_index->SetParameter("NumberOfThreads", std::to_string(p_opts.m_iNumberOfThreads));
+					Helper::IniReader iniReader;
+					if (!p_opts.m_headConfig.empty())
+					{
+						if (iniReader.LoadIniFile(p_opts.m_headConfig) != ErrorCode::Success) {
+							std::cerr << "ERROR of loading head index config: " << p_opts.m_headConfig << std::endl;
+							exit(1);
+						}
+
+						for (const auto& iter : iniReader.GetParameters("Index"))
+						{
+							p_index->SetParameter(iter.first.c_str(), iter.second.c_str());
+						}
+					}
+
+					fprintf(stdout, "End loading head index. \n");
+				}
 
 				virtual void Setup(Options& p_config)
 				{
-					std::string vectorTranslateMap = p_config.m_vectorIDTranslate;
-					std::string extraFullGraphFile = COMMON_OPTS.m_ssdIndex;
+					LoadHeadIndex(p_config, m_index);
+					if (m_index->GetVectorValueType() != GetEnumValueType<ValueType>()) {
+						fprintf(stderr, "Head index and vectors don't have the same value type.\n");
+						exit(1);
+					}
 
 					if (!p_config.m_buildSsdIndex)
 					{
+						std::string vectorTranslateMap = p_config.m_vectorIDTranslate;
+						std::string extraFullGraphFile = p_config.m_ssdIndex;
+
 						if (!vectorTranslateMap.empty())
 						{
 							m_vectorTranslateMap.reset(new long long[m_index->GetNumSamples()]);
@@ -79,6 +108,11 @@ namespace SPTAG {
 					}
 				}
 
+				void Setup(const char* configFile) {
+					VectorSearch::Options opts;
+					readSearchSSDSec(configFile, opts);
+					Setup(opts);
+				}
 
 				virtual void Search(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats)
 				{
@@ -175,7 +209,7 @@ namespace SPTAG {
 					}
 				}
 
-				virtual shared_ptr<VectorIndex> HeadIndex() {
+				std::shared_ptr<VectorIndex> HeadIndex() {
 					return m_index;
 				}
 
@@ -217,7 +251,7 @@ namespace SPTAG {
 					m_lastQuit = std::chrono::steady_clock::now();
 				}
 
-				shared_ptr<VectorIndex> m_index;
+				std::shared_ptr<VectorIndex> m_index;
 
 				std::unique_ptr<long long[]> m_vectorTranslateMap;
 

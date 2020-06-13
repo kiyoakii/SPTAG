@@ -78,7 +78,7 @@ namespace SPTAG {
 
                 virtual void Search(ExtraWorkSpace* p_exWorkSpace,
                     COMMON::QueryResultSet<ValueType>& p_queryResults,
-                    shared_ptr<VectorIndex> p_index,
+                    std::shared_ptr<VectorIndex> p_index,
                     SearchStats& p_stats)
                 {
                     const uint32_t postingListCount = static_cast<uint32_t>(p_exWorkSpace->m_postingIDs.size());

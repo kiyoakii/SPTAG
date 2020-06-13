@@ -331,13 +331,13 @@ namespace SPTAG {
             }
 
             template<typename ValueType>
-            void BuildSsdIndex(Options& p_opts, shared_ptr<VectorIndex> headIndex)
+            void BuildSsdIndex(Options& p_opts)
             {
                 using namespace Local;
 
                 TimeUtils::StopW sw;
 
-                std::string outputFile = COMMON_OPTS.m_ssdIndex;
+                std::string outputFile = p_opts.m_ssdIndex;
 
                 if (outputFile.empty())
                 {
@@ -351,7 +351,7 @@ namespace SPTAG {
                 std::unordered_set<int> headVectorIDS;
                 LoadHeadVectorIDSet(p_opts.m_vectorIDTranslate, headVectorIDS);
 
-                SearchDefault<ValueType> searcher(headIndex);
+                SearchDefault<ValueType> searcher;
                 fprintf(stderr, "Start setup index...\n");
                 searcher.Setup(p_opts);
 
@@ -366,7 +366,7 @@ namespace SPTAG {
                 selections.resize(static_cast<size_t>(fullVectors.Count())* p_opts.m_replicaCount);
 
                 std::vector<int> replicaCount(fullVectors.Count(), 0);
-                std::vector<std::atomic_int> postingListSize(headIndex->GetNumSamples());
+                std::vector<std::atomic_int> postingListSize(searcher.HeadIndex()->GetNumSamples());
                 for (auto& pls : postingListSize) pls = 0;
 
                 fprintf(stderr, "Preparation done, start candidate searching.\n");
@@ -421,9 +421,9 @@ namespace SPTAG {
                                     {
                                         // VQANNSearch::QueryResultSet<ValueType> resultSet(NULL, candidateNum);
 
-                                        float nnDist = headIndex->ComputeDistance(
-                                            headIndex->GetSample(queryResults[i].VID),
-                                            headIndex->GetSample(selections[selectionOffset + j].headID));
+                                        float nnDist = searcher.HeadIndex()->ComputeDistance(
+                                            searcher.HeadIndex()->GetSample(queryResults[i].VID),
+                                            searcher.HeadIndex()->GetSample(selections[selectionOffset + j].headID));
 
                                         // fprintf(stdout, "NNDist: %f Original: %f\n", nnDist, queryResults[i].Score);
                                         if (nnDist <= queryResults[i].Dist)

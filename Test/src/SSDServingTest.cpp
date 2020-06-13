@@ -14,17 +14,15 @@
 #include "inc/Core/Common/DistanceUtils.h"
 #include "inc/Core/Common/CommonUtils.h"
 
-using namespace std;
-
 template<typename T>
-void GenerateVectors(string fileName, SPTAG::SizeType rows, SPTAG::DimensionType dims, SPTAG::VectorFileType fileType) {
+void GenerateVectors(std::string fileName, SPTAG::SizeType rows, SPTAG::DimensionType dims, SPTAG::VectorFileType fileType) {
 	if (boost::filesystem::exists(fileName))
 	{
 		fprintf(stdout, "%s was generated. Skip generation.", fileName.c_str());
 		return;
 	}
-	
-	ofstream of(fileName, ofstream::binary);
+
+	std::ofstream of(fileName, std::ofstream::binary);
 	if (!of.is_open())
 	{
 		fprintf(stderr, "%s can't be opened. ", fileName.c_str());
@@ -32,9 +30,9 @@ void GenerateVectors(string fileName, SPTAG::SizeType rows, SPTAG::DimensionType
 		return;
 	}
 
-	uniform_real_distribution<float> ud(0, 126);
-	mt19937 mt(543);
-	vector<T> tmp(dims);
+	std::uniform_real_distribution<float> ud(0, 126);
+	std::mt19937 mt(543);
+	std::vector<T> tmp(dims);
 
 	if (fileType == SPTAG::VectorFileType::DEFAULT)
 	{
@@ -72,7 +70,7 @@ void GenerateVectors(string fileName, SPTAG::SizeType rows, SPTAG::DimensionType
 
 }
 
-void GenVec(string vectorsName, SPTAG::VectorValueType vecType, SPTAG::VectorFileType vecFileType, SPTAG::SizeType rows = 1000, SPTAG::DimensionType dims = 100) {
+void GenVec(std::string vectorsName, SPTAG::VectorValueType vecType, SPTAG::VectorFileType vecFileType, SPTAG::SizeType rows = 1000, SPTAG::DimensionType dims = 100) {
 	switch (vecType)
 	{
 #define DefineVectorValueType(Name, Type) \
@@ -88,41 +86,39 @@ break; \
 }
 
 std::string CreateBaseConfig(SPTAG::VectorValueType p_valueType, SPTAG::DistCalcMethod p_distCalcMethod, SPTAG::DimensionType p_dim,
-	std::string p_vectorPath, SPTAG::VectorFileType p_vectorType, SPTAG::SizeType p_vectorSize, std::string p_vectorDelimiter, 
+	std::string p_vectorPath, SPTAG::VectorFileType p_vectorType, SPTAG::SizeType p_vectorSize, std::string p_vectorDelimiter,
 	std::string p_queryPath, SPTAG::VectorFileType p_queryType, SPTAG::SizeType p_querySize, std::string p_queryDelimiter,
 	std::string p_warmupPath, SPTAG::VectorFileType p_warmupType, SPTAG::SizeType p_warmupSize, std::string p_warmupDelimiter,
 	std::string p_truthPath, SPTAG::TruthFileType p_truthType,
-	bool p_generateTruth,
-	string p_ssdIndex
+	bool p_generateTruth
 ) {
 	std::ostringstream config;
-	config << "[Base]" << endl;
-	config << "ValueType=" << SPTAG::Helper::Convert::ConvertToString(p_valueType) << endl;
-	config << "DistCalcMethod=" << SPTAG::Helper::Convert::ConvertToString(p_distCalcMethod) << endl;
-	config << "Dim=" << p_dim << endl;
-	config << "VectorPath=" << p_vectorPath << endl;
-	config << "VectorType=" << SPTAG::Helper::Convert::ConvertToString(p_vectorType) << endl;
-	config << "VectorSize=" << p_vectorSize << endl;
-	config << "VectorDelimiter=" << p_vectorDelimiter << endl;
-	config << "QueryPath=" << p_queryPath << endl;
-	config << "QueryType=" << SPTAG::Helper::Convert::ConvertToString(p_queryType) << endl;
-	config << "QuerySize=" << p_querySize << endl;
-	config << "QueryDelimiter=" << p_queryDelimiter << endl;
-	config << "WarmupPath=" << p_warmupPath << endl;
-	config << "WarmupType=" << SPTAG::Helper::Convert::ConvertToString(p_warmupType) << endl;
-	config << "WarmupSize=" << p_warmupSize << endl;
-	config << "WarmupDelimiter=" << p_warmupDelimiter << endl;
-	config << "TruthPath=" << p_truthPath << endl;
-	config << "TruthType=" << SPTAG::Helper::Convert::ConvertToString(p_truthType) << endl;
-	config << "GenerateTruth=" << SPTAG::Helper::Convert::ConvertToString(p_generateTruth) << endl;
-	config << "SsdIndex=" << p_ssdIndex << endl;
-	config << endl;
+	config << "[Base]" << std::endl;
+	config << "ValueType=" << SPTAG::Helper::Convert::ConvertToString(p_valueType) << std::endl;
+	config << "DistCalcMethod=" << SPTAG::Helper::Convert::ConvertToString(p_distCalcMethod) << std::endl;
+	config << "Dim=" << p_dim << std::endl;
+	config << "VectorPath=" << p_vectorPath << std::endl;
+	config << "VectorType=" << SPTAG::Helper::Convert::ConvertToString(p_vectorType) << std::endl;
+	config << "VectorSize=" << p_vectorSize << std::endl;
+	config << "VectorDelimiter=" << p_vectorDelimiter << std::endl;
+	config << "QueryPath=" << p_queryPath << std::endl;
+	config << "QueryType=" << SPTAG::Helper::Convert::ConvertToString(p_queryType) << std::endl;
+	config << "QuerySize=" << p_querySize << std::endl;
+	config << "QueryDelimiter=" << p_queryDelimiter << std::endl;
+	config << "WarmupPath=" << p_warmupPath << std::endl;
+	config << "WarmupType=" << SPTAG::Helper::Convert::ConvertToString(p_warmupType) << std::endl;
+	config << "WarmupSize=" << p_warmupSize << std::endl;
+	config << "WarmupDelimiter=" << p_warmupDelimiter << std::endl;
+	config << "TruthPath=" << p_truthPath << std::endl;
+	config << "TruthType=" << SPTAG::Helper::Convert::ConvertToString(p_truthType) << std::endl;
+	config << "GenerateTruth=" << SPTAG::Helper::Convert::ConvertToString(p_generateTruth) << std::endl;
+	config << std::endl;
 	return config.str();
 }
 
-void TestHead(string configName, string OutputIDFile, string OutputVectorFile, string baseConfig) {
+void TestHead(std::string configName, std::string OutputIDFile, std::string OutputVectorFile, std::string baseConfig) {
 
-	ofstream config(configName);
+	std::ofstream config(configName);
 	if (!config.is_open())
 	{
 		fprintf(stderr, "%s can't be opened. ", configName.c_str());
@@ -132,28 +128,28 @@ void TestHead(string configName, string OutputIDFile, string OutputVectorFile, s
 
 	config << baseConfig;
 
-	config << "[SelectHead]" << endl;
-	config << "TreeNumber=" << "1" << endl;
-	config << "BKTKmeansK=" << 3 << endl;
-	config << "BKTLeafSize=" << 6 << endl;
-	config << "SamplesNumber=" << 100 << endl;
-	config << "NumberOfThreads=" << "2" << endl;
-	config << "SaveBKT=" << "true" <<endl;
+	config << "[SelectHead]" << std::endl;
+	config << "TreeNumber=" << "1" << std::endl;
+	config << "BKTKmeansK=" << 3 << std::endl;
+	config << "BKTLeafSize=" << 6 << std::endl;
+	config << "SamplesNumber=" << 100 << std::endl;
+	config << "NumberOfThreads=" << "2" << std::endl;
+	config << "SaveBKT=" << "true" << std::endl;
 
-	config << "AnalyzeOnly=" << "false" << endl;
-	config << "CalcStd=" << "true" << endl;
-	config << "SelectDynamically=" << "true" << endl;
-	config << "NoOutput=" << "false" << endl;
+	config << "AnalyzeOnly=" << "false" << std::endl;
+	config << "CalcStd=" << "true" << std::endl;
+	config << "SelectDynamically=" << "true" << std::endl;
+	config << "NoOutput=" << "false" << std::endl;
 
-	config << "SelectThreshold=" << 12 << endl;
-	config << "SplitFactor=" << 9 << endl;
-	config << "SplitThreshold=" << 18 << endl;
-	config << "Ratio=" << "0.2" << endl;
-	config << "RecursiveCheckSmallCluster=" << "true" << endl;
-	config << "PrintSizeCount=" << "true" << endl;
+	config << "SelectThreshold=" << 12 << std::endl;
+	config << "SplitFactor=" << 9 << std::endl;
+	config << "SplitThreshold=" << 18 << std::endl;
+	config << "Ratio=" << "0.2" << std::endl;
+	config << "RecursiveCheckSmallCluster=" << "true" << std::endl;
+	config << "PrintSizeCount=" << "true" << std::endl;
 
-	config << "OutputIDFile=" << OutputIDFile << endl;
-	config << "OutputVectorFile=" << OutputVectorFile << endl;
+	config << "OutputIDFile=" << OutputIDFile << std::endl;
+	config << "OutputVectorFile=" << OutputVectorFile << std::endl;
 
 	config.close();
 
@@ -165,14 +161,14 @@ void TestHead(string configName, string OutputIDFile, string OutputVectorFile, s
 }
 
 void TestBuildHead(
-	string configName, 
-	string p_headVectorFile, 
-	string p_headIndexFile,
-	SPTAG::IndexAlgoType p_indexAlgoType, 
-	string p_builderFile, 
-	string baseConfig) {
+	std::string configName,
+	std::string p_headVectorFile,
+	std::string p_headIndexFile,
+	SPTAG::IndexAlgoType p_indexAlgoType,
+	std::string p_builderFile,
+	std::string baseConfig) {
 
-	ofstream config(configName);
+	std::ofstream config(configName);
 	if (!config.is_open())
 	{
 		fprintf(stderr, "%s can't be opened. ", configName.c_str());
@@ -193,7 +189,7 @@ void TestBuildHead(
 			fprintf(stdout, "%s was generated. Skip generation.", p_builderFile.c_str());
 		}
 		else {
-			ofstream bf(p_builderFile);
+			std::ofstream bf(p_builderFile);
 			if (!bf.is_open())
 			{
 				fprintf(stderr, "%s can't be opened. ", p_builderFile.c_str());
@@ -206,12 +202,12 @@ void TestBuildHead(
 
 	config << baseConfig;
 
-	config << "[BuildHead]" << endl;
-	config << "HeadVectorFile=" << p_headVectorFile << endl;
-	config << "HeadIndex=" << p_headIndexFile << endl;
-	config << "IndexAlgoType=" << SPTAG::Helper::Convert::ConvertToString(p_indexAlgoType) << endl;
-	config << "BuilderConfigFile=" << p_builderFile << endl;
-	config << "NumberOfThreads=" << 2 << endl;
+	config << "[BuildHead]" << std::endl;
+	config << "HeadVectorFile=" << p_headVectorFile << std::endl;
+	config << "HeadIndex=" << p_headIndexFile << std::endl;
+	config << "IndexAlgoType=" << SPTAG::Helper::Convert::ConvertToString(p_indexAlgoType) << std::endl;
+	config << "BuilderConfigFile=" << p_builderFile << std::endl;
+	config << "NumberOfThreads=" << 2 << std::endl;
 
 	config.close();
 
@@ -222,14 +218,15 @@ void TestBuildHead(
 	SPTAG::SSDServing::internalMain(2, params);
 }
 
-void TestBuildSSDIndex(string configName,
-	string p_vectorIDTranslate,
-	string p_headIndexFolder,
-	string p_headConfig,
+void TestBuildSSDIndex(std::string configName,
+	std::string p_vectorIDTranslate,
+	std::string p_headIndexFolder,
+	std::string p_headConfig,
+	std::string p_ssdIndex,
 	bool p_outputEmptyReplicaID,
-	string baseConfig
-){
-	ofstream config(configName);
+	std::string baseConfig
+) {
+	std::ofstream config(configName);
 	if (!config.is_open())
 	{
 		fprintf(stderr, "%s can't be opened. ", configName.c_str());
@@ -244,30 +241,32 @@ void TestBuildSSDIndex(string configName,
 			fprintf(stdout, "%s was generated. Skip generation.", p_headConfig.c_str());
 		}
 		else {
-			ofstream bf(p_headConfig);
+			std::ofstream bf(p_headConfig);
 			if (!bf.is_open())
 			{
 				fprintf(stderr, "%s can't be opened. ", p_headConfig.c_str());
 				BOOST_CHECK(false);
 				return;
 			}
-			bf << "[Index]" << endl;
+			bf << "[Index]" << std::endl;
 			bf.close();
 		}
 	}
 
 	config << baseConfig;
 
-	config << "[BuildSSDIndex]" << endl;
-	config << "BuildSsdIndex=" << "true" << endl;
-	config << "VectorIDTranslate=" << p_vectorIDTranslate << endl;
-	config << "HeadIndexFolder=" << p_headIndexFolder << endl;
-	config << "InternalResultNum=" << 60 << endl;
-	config << "NumberOfThreads=" << 2 << endl;
-	config << "HeadConfig=" << p_headConfig << endl;
-	config << "ReplicaCount=" << 4 << endl;
-	config << "PostingPageLimit=" << 2 << endl;
-	config << "OutputEmptyReplicaID=" << p_outputEmptyReplicaID << endl;
+	config << "[BuildSSDIndex]" << std::endl;
+	config << "BuildSsdIndex=" << "true" << std::endl;
+	config << "VectorIDTranslate=" << p_vectorIDTranslate << std::endl;
+	config << "HeadIndexFolder=" << p_headIndexFolder << std::endl;
+	config << "InternalResultNum=" << 60 << std::endl;
+	config << "NumberOfThreads=" << 2 << std::endl;
+	config << "HeadConfig=" << p_headConfig << std::endl;
+	config << "SsdIndex=" << p_ssdIndex << std::endl;
+
+	config << "ReplicaCount=" << 4 << std::endl;
+	config << "PostingPageLimit=" << 2 << std::endl;
+	config << "OutputEmptyReplicaID=" << p_outputEmptyReplicaID << std::endl;
 
 	config.close();
 
@@ -279,15 +278,16 @@ void TestBuildSSDIndex(string configName,
 }
 
 void TestSearchSSDIndex(
-	string configName,
-	string p_vectorIDTranslate, 
-	string p_headIndexFolder, 
-	string p_headConfig,
-	string p_searchResult,
-	string p_logFile,
-	string baseConfig
+	std::string configName,
+	std::string p_vectorIDTranslate,
+	std::string p_headIndexFolder,
+	std::string p_headConfig,
+	std::string p_ssdIndex,
+	std::string p_searchResult,
+	std::string p_logFile,
+	std::string baseConfig
 ) {
-	ofstream config(configName);
+	std::ofstream config(configName);
 	if (!config.is_open())
 	{
 		fprintf(stderr, "%s can't be opened. ", configName.c_str());
@@ -302,33 +302,34 @@ void TestSearchSSDIndex(
 			fprintf(stdout, "%s was generated. Skip generation.", p_headConfig.c_str());
 		}
 		else {
-			ofstream bf(p_headConfig);
+			std::ofstream bf(p_headConfig);
 			if (!bf.is_open())
 			{
 				fprintf(stderr, "%s can't be opened. ", p_headConfig.c_str());
 				BOOST_CHECK(false);
 				return;
 			}
-			bf << "[Index]" << endl;
+			bf << "[Index]" << std::endl;
 			bf.close();
 		}
 	}
 
 	config << baseConfig;
 
-	config << "[SearchSSDIndex]" << endl;
-	config << "BuildSsdIndex=" << "false" << endl;
-	config << "VectorIDTranslate=" << p_vectorIDTranslate << endl;
-	config << "HeadIndexFolder=" << p_headIndexFolder << endl;
-	config << "InternalResultNum=" << 64 << endl;
-	config << "NumberOfThreads=" << 2 << endl;
-	config << "HeadConfig=" << p_headConfig << endl;
+	config << "[SearchSSDIndex]" << std::endl;
+	config << "BuildSsdIndex=" << "false" << std::endl;
+	config << "VectorIDTranslate=" << p_vectorIDTranslate << std::endl;
+	config << "HeadIndexFolder=" << p_headIndexFolder << std::endl;
+	config << "InternalResultNum=" << 64 << std::endl;
+	config << "NumberOfThreads=" << 2 << std::endl;
+	config << "HeadConfig=" << p_headConfig << std::endl;
+	config << "SsdIndex=" << p_ssdIndex << std::endl;
 
-	config << "SearchResult=" << p_searchResult << endl;
-	config << "LogFile=" << p_logFile << endl;
-	config << "QpsLimit=" << 0 << endl;
-	config << "ResultNum=" << 64 << endl;
-	config << "QueryCountLimit=" << 10000 << endl;
+	config << "SearchResult=" << p_searchResult << std::endl;
+	config << "LogFile=" << p_logFile << std::endl;
+	config << "QpsLimit=" << 0 << std::endl;
+	config << "ResultNum=" << 64 << std::endl;
+	config << "QueryCountLimit=" << 10000 << std::endl;
 
 	config.close();
 
@@ -391,16 +392,15 @@ GVQ(Int8, XVEC)
 
 #define WTEV(VT, DM, FT) \
 BOOST_AUTO_TEST_CASE(TestHead##VT##DM##FT) { \
-	string configName = SELECT_HEAD_CONFIG(VT, DM, FT); \
-	string OutputIDFile = HEAD_IDS(VT, DM, FT); \
-	string OutputVectorFile = HEAD_VECTORS(VT, DM, FT); \
-	string base_config = CreateBaseConfig(SPTAG::VectorValueType::VT, SPTAG::DistCalcMethod::DM, VECTOR_DIM, \
+	std::string configName = SELECT_HEAD_CONFIG(VT, DM, FT); \
+	std::string OutputIDFile = HEAD_IDS(VT, DM, FT); \
+	std::string OutputVectorFile = HEAD_VECTORS(VT, DM, FT); \
+	std::string base_config = CreateBaseConfig(SPTAG::VectorValueType::VT, SPTAG::DistCalcMethod::DM, VECTOR_DIM, \
 		VECTORS(VT, FT), SPTAG::VectorFileType::FT, VECTOR_NUM, "", \
 		"", SPTAG::VectorFileType::Undefined, -1, "", \
 		"", SPTAG::VectorFileType::Undefined, -1, "", \
 		"", SPTAG::TruthFileType::Undefined, \
-		false, \
-	    SSD_INDEX(VT, DM, ALGO, FT) \
+		false \
 		); \
 	TestHead(configName, OutputIDFile, OutputVectorFile, base_config);  \
 } \
@@ -427,15 +427,14 @@ WTEV(Int8, Cosine, XVEC)
 
 #define BDHD(VT, DM, ALGO, FT) \
 BOOST_AUTO_TEST_CASE(TestBuildHead##VT##DM##ALGO##FT) { \
-	string configName = BUILD_HEAD_CONFIG(VT, DM, ALGO); \
-	string builderFile = BUILD_HEAD_BUILDER_CONFIG(VT, DM, ALGO); \
-	string base_config = CreateBaseConfig(SPTAG::VectorValueType::VT, SPTAG::DistCalcMethod::DM, VECTOR_DIM, \
+	std::string configName = BUILD_HEAD_CONFIG(VT, DM, ALGO); \
+	std::string builderFile = BUILD_HEAD_BUILDER_CONFIG(VT, DM, ALGO); \
+	std::string base_config = CreateBaseConfig(SPTAG::VectorValueType::VT, SPTAG::DistCalcMethod::DM, VECTOR_DIM, \
 		VECTORS(VT, FT), SPTAG::VectorFileType::FT, VECTOR_NUM, "", \
 		"", SPTAG::VectorFileType::Undefined, -1, "", \
 		"", SPTAG::VectorFileType::Undefined, -1, "", \
 		"", SPTAG::TruthFileType::Undefined, \
-		false, \
-	    SSD_INDEX(VT, DM, ALGO, FT) \
+		false \
 		); \
 TestBuildHead( \
 	configName, \
@@ -492,20 +491,20 @@ BDHD(Int16, Cosine, KDT, XVEC)
 
 #define BDSSD(VT, DM, ALGO, FT) \
 BOOST_AUTO_TEST_CASE(TestBuildSSDIndex##VT##DM##ALGO##FT) { \
-	string configName = BUILD_SSD_CONFIG(VT, DM, ALGO); \
-	string base_config = CreateBaseConfig(SPTAG::VectorValueType::VT, SPTAG::DistCalcMethod::DM, VECTOR_DIM, \
+	std::string configName = BUILD_SSD_CONFIG(VT, DM, ALGO); \
+	std::string base_config = CreateBaseConfig(SPTAG::VectorValueType::VT, SPTAG::DistCalcMethod::DM, VECTOR_DIM, \
 		VECTORS(VT, FT), SPTAG::VectorFileType::FT, VECTOR_NUM, "", \
 		"", SPTAG::VectorFileType::Undefined, -1, "", \
 		"", SPTAG::VectorFileType::Undefined, -1, "", \
 		"", SPTAG::TruthFileType::Undefined, \
-		false, \
-		SSD_INDEX(VT, DM, ALGO, FT) \
+		false \
 		); \
 TestBuildSSDIndex(\
 	configName, \
 	HEAD_IDS(VT, DM, FT), \
 	HEAD_INDEX(VT, DM, ALGO, FT), \
 	BUILD_SSD_BUILDER_CONFIG(VT, DM, ALGO), \
+	SSD_INDEX(VT, DM, ALGO, FT), \
 	true, \
 	base_config \
 );} \
@@ -556,20 +555,20 @@ BDSSD(Int16, Cosine, KDT, XVEC)
 
 #define SCSSD(VT, DM, ALGO, FT, TFT) \
 BOOST_AUTO_TEST_CASE(TestSearchSSDIndex##VT##DM##ALGO##FT##TFT) { \
-	string configName = SEARCH_SSD_CONFIG(VT, DM, ALGO); \
-	string base_config = CreateBaseConfig(SPTAG::VectorValueType::VT, SPTAG::DistCalcMethod::DM, VECTOR_DIM, \
+	std::string configName = SEARCH_SSD_CONFIG(VT, DM, ALGO); \
+	std::string base_config = CreateBaseConfig(SPTAG::VectorValueType::VT, SPTAG::DistCalcMethod::DM, VECTOR_DIM, \
 		VECTORS(VT, FT), SPTAG::VectorFileType::FT, VECTOR_NUM, "", \
 		QUERIES(VT, FT), SPTAG::VectorFileType::FT, QUERY_NUM, "", \
 		QUERIES(VT, FT), SPTAG::VectorFileType::FT, QUERY_NUM, "", \
 		TRUTHSET(VT, DM, FT, TFT), SPTAG::TruthFileType::TFT, \
-		true, \
-		SSD_INDEX(VT, DM, ALGO, FT) \
+		true \
 		); \
 TestSearchSSDIndex( \
 	configName, \
 	HEAD_IDS(VT, DM, FT), \
 	HEAD_INDEX(VT, DM, ALGO, FT), \
 	SEARCH_SSD_BUILDER_CONFIG(VT, DM, ALGO), \
+	SSD_INDEX(VT, DM, ALGO, FT), \
 	SEARCH_SSD_RESULT(VT, DM, ALGO, FT, TFT), \
 	"", \
 	base_config \
