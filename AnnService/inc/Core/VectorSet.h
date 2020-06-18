@@ -72,7 +72,7 @@ private:
 
     SizeType m_vectorCount;
 
-    SizeType m_perVectorDataSize;
+    size_t m_perVectorDataSize;
 
     void readXvec(const char* p_filePath, VectorValueType p_valueType,
         DimensionType p_dimension, SizeType p_vectorCount);

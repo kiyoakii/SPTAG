@@ -37,8 +37,8 @@ BasicVectorSet::BasicVectorSet(const ByteArray& p_bytesArray,
 void BasicVectorSet::readXvec(const char* p_filePath, VectorValueType p_valueType,
     DimensionType p_dimension, SizeType p_vectorCount) 
 {
-    SizeType vectorDataSize = GetValueTypeSize(p_valueType) * p_dimension;
-    size_t totalRecordVectorBytes = static_cast<size_t>(vectorDataSize) * p_vectorCount;
+    size_t vectorDataSize = GetValueTypeSize(p_valueType) * p_dimension;
+    size_t totalRecordVectorBytes = vectorDataSize * p_vectorCount;
     ByteArray l_data = std::move(ByteArray::Alloc(totalRecordVectorBytes));
     char* vecBuf = reinterpret_cast<char*>(l_data.Data());
 
@@ -52,7 +52,7 @@ void BasicVectorSet::readXvec(const char* p_filePath, VectorValueType p_valueTyp
     for (size_t i = 0; i < p_vectorCount; i++) {
         in.read((char*)&dim, 4);
         if (dim != p_dimension) {
-            fprintf(stderr, "Error: Xvec file %s has No.%ld vector whose dims are not as many as expected. Expected: %d, Fact: %d\n", p_filePath, i, p_dimension, dim);
+            fprintf(stderr, "Error: Xvec file %s has No.%zd vector whose dims are not as many as expected. Expected: %d, Fact: %d\n", p_filePath, i, p_dimension, dim);
             exit(-1);
         }
         in.read(vecBuf + i * vectorDataSize, vectorDataSize);
@@ -80,8 +80,8 @@ void BasicVectorSet::readDefault(const char* p_filePath, VectorValueType p_value
     in.read((char*)&row, 4);
     in.read((char*)&col, 4);
 
-    SizeType vectorDataSize = GetValueTypeSize(p_valueType) * col;
-    std::size_t totalRecordVectorBytes = static_cast<std::size_t>(vectorDataSize) * row;
+    size_t vectorDataSize = GetValueTypeSize(p_valueType) * col;
+    size_t totalRecordVectorBytes = vectorDataSize * row;
     ByteArray l_data = std::move(ByteArray::Alloc(totalRecordVectorBytes));
     char* vecBuf = reinterpret_cast<char*>(l_data.Data());
     in.read(vecBuf, totalRecordVectorBytes);
@@ -104,18 +104,14 @@ void BasicVectorSet::readTxt(const char* p_filePath, VectorValueType p_valueType
         exit(1);
     }
 
-    std::size_t totalRecordVectorBytes = 
-        static_cast<std::size_t>(vectorReader->GetVectorSet()->Count()) * vectorReader->GetVectorSet()->PerVectorDataSize();
-    ByteArray l_data = std::move(ByteArray::Alloc(totalRecordVectorBytes));
-    memcpy(reinterpret_cast<void *>(l_data.Data()), 
-        vectorReader->GetVectorSet()->GetData(), 
-        totalRecordVectorBytes);
+	std::shared_ptr<VectorSet> ptr = vectorReader->GetVectorSet();
+    BasicVectorSet* vectors = (BasicVectorSet*)ptr.get();
 
-    m_data = std::move(l_data);
-    m_valueType = vectorReader->GetVectorSet()->GetValueType();
-    m_dimension = vectorReader->GetVectorSet()->Dimension();
-    m_vectorCount = vectorReader->GetVectorSet()->Count();
-    m_perVectorDataSize = vectorReader->GetVectorSet()->PerVectorDataSize();
+	m_data = std::move(vectors->m_data);
+    m_valueType = vectors->m_valueType;
+    m_dimension = vectors->m_dimension;
+    m_vectorCount = vectors->m_vectorCount;
+    m_perVectorDataSize = vectors->m_perVectorDataSize;
 }
 
 // copied from src/IndexBuilder/main.cpp
@@ -227,5 +223,5 @@ BasicVectorSet::Save(const std::string& p_vectorFile) const
 }
 
 SizeType BasicVectorSet::PerVectorDataSize() const {
-    return m_perVectorDataSize;
+    return (SizeType)m_perVectorDataSize;
 }
