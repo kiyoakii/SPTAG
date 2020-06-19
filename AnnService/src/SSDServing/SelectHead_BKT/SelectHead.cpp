@@ -107,7 +107,7 @@ namespace SPTAG {
 
                 std::vector<BKTNodeInfo> bktNodeInfos(p_tree->size());
 
-                uint32_t selectLimit = static_cast<uint32_t>(p_vectorCount * p_opts.m_ratio) + 1;
+                int selectLimit = static_cast<int>(p_vectorCount * p_opts.m_ratio) + 1;
 
                 if (selectLimit > p_vectorCount)
                 {

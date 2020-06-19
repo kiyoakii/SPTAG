@@ -177,7 +177,7 @@ namespace SPTAG {
                 int p_maxQueryCount,
                 FILE* p_logOut)
             {
-                uint32_t numQueries = std::min<uint32_t>(static_cast<uint32_t>(p_results.size()), p_maxQueryCount);
+                int numQueries = min(static_cast<int>(p_results.size()), p_maxQueryCount);
 
                 TimeUtils::StopW sw;
 
@@ -235,7 +235,7 @@ namespace SPTAG {
                     {
                         TimeUtils::SteadClock::time_point currentTime = TimeUtils::SteadClock::now();
 
-                        float timeElapsedSec = TimeUtils::getMsInterval(startTime, currentTime);
+                        double timeElapsedSec = TimeUtils::getMsInterval(startTime, currentTime);
 
                         size_t targetQueries = std::min<size_t>(static_cast<size_t>(p_qps * timeElapsedSec), numQueries);
 

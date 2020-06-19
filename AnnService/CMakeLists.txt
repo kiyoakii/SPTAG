@@ -21,8 +21,8 @@ file(GLOB CLIENT_FILES ${SRC_FILES} ${PROJECT_SOURCE_DIR}/AnnService/src/Client/
 add_executable (client ${CLIENT_FILES} ${CLIENT_HDR_FILES})
 target_link_libraries(client ${Boost_LIBRARIES})
 
-file(GLOB AGG_HDR_FILES ${HDR_FILES} ${PROJECT_SOURCE_DIR}/AnnService/inc/Aggregator/*.h ${PROJECT_SOURCE_DIR}/AnnService/inc/Socket/*.h)
-file(GLOB AGG_FILES ${SRC_FILES} ${PROJECT_SOURCE_DIR}/AnnService/src/Aggregator/*.cpp ${PROJECT_SOURCE_DIR}/AnnService/src/Socket/*.cpp)
+file(GLOB AGG_HDR_FILES ${HDR_FILES} ${PROJECT_SOURCE_DIR}/AnnService/inc/Aggregator/*.h ${PROJECT_SOURCE_DIR}/AnnService/inc/Socket/*.h ${PROJECT_SOURCE_DIR}/AnnService/inc/Server/QueryParser.h)
+file(GLOB AGG_FILES ${SRC_FILES} ${PROJECT_SOURCE_DIR}/AnnService/src/Aggregator/*.cpp ${PROJECT_SOURCE_DIR}/AnnService/src/Socket/*.cpp ${PROJECT_SOURCE_DIR}/AnnService/src/Server/QueryParser.cpp)
 add_executable (aggregator ${AGG_FILES} ${AGG_HDR_FILES})
 target_link_libraries(aggregator ${Boost_LIBRARIES})
 
@@ -72,6 +72,17 @@ target_compile_definitions(ssdserving PRIVATE _exe)
 # for Test
 add_library(ssdservingLib ${SSD_SERVING_HDR_FILES} ${SSD_SERVING_FILES})
 target_link_libraries(ssdservingLib SPTAGLibStatic ${Boost_LIBRARIES})
+
+find_package(MPI)
+if (MPI_FOUND)
+    message (STATUS "Found MPI.")
+    message (STATUS "MPI Include Path: ${MPI_CXX_INCLUDE_PATH}")
+    message (STATUS "MPI Libraries: ${MPI_CXX_LIBRARIES}")
+    include_directories (${MPI_CXX_INCLUDE_PATH})
+    file(GLOB PARTITION_FILES ${SRC_FILES} ${PROJECT_SOURCE_DIR}/AnnService/src/BalancedDataPartition/*.cpp)
+    add_executable (balanceddatapartition ${PARTITION_FILES} ${HDR_FILES})
+    target_link_libraries(balanceddatapartition ${Boost_LIBRARIES} ${MPI_CXX_LIBRARIES})
+endif()
 
 install(TARGETS SPTAGLib SPTAGLibStatic server client aggregator indexbuilder indexsearcher ssdserving
   RUNTIME DESTINATION bin

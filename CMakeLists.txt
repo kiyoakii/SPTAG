@@ -18,8 +18,6 @@ if(NOT WIN32)
     CXX_COMPILER_DUMPVERSION(CXX_COMPILER_VERSION)
 endif()
 
-set(AVX_SUPPORTED true)
-
 if(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
     # require at least gcc 5.0
     if (CXX_COMPILER_VERSION VERSION_LESS 5.0)
@@ -108,14 +106,6 @@ if (OpenMP_FOUND)
     message (STATUS "Found openmp.")
 else()
     message (FATAL_ERROR "Could no find openmp!")
-endif()
-
-if (WIN32)
-    set(Boost_INCLUDE_DIR C:\\Users\\t-bizhao\\source\\repos\\DovahYol\\boost_1_67_0)
-    set(Boost_LIBRARY_DIR C:\\Users\\t-bizhao\\source\\repos\\DovahYol\\boost_1_67_0\\stage\\lib)
-else()
-    set(Boost_INCLUDE_DIR /home/bingzhao/boost_1_67_0)
-    set(Boost_LIBRARY_DIR /home/bingzhao/boost_1_67_0/stage/lib)
 endif()
 
 find_package(Boost 1.67 COMPONENTS system thread serialization wserialization regex)

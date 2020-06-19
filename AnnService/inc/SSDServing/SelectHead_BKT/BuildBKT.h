@@ -8,46 +8,7 @@ namespace SPTAG {
 	namespace SSDServing {
 		namespace SelectHead_BKT {
 			template<typename T>
-			class HeadSimp : public COMMON::Simp {
-			private:
-				BasicVectorSet& m_vectorSet;
-				DistCalcMethod m_iDistCalcMethod;
-				float(*m_fComputeDistance)(const T* pX, const T* pY, DimensionType length);
-			public:
-				HeadSimp(BasicVectorSet& p_vectorSet, DistCalcMethod p_distCalcMethod) :
-					m_vectorSet(p_vectorSet),
-					m_iDistCalcMethod(p_distCalcMethod),
-					m_fComputeDistance(COMMON::DistanceCalcSelector<T>(m_iDistCalcMethod))
-				{
-				}
-
-				~HeadSimp() {}
-
-				SizeType GetNumSamples() {
-					return m_vectorSet.Count();
-				}
-
-				DimensionType GetFeatureDim() {
-					return m_vectorSet.Dimension();
-				}
-
-				float ComputeDistance(const void* pX, const void* pY) {
-					return m_fComputeDistance((const T*)pX, (const T*)pY, m_vectorSet.Dimension());
-				}
-
-				DistCalcMethod GetDistCalcMethod() {
-					return m_iDistCalcMethod;
-				}
-
-				const void* GetSample(const SizeType idx) {
-					return m_vectorSet.GetVector(idx);
-				}
-
-			};
-
-			template<typename T>
 			std::shared_ptr<COMMON::BKTree> BuildBKT(BasicVectorSet& p_vectorSet, const Options& opts) {
-				HeadSimp<T> simp(p_vectorSet, COMMON_OPTS.m_distCalcMethod);
 				std::shared_ptr<COMMON::BKTree> bkt = std::make_shared<COMMON::BKTree>();
 				bkt->m_iBKTKmeansK = opts.m_iBKTKmeansK;
 				bkt->m_iBKTLeafSize = opts.m_iBKTLeafSize;
@@ -57,7 +18,8 @@ namespace SPTAG {
 				fprintf(stdout, "BKTKmeansK: %d, BKTLeafSize: %d, Samples: %d, TreeNumber: %d, ThreadNum: %d.\n", 
 					bkt->m_iBKTKmeansK, bkt->m_iBKTLeafSize, bkt->m_iSamples, bkt->m_iTreeNumber, opts.m_iNumberOfThreads);
 				VectorSearch::TimeUtils::StopW sw;
-				bkt->BuildTrees<T>(&simp, nullptr, nullptr, opts.m_iNumberOfThreads);
+				COMMON::Dataset<T> data(p_vectorSet.Count(), p_vectorSet.Dimension(), (T*)p_vectorSet.GetData());
+				bkt->BuildTrees<T>(data, COMMON_OPTS.m_distCalcMethod, opts.m_iNumberOfThreads, nullptr, nullptr, true);
 				double elapsedMinutes = sw.getElapsedMin();
 
 				fprintf(stdout, "End invoking BuildTrees.\n");

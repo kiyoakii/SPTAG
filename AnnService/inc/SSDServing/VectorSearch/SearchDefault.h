@@ -56,7 +56,7 @@ namespace SPTAG {
                         input.read(reinterpret_cast<char*>(m_vectorTranslateMap.get()), sizeof(long long)* m_index->GetNumSamples());
                         input.close();
 
-                        fprintf(stderr, "Loaded %lu Vector IDs\n", input.gcount() / sizeof(long long));
+                        fprintf(stderr, "Loaded %zu Vector IDs\n", input.gcount() / sizeof(long long));
                     }
 
                     if (!extraFullGraphFile.empty())
