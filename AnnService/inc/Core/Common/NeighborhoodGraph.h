@@ -27,10 +27,9 @@ namespace SPTAG
                                  m_iCEFScale(2),
                                  m_iRefineIter(2),
                                  m_iCEF(1000),
+                                 m_iAddCEF(500),
                                  m_iMaxCheckForRefineGraph(10000) 
-            {
-                m_pNeighborhoodGraph.SetName("Graph");
-            }
+            {}
 
             ~NeighborhoodGraph() {}
 
@@ -107,35 +106,29 @@ namespace SPTAG
                     TptreeDataIndices.clear();
                     TptreeLeafNodes.clear();
                 }
-
-                if (m_iMaxCheckForRefineGraph > 0) {
-                    RefineGraph<T>(index, idmap);
-                }
+                RefineGraph<T>(index, idmap);
             }
 
             template <typename T>
             void RefineGraph(VectorIndex* index, const std::unordered_map<SizeType, SizeType>* idmap = nullptr)
             {
-                m_iCEF *= m_iCEFScale;
-
                 for (int iter = 0; iter < m_iRefineIter - 1; iter++)
                 {
 #pragma omp parallel for schedule(dynamic)
                     for (SizeType i = 0; i < m_iGraphSize; i++)
                     {
-                        RefineNode<T>(index, i, false, false);
+                        RefineNode<T>(index, i, false, false, m_iCEF * m_iCEFScale);
                         if (i % 1000 == 0) std::cout << "\rRefine " << iter << " " << static_cast<int>(i * 1.0 / m_iGraphSize * 100) << "%";
                     }
                     std::cout << "Refine RNG, graph acc:" << GraphAccuracyEstimation(index, 100, idmap) << std::endl;
                 }
 
-                m_iCEF /= m_iCEFScale;
                 m_iNeighborhoodSize /= m_iNeighborhoodScale;
 
 #pragma omp parallel for schedule(dynamic)
                 for (SizeType i = 0; i < m_iGraphSize; i++)
                 {
-                    RefineNode<T>(index, i, false, false);
+                    RefineNode<T>(index, i, false, false, m_iCEF);
                     if (i % 1000 == 0) std::cout << "\rRefine " << (m_iRefineIter - 1) << " " << static_cast<int>(i * 1.0 / m_iGraphSize * 100) << "%";
                 }
                 std::cout << "Refine RNG, graph acc:" << GraphAccuracyEstimation(index, 100, idmap) << std::endl;
@@ -153,54 +146,53 @@ namespace SPTAG
             ErrorCode RefineGraph(VectorIndex* index, std::vector<SizeType>& indices, std::vector<SizeType>& reverseIndices,
                 std::ostream* output, NeighborhoodGraph* newGraph, const std::unordered_map<SizeType, SizeType>* idmap = nullptr)
             {
-                SizeType R = (SizeType)indices.size();
-
-                if (newGraph != nullptr)
-                {
-                    newGraph->m_pNeighborhoodGraph.Initialize(R, m_iNeighborhoodSize);
-                    newGraph->m_iGraphSize = R;
-                    newGraph->m_iNeighborhoodSize = m_iNeighborhoodSize;
+                std::shared_ptr<NeighborhoodGraph> tmp;
+                if (newGraph == nullptr) {
+                    tmp = NeighborhoodGraph::CreateInstance(Type());
+                    newGraph = tmp.get();
                 }
+
+                SizeType R = (SizeType)indices.size();
+                newGraph->m_pNeighborhoodGraph.Initialize(R, m_iNeighborhoodSize);
+                newGraph->m_iGraphSize = R;
+                newGraph->m_iNeighborhoodSize = m_iNeighborhoodSize;
 
 #pragma omp parallel for schedule(dynamic)
                 for (SizeType i = 0; i < R; i++)
                 {
-                    RefineNode<T>(index, indices[i], false, false);
-                    SizeType *nodes, *outnodes; 
-                    nodes = outnodes = m_pNeighborhoodGraph[indices[i]];
-                    if (newGraph != nullptr) outnodes = newGraph->m_pNeighborhoodGraph[i];
+                    if (i % 1000 == 0) std::cout << "\rRefine " << static_cast<int>(i * 1.0 / R * 100) << "%";
+
+                    SizeType *outnodes = newGraph->m_pNeighborhoodGraph[i];
+
+                    COMMON::QueryResultSet<T> query((const T*)index->GetSample(indices[i]), m_iCEF + 1);
+                    index->RefineSearchIndex(query, false);
+                    RebuildNeighbors(index, indices[i], outnodes, query.GetResults(), m_iCEF + 1);
+
                     std::unordered_map<SizeType, SizeType>::const_iterator iter;
                     for (DimensionType j = 0; j < m_iNeighborhoodSize; j++)
                     {
-                        if (nodes[j] >= 0 && nodes[j] < reverseIndices.size()) outnodes[j] = reverseIndices[nodes[j]];
+                        if (outnodes[j] >= 0 && outnodes[j] < reverseIndices.size()) outnodes[j] = reverseIndices[outnodes[j]];
                         if (idmap != nullptr && (iter = idmap->find(outnodes[j])) != idmap->end()) outnodes[j] = iter->second;
                     }
                     if (idmap != nullptr && (iter = idmap->find(-1 - i)) != idmap->end())
                         outnodes[m_iNeighborhoodSize - 1] = -2 - iter->second;
                 }
 
-                if (output != nullptr) {
-                    output->write((char*)&R, sizeof(SizeType));
-                    output->write((char*)&m_iNeighborhoodSize, sizeof(DimensionType));
-                    for (SizeType i = 0; i < R; i++) {
-                        output->write((char*)m_pNeighborhoodGraph[indices[i]], sizeof(SizeType) * m_iNeighborhoodSize);
-                    }
-                    std::cout << "Save Refine " << m_pNeighborhoodGraph.Name() << " (" << R << ", " << m_iNeighborhoodSize << ") Finish!" << std::endl;
-                }
+                if (output != nullptr) newGraph->SaveGraph(*output);
                 return ErrorCode::Success;
             }
 
 
             template <typename T>
-            void RefineNode(VectorIndex* index, const SizeType node, bool updateNeighbors, bool searchDeleted)
+            void RefineNode(VectorIndex* index, const SizeType node, bool updateNeighbors, bool searchDeleted, int CEF)
             {
-                COMMON::QueryResultSet<T> query((const T*)index->GetSample(node), m_iCEF + 1);
-                index->SearchIndex(query, searchDeleted);
-                RebuildNeighbors(index, node, m_pNeighborhoodGraph[node], query.GetResults(), m_iCEF + 1);
+                COMMON::QueryResultSet<T> query((const T*)index->GetSample(node), CEF + 1);
+                index->RefineSearchIndex(query, searchDeleted);
+                RebuildNeighbors(index, node, m_pNeighborhoodGraph[node], query.GetResults(), CEF + 1);
 
                 if (updateNeighbors) {
                     // update neighbors
-                    for (int j = 0; j <= m_iCEF; j++)
+                    for (int j = 0; j <= CEF; j++)
                     {
                         BasicResult* item = query.GetResult(j);
                         if (item->VID < 0) break;
@@ -217,7 +209,7 @@ namespace SPTAG
             {
                 if (last - first <= m_iTPTLeafSize)
                 {
-                    leaves.push_back(std::make_pair(first, last));
+                    leaves.emplace_back(first, last);
                 }
                 else
                 {
@@ -243,7 +235,7 @@ namespace SPTAG
                     Variance.reserve(index->GetFeatureDim());
                     for (DimensionType j = 0; j < index->GetFeatureDim(); j++)
                     {
-                        Variance.push_back(BasicResult(j, 0));
+                        Variance.emplace_back(j, 0.0f);
                     }
                     // calculate the variance of each dimension
                     for (SizeType j = first; j <= end; j++)
@@ -407,7 +399,7 @@ namespace SPTAG
             inline const SizeType* operator[](SizeType index) const { return m_pNeighborhoodGraph[index]; }
 
             void Update(SizeType row, DimensionType col, SizeType val) {
-                std::lock_guard<std::mutex> lock(m_dataUpdateLock);
+                std::lock_guard<std::mutex> lock(m_dataUpdateLock[row]);
                 m_pNeighborhoodGraph[row][col] = val;
             }
 
@@ -418,17 +410,19 @@ namespace SPTAG
 
             inline SizeType R() const { return m_iGraphSize; }
 
+            inline std::string Type() const { return m_pNeighborhoodGraph.Name(); }
+
             static std::shared_ptr<NeighborhoodGraph> CreateInstance(std::string type);
 
         protected:
             // Graph structure
             SizeType m_iGraphSize;
             COMMON::Dataset<SizeType> m_pNeighborhoodGraph;
-            std::mutex m_dataUpdateLock;
+            FineGrainedLock m_dataUpdateLock;
         public:
             int m_iTPTNumber, m_iTPTLeafSize, m_iSamples, m_numTopDimensionTPTSplit;
             DimensionType m_iNeighborhoodSize;
-            int m_iNeighborhoodScale, m_iCEFScale, m_iRefineIter, m_iCEF, m_iMaxCheckForRefineGraph;
+            int m_iNeighborhoodScale, m_iCEFScale, m_iRefineIter, m_iCEF, m_iAddCEF, m_iMaxCheckForRefineGraph;
         };
     }
 }

@@ -89,3 +89,9 @@ dkms.conf
 /Wrappers/inc/AnnClient.java
 /AnnService.users - Copy.props
 /.vs
+*vcxproj.user
+CMakeSettings.json
+Debug/
+Release/
+out/
+

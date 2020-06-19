@@ -9,7 +9,7 @@ include_directories(${PROJECT_SOURCE_DIR}/AnnService)
 add_library (SPTAGLib SHARED ${SRC_FILES} ${HDR_FILES})
 target_link_libraries (SPTAGLib)
 add_library (SPTAGLibStatic STATIC ${SRC_FILES} ${HDR_FILES})
-set_target_properties(SPTAGLibStatic PROPERTIES OUTPUT_NAME SPTAGLib)
+# set_target_properties(SPTAGLibStatic PROPERTIES OUTPUT_NAME SPTAGLib)
 
 file(GLOB SERVER_HDR_FILES ${HDR_FILES} ${PROJECT_SOURCE_DIR}/AnnService/inc/Server/*.h ${PROJECT_SOURCE_DIR}/AnnService/inc/Socket/*.h)
 file(GLOB SERVER_FILES ${SRC_FILES} ${PROJECT_SOURCE_DIR}/AnnService/src/Server/*.cpp ${PROJECT_SOURCE_DIR}/AnnService/src/Socket/*.cpp)
@@ -35,6 +35,44 @@ file(GLOB SEARCHER_FILES ${SRC_FILES} ${PROJECT_SOURCE_DIR}/AnnService/src/Index
 add_executable (indexsearcher ${SEARCHER_FILES} ${HDR_FILES})
 target_link_libraries(indexsearcher ${Boost_LIBRARIES})
 
+set(SSDSERVING_INC_DIR ${PROJECT_SOURCE_DIR}/AnnService/inc/SSDServing)
+set(SSDSERVING_IMP_DIR ${PROJECT_SOURCE_DIR}/AnnService/src/SSDServing)
+set(VECTORSEARCH_INC_DIR ${SSDSERVING_INC_DIR}/VectorSearch)
+set(VECTORSEARCH_IMP_DIR ${SSDSERVING_IMP_DIR}/VectorSearch)
+file(GLOB_RECURSE SSD_SERVING_HDR_FILES ${SSDSERVING_INC_DIR}/*.h)
+file(GLOB_RECURSE SSD_SERVING_FILES ${SSDSERVING_IMP_DIR}/*.cpp)
+if(NOT WIN32)
+    list(REMOVE_ITEM SSD_SERVING_HDR_FILES 
+            # prototype
+            ${VECTORSEARCH_INC_DIR}/DiskAccessUtils.h
+            ${VECTORSEARCH_INC_DIR}/DiskFileReader.h
+            ${VECTORSEARCH_INC_DIR}/DiskListCommonUtils.h
+            ${VECTORSEARCH_INC_DIR}/ExtraFullGraphSearcher.h
+            ${VECTORSEARCH_INC_DIR}/IExtraSearcher.h
+            ${VECTORSEARCH_INC_DIR}/PrioritizedDiskFileReader.h
+            )
+    list(REMOVE_ITEM SSD_SERVING_FILES
+            # Implementation
+            ${VECTORSEARCH_IMP_DIR}/DiskAccessUtils.cpp
+            ${VECTORSEARCH_IMP_DIR}/DiskFileReader.cpp
+            ${VECTORSEARCH_IMP_DIR}/PrioritizedDiskFileReader.cpp
+            )
+elseif(WIN32)
+    list(REMOVE_ITEM SSD_SERVING_HDR_FILES 
+            # prototype
+            ${VECTORSEARCH_INC_DIR}/ExtraFullGraphSearcherLinux.h
+            ${VECTORSEARCH_INC_DIR}/IExtraSearcherLinux.h
+            )
+endif()
+
+add_executable(ssdserving ${SSD_SERVING_HDR_FILES} ${SSD_SERVING_FILES})
+target_link_libraries(ssdserving SPTAGLibStatic ${Boost_LIBRARIES})
+target_compile_definitions(ssdserving PRIVATE _exe)
+
+# for Test
+add_library(ssdservingLib ${SSD_SERVING_HDR_FILES} ${SSD_SERVING_FILES})
+target_link_libraries(ssdservingLib SPTAGLibStatic ${Boost_LIBRARIES})
+
 find_package(MPI)
 if (MPI_FOUND)
     message (STATUS "Found MPI.")
@@ -46,7 +84,7 @@ if (MPI_FOUND)
     target_link_libraries(balanceddatapartition ${Boost_LIBRARIES} ${MPI_CXX_LIBRARIES})
 endif()
 
-install(TARGETS SPTAGLib SPTAGLibStatic server client aggregator indexbuilder indexsearcher
+install(TARGETS SPTAGLib SPTAGLibStatic server client aggregator indexbuilder indexsearcher ssdserving
   RUNTIME DESTINATION bin
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib)

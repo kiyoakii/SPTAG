@@ -30,6 +30,10 @@ DefineErrorCode(ParamNotFound, 0x0010)
 DefineErrorCode(FailedParseValue, 0x0011)
 DefineErrorCode(MemoryOverFlow, 0x0012)
 DefineErrorCode(LackOfInputs, 0x0013)
+DefineErrorCode(VectorNotFound, 0x0014)
+DefineErrorCode(EmptyIndex, 0x0015)
+DefineErrorCode(EmptyData, 0x0016)
+DefineErrorCode(DimensionSizeMismatch, 0x0017)
 
 // 0x1000 ~ 0x1FFF  Index Build Status
 
@@ -57,3 +61,33 @@ DefineIndexAlgo(BKT)
 DefineIndexAlgo(KDT)
 
 #endif // DefineIndexAlgo
+
+// target vectors and queries
+#ifdef DefineVectorFileType
+
+// number of vectors(int32_t), dimension(int32_t)
+// 1st vector
+// 2nd vector
+// ..
+DefineVectorFileType(DEFAULT)
+// dimension of 1st vector(int32_t), 1st vector
+// dimension of 2nd vector(int32_t), 2nd vector
+// ...
+DefineVectorFileType(XVEC)
+// vectors that have names and are viewable
+DefineVectorFileType(TXT)
+
+#endif // DefineVectorFileType
+
+#ifdef DefineTruthFileType
+
+// 1st nn id(int32_t), SPACE, 2nd nn id, SPACE, 3rd nn id,... 
+// 1st nn id, SPACE, 2nd nn id, SPACE, 3rd nn id,... 
+// ...
+DefineTruthFileType(TXT)
+// K of 1st vector(int32_t), 1st nn id(int32_t), SPACE, 2nd nn id, SPACE, 3rd nn id,... 
+// K of 2nd vector(int32_t), 1st nn id, SPACE, 2nd nn id, SPACE, 3rd nn id,... 
+// ...
+DefineTruthFileType(XVEC)
+
+#endif // DefineTruthFileType

@@ -13,6 +13,8 @@ namespace SPTAG
         class RelativeNeighborhoodGraph: public NeighborhoodGraph
         {
         public:
+            RelativeNeighborhoodGraph() { m_pNeighborhoodGraph.SetName("RNG"); }
+
             void RebuildNeighbors(VectorIndex* index, const SizeType node, SizeType* nodes, const BasicResult* queryResults, const int numResults) {
                 DimensionType count = 0;
                 for (int j = 0; j < numResults && count < m_iNeighborhoodSize; j++) {
@@ -34,7 +36,7 @@ namespace SPTAG
 
             void InsertNeighbors(VectorIndex* index, const SizeType node, SizeType insertNode, float insertDist)
             {
-                std::lock_guard<std::mutex> lock(m_dataUpdateLock);
+                std::lock_guard<std::mutex> lock(m_dataUpdateLock[node]);
 
                 SizeType* nodes = m_pNeighborhoodGraph[node];
                 SizeType tmpNode;
