@@ -17,7 +17,7 @@ namespace SPTAG {
                     return;
                 }
 
-                for (size_t i = node.childStart; i < node.childEnd; i++)
+                for (SPTAG::SizeType i = node.childStart; i < node.childEnd; i++)
                 {
                     CalcLeafSize(i, p_tree, p_counter);
                     p_counter[node.centerid] += p_counter[(*p_tree)[i].centerid];
