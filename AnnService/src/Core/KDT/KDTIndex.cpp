@@ -218,7 +218,7 @@ namespace SPTAG
             m_workSpacePool->Init(m_iNumberOfThreads);
             m_threadPool.init();
 
-            m_pTrees.BuildTrees<T>(m_pSamples);
+            m_pTrees.BuildTrees<T>(m_pSamples, omp_get_num_threads());
             m_pGraph.BuildGraph<T>(this);
             m_bReady = true;
             return ErrorCode::Success;
@@ -268,7 +268,7 @@ namespace SPTAG
 
             ptr->m_deletedID.Initialize(newR);
             COMMON::KDTree* newtree = &(ptr->m_pTrees);
-            (*newtree).BuildTrees<T>(ptr->m_pSamples);
+            (*newtree).BuildTrees<T>(ptr->m_pSamples, omp_get_num_threads());
             m_pGraph.RefineGraph<T>(this, indices, reverseIndices, nullptr, &(ptr->m_pGraph));
             if (m_pMetaToVec != nullptr) ptr->BuildMetaMapping();
             ptr->m_bReady = true;
@@ -305,7 +305,7 @@ namespace SPTAG
             if (nullptr != m_pMetadata && (p_indexStreams.size() < 6 || ErrorCode::Success != m_pMetadata->RefineMetadata(indices, *p_indexStreams[4], *p_indexStreams[5]))) return ErrorCode::Fail;
 
             COMMON::KDTree newTrees(m_pTrees);
-            newTrees.BuildTrees<T>(m_pSamples, &indices);
+            newTrees.BuildTrees<T>(m_pSamples, omp_get_num_threads(), &indices);
 #pragma omp parallel for
             for (SizeType i = 0; i < newTrees.size(); i++) {
                 if (newTrees[i].left < 0)

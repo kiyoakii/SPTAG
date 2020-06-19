@@ -93,7 +93,6 @@ template <typename T>
 inline float MultipleClustersAssign(const COMMON::Dataset<T>& data,
     std::vector<SizeType>& indices,
     const SizeType first, const SizeType last, COMMON::KmeansArgs<T>& args, bool updateCenters, float lambda) {
-    float(*fComputeDistance)(const T* pX, const T* pY, DimensionType length) = COMMON::DistanceCalcSelector<T>(options.m_distMethod);
     float currDist = 0;
     SizeType subsize = (last - first - 1) / args._T + 1;
 
@@ -110,7 +109,7 @@ inline float MultipleClustersAssign(const COMMON::Dataset<T>& data,
         std::vector<SPTAG::COMMON::HeapCell> centerDist(args._K, SPTAG::COMMON::HeapCell());
         for (SizeType i = istart; i < iend; i++) {
             for (int k = 0; k < args._K; k++) {
-                float dist = fComputeDistance(data[indices[i]], args.centers + k*args._D, args._D) + lambda*args.counts[k];
+                float dist = args.fComputeDistance(data[indices[i]], args.centers + k*args._D, args._D) + lambda*args.counts[k];
                 centerDist[k].node = k;
                 centerDist[k].distance = dist;
             }
@@ -187,7 +186,6 @@ inline float HardMultipleClustersAssign(const COMMON::Dataset<T>& data,
 	std::vector<SizeType>& indices,
 	const SizeType first, const SizeType last, COMMON::KmeansArgs<T>& args, SizeType* mylimit,
 	const int clusternum, const bool fill) {
-	float(*fComputeDistance)(const T* pX, const T* pY, DimensionType length) = COMMON::DistanceCalcSelector<T>(options.m_distMethod);
 	float currDist = 0;
 	int threads = 1;
 	SizeType subsize = (last - first - 1) / threads + 1;
@@ -202,7 +200,7 @@ inline float HardMultipleClustersAssign(const COMMON::Dataset<T>& data,
 		std::vector<SPTAG::COMMON::HeapCell> centerDist(args._K, SPTAG::COMMON::HeapCell());
 		for (SizeType i = istart; i < iend; i++) {
 			for (int k = 0; k < args._K; k++) {
-				float dist = fComputeDistance(data[indices[i]], args.centers + k*args._D, args._D);
+				float dist = args.fComputeDistance(data[indices[i]], args.centers + k*args._D, args._D);
 				centerDist[k].node = k;
 				centerDist[k].distance = dist;
 			}
@@ -264,7 +262,7 @@ void Process(MPI_Datatype type) {
     std::shared_ptr<MetadataSet> metas = vectorReader->GetMetadataSet();
 
     COMMON::Dataset<T> data(vectors->Count(), vectors->Dimension(), (T*)vectors->GetData());
-    COMMON::KmeansArgs<T> args(options.m_clusterNum, vectors->Dimension(), vectors->Count(), options.m_threadNum);
+    COMMON::KmeansArgs<T> args(options.m_clusterNum, vectors->Dimension(), vectors->Count(), options.m_threadNum, options.m_distMethod);
     std::vector<SizeType> localindices(data.R(), 0);
     for (SizeType i = 0; i < data.R(); i++) localindices[i] = i;
 	unsigned long long localCount = data.R(), totalCount;
@@ -280,7 +278,7 @@ void Process(MPI_Datatype type) {
         std::cout << "rank 0 init centers" << std::endl << std::flush;
         if (!LoadCenters(args.newTCenters, args._K, args._D)) {
             if (options.m_seed >= 0) std::srand(options.m_seed);
-            COMMON::InitCenters<T>(data, localindices, 0, data.R(), args, options.m_distMethod, options.m_localSamples, options.m_initIter);
+            COMMON::InitCenters<T>(data, localindices, 0, data.R(), args, options.m_localSamples, options.m_initIter);
         }
     }
 
@@ -311,7 +309,7 @@ void Process(MPI_Datatype type) {
 
         if (rank == 0) {
             MPI_Reduce(MPI_IN_PLACE, args.newCenters, args._K * args._D, MPI_FLOAT, MPI_SUM, 0, MPI_COMM_WORLD);
-            currDiff = COMMON::RefineCenters<T>(data, args, options.m_distMethod);
+            currDiff = COMMON::RefineCenters<T>(data, args);
             std::cout << "iter " << iteration << " dist:" << currDist << " diff:" << currDiff << std::endl << std::flush;
         } else
             MPI_Reduce(args.newCenters, args.newCenters, args._K * args._D, MPI_FLOAT, MPI_SUM, 0, MPI_COMM_WORLD);

@@ -54,7 +54,7 @@ namespace SPTAG
             void Rebuild(const Dataset<T>& data)
             {
                 COMMON::KDTree newTrees(*this);
-                newTrees.BuildTrees<T>(data, nullptr, 1);
+                newTrees.BuildTrees<T>(data, 1);
 
                 std::unique_lock<std::shared_timed_mutex> lock(*m_lock);
                 m_pTreeRoots.swap(newTrees.m_pTreeRoots);
@@ -62,7 +62,7 @@ namespace SPTAG
             }
 
             template <typename T>
-            void BuildTrees(const Dataset<T>& data, std::vector<SizeType>* indices = nullptr, int numOfThreads = omp_get_num_threads())
+            void BuildTrees(const Dataset<T>& data, int numOfThreads, std::vector<SizeType>* indices = nullptr)
             {
                 std::vector<SizeType> localindices;
                 if (indices == nullptr) {
