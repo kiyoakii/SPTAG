@@ -381,7 +381,7 @@ namespace SPTAG
                         }
                         else { // clustering the data into BKTKmeansK clusters
                             if (dynamicK) {
-                                args._DK = std::min<int>((item.last - item.first) / m_iBKTLeafSize + 1, args._DK);
+                                args._DK = std::min<int>((item.last - item.first) / m_iBKTLeafSize + 1, m_iBKTKmeansK);
                                 args._DK = std::max<int>(args._DK, 2);
                             }
 
