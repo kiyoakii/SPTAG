@@ -169,7 +169,7 @@ namespace SPTAG {
                         }
                     }
 
-                    fprintf(stderr, "TotalPageNumbers: %d, IndexSize: %lu\n", currPageNum, static_cast<uint64_t>(currPageNum)* c_pageSize + currOffset);
+                    fprintf(stderr, "TotalPageNumbers: %d, IndexSize: %llu\n", currPageNum, static_cast<uint64_t>(currPageNum)* c_pageSize + currOffset);
                 }
 
 
@@ -259,7 +259,7 @@ namespace SPTAG {
                         exit(1);
                     }
 
-                    fprintf(stdout, "SubIndex Size: %lu bytes, %lu MBytes\n", listOffset, listOffset >> 20);
+                    fprintf(stdout, "SubIndex Size: %llu bytes, %llu MBytes\n", listOffset, listOffset >> 20);
 
                     listOffset = 0;
 
@@ -324,7 +324,7 @@ namespace SPTAG {
 
                     output.close();
 
-                    fprintf(stdout, "Padded Size: %lu, final total size: %lu.\n", paddedSize, listOffset);
+                    fprintf(stdout, "Padded Size: %llu, final total size: %llu.\n", paddedSize, listOffset);
 
                     fprintf(stdout, "Output done...\n");
                 }
@@ -457,7 +457,7 @@ namespace SPTAG {
                     threads[tid].join();
                 }
 
-                fprintf(stderr, "Searching replicas ended. RNG failed count: %lu\n", static_cast<uint64_t>(rngFailedCountTotal.load()));
+                fprintf(stderr, "Searching replicas ended. RNG failed count: %llu\n", static_cast<uint64_t>(rngFailedCountTotal.load()));
 
                 std::sort(selections.begin(), selections.end(), g_edgeComparer);
 
