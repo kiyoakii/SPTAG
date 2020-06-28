@@ -20,6 +20,7 @@ DefineSSDParameter(m_extraFullGraphFile, string, string(""), "ExtraFullGraphFile
 DefineSSDParameter(m_logFile, string, string(""), "LogFile")
 DefineSSDParameter(m_qpsLimit, int, 0, "QpsLimit")
 DefineSSDParameter(m_resultNum, int, 32, "ResultNum")
+DefineSSDParameter(m_maxCheck, int, 8192, "MaxCheck")
 DefineSSDParameter(m_queryCountLimit, int, (numeric_limits<int>::max)(), "QueryCountLimit")
 
 #endif

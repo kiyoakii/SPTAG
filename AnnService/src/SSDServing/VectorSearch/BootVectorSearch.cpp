@@ -14,7 +14,6 @@ namespace SPTAG {
 					std::cerr << "ERROR: Cannot Load index files!" << std::endl;
 					exit(1);
 				}
-				p_index->SetParameter("NumberOfThreads", std::to_string(p_opts.m_iNumberOfThreads));
 				Helper::IniReader iniReader;
 				if (!p_opts.m_headConfig.empty())
 				{
@@ -28,7 +27,8 @@ namespace SPTAG {
 						p_index->SetParameter(iter.first.c_str(), iter.second.c_str());
 					}
 				}
-
+				p_index->SetParameter("NumberOfThreads", std::to_string(p_opts.m_iNumberOfThreads));
+				p_index->SetParameter("MaxCheck", std::to_string(p_opts.m_maxCheck));
 				fprintf(stdout, "End loading head index. \n");
 			}
 
