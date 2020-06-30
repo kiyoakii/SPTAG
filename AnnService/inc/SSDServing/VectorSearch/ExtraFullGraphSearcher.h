@@ -192,6 +192,117 @@ namespace SPTAG {
                     p_queryResults.SortResult();
                 }
 
+                virtual void Search(ExtraWorkSpace* p_exWorkSpace,
+                    COMMON::QueryResultSet<ValueType>& p_queryResults,
+                    std::shared_ptr<VectorIndex> p_index)
+                {
+                    const uint32_t postingListCount = static_cast<uint32_t>(p_exWorkSpace->m_postingIDs.size());
+
+                    InitWorkSpace(p_exWorkSpace, postingListCount);
+
+                    std::atomic<int> unprocessed = 0;
+                    std::atomic_int32_t diskRead = 0;
+                    int curCheck = 0;
+
+                    for (uint32_t pi = 0; pi < postingListCount; ++pi)
+                    {
+                        auto& request = p_exWorkSpace->m_diskRequests[pi];
+                        request.m_requestID = pi;
+                        request.m_success = false;
+
+                        if (p_exWorkSpace->m_postingIDs[pi] >= m_listCount)
+                        {
+                            continue;
+                        }
+
+                        const auto& listInfo = m_listInfos[p_exWorkSpace->m_postingIDs[pi]];
+                        if (listInfo.listEleCount == 0)
+                        {
+                            continue;
+                        }
+
+                        ++unprocessed;
+                        diskRead += listInfo.listPageCount;
+
+                        size_t totalBytes = static_cast<size_t>(listInfo.listPageCount)* c_pageSize;
+                        auto& buffer = p_exWorkSpace->m_pageBuffers[pi];
+                        buffer.ReservePageBuffer(totalBytes);
+
+                        request.m_buffer = buffer.GetBuffer();
+                        request.m_offset = (m_listPageOffset + listInfo.pageNum) * c_pageSize;
+                        request.m_readSize = totalBytes;
+                        
+                        request.m_callback = [&p_exWorkSpace, &request]()
+                        {
+                            request.m_success = true;
+                            ::PostQueuedCompletionStatus(p_exWorkSpace->m_processIocp.GetHandle(),
+                                0,
+                                NULL,
+                                reinterpret_cast<LPOVERLAPPED>(&request));
+                        };
+
+                        if (!m_indexFile->ReadFileAsync(request))
+                        {
+                            ::PostQueuedCompletionStatus(p_exWorkSpace->m_processIocp.GetHandle(),
+                                0,
+                                NULL,
+                                reinterpret_cast<LPOVERLAPPED>(&request));
+                        }
+                    }
+
+                    // NEW SECTION
+                    DWORD cBytes;
+                    ULONG_PTR key;
+                    OVERLAPPED* ol;
+                    HANDLE iocp = p_exWorkSpace->m_processIocp.GetHandle();
+
+                    while (unprocessed > 0)
+                    {
+                        BOOL ret = ::GetQueuedCompletionStatus(iocp,
+                            &cBytes,
+                            &key,
+                            &ol,
+                            INFINITE);
+
+                        if (FALSE == ret || nullptr == ol)
+                        {
+                            break;
+                        }
+
+                        auto request = reinterpret_cast<DiskListRequest*>(ol);
+                        uint32_t pi = request->m_requestID;
+
+                        --unprocessed;
+
+                        if (request->m_success)
+                        {
+                            const auto& vi = p_exWorkSpace->m_postingIDs[pi];
+                            const auto& listInfo = m_listInfos[vi];
+                            auto& buffer = p_exWorkSpace->m_pageBuffers[pi];
+
+                            for (int i = 0; i < listInfo.listEleCount; ++i)
+                            {
+                                std::uint8_t* vectorInfo = buffer.GetBuffer() + listInfo.pageOffset + i * m_vectorInfoSize;
+                                int vectorID = *(reinterpret_cast<int*>(vectorInfo));
+                                vectorInfo += sizeof(int);
+
+                                if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID))
+                                {
+                                    continue;
+                                }
+
+                                auto distance2leaf = p_index->ComputeDistance(p_queryResults.GetTarget(),
+                                    vectorInfo);
+
+                                p_queryResults.AddPoint(vectorID, distance2leaf);
+
+                            }
+                        }
+                    }
+                    // OLD SECTION
+
+                    p_queryResults.SortResult();
+                }
 
             private:
                 struct ListInfo

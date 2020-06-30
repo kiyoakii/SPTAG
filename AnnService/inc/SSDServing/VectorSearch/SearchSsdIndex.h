@@ -17,22 +17,19 @@ namespace SPTAG {
                 float recall = 0;
                 for (int i = 0; i < results.size(); i++)
                 {
-                    float thisrecall = 0;
                     for (int id : truth[i])
                     {
                         for (int j = 0; j < K; j++)
                         {
                             if (results[i].GetResult(j)->VID == id)
                             {
-                                thisrecall += 1;
+                                recall++;
                                 break;
                             }
                         }
                     }
-                    recall += thisrecall / K;
                 }
-                recall /= results.size();
-                return recall;
+                return static_cast<float>(recall)/static_cast<float>(results.size() * K);
             }
 
             void LoadTruthTXT(std::string truthPath, std::vector<std::set<int>>& truth, int K, SizeType p_iTruthNumber)
@@ -87,6 +84,29 @@ namespace SPTAG {
                 in.close();
             }
 
+            void LoadTruthDefault(std::string truthPath, std::vector<std::set<int>>& truth, int K, SizeType p_iTruthNumber) {
+                std::ifstream in(truthPath, std::ifstream::binary);
+                if (!in) {
+                    fprintf(stderr, "Error: Failed to read input file: %s \n", truthPath.c_str());
+                    exit(1);
+                }
+                int row, column;
+                in.read(reinterpret_cast<char*>(&row), 4);
+                in.read(reinterpret_cast<char*>(&column), 4);
+                truth.clear();
+                truth.resize(row);
+                std::vector<int> vec;
+                vec.reserve(column);
+                for (size_t i = 0; i < row; i++)
+                {
+                    vec.clear();
+                    vec.resize(column);
+                    in.read(reinterpret_cast<char*>(vec.data()), 4 * column);
+                    truth[i].clear();
+                    truth[i].insert(vec.begin(), vec.begin() + K);
+                }
+            }
+
             void LoadTruth(std::string truthPath, std::vector<std::set<int>>& truth, int NumQuerys, int K)
             {
                 if (COMMON_OPTS.m_truthType == TruthFileType::TXT)
@@ -96,6 +116,9 @@ namespace SPTAG {
                 else if (COMMON_OPTS.m_truthType == TruthFileType::XVEC)
                 {
                     LoadTruthXVEC(truthPath, truth, K, NumQuerys);
+                }
+                else if (COMMON_OPTS.m_truthType == TruthFileType::DEFAULT) {
+                    LoadTruthDefault(truthPath, truth, K, NumQuerys);
                 }
                 else
                 {

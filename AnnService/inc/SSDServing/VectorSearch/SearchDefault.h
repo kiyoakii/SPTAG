@@ -21,14 +21,17 @@
 namespace SPTAG {
 	namespace SSDServing {
 		namespace VectorSearch {
+			// LARGE_INTEGER g_systemPerfFreq;
 
 			template <typename ValueType>
 			class SearchDefault : public SearchProcessor<ValueType>
 			{
 			public:
 				SearchDefault()
+					:m_workspaces(128)
 				{
 					m_tids = 0;
+					//QueryPerformanceFrequency(&g_systemPerfFreq);
 				}
 
 				virtual ~SearchDefault()
@@ -64,6 +67,8 @@ namespace SPTAG {
 				{
 					LoadHeadIndex(p_config, m_index);
 					if (m_index->GetVectorValueType() != GetEnumValueType<ValueType>()) {
+						std::cout << SPTAG::Helper::Convert::ConvertToString(m_index->GetVectorValueType()) << std::endl;
+						std::cout << SPTAG::Helper::Convert::ConvertToString(GetEnumValueType<ValueType>()) << std::endl;
 						fprintf(stderr, "Head index and vectors don't have the same value type.\n");
 						exit(1);
 					}
@@ -116,6 +121,9 @@ namespace SPTAG {
 
 				virtual void Search(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats)
 				{
+					//LARGE_INTEGER qpcStartTime;
+					//LARGE_INTEGER qpcEndTime;
+					//QueryPerformanceCounter(&qpcStartTime);
 					TimeUtils::StopW sw;
 					double StartingTime, EndingTime, ExEndingTime;
 
@@ -162,10 +170,55 @@ namespace SPTAG {
 					}
 
 					ExEndingTime = sw.getElapsedMs();
+					//QueryPerformanceCounter(&qpcEndTime);
+					//unsigned __int32 latency = static_cast<unsigned __int32>(static_cast<double>(qpcEndTime.QuadPart - qpcStartTime.QuadPart) * 1000000 / g_systemPerfFreq.QuadPart);
 
 					p_stats.m_exLatency = ExEndingTime - EndingTime;
 					p_stats.m_totalSearchLatency = ExEndingTime - StartingTime;
 					p_stats.m_totalLatency = p_stats.m_totalSearchLatency;
+					//p_stats.m_totalLatency = latency * 1.0;
+				}
+
+				//this is for use of ANNIndexTestTool
+				virtual void Search(COMMON::QueryResultSet<ValueType>& p_queryResults)
+				{
+					m_index->SearchIndex(p_queryResults);
+
+					ExtraWorkSpace* auto_ws = nullptr;
+					if (nullptr != m_extraSearcher)
+					{
+						auto_ws = GetWs();
+						auto_ws->m_postingIDs.clear();
+
+						for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
+						{
+							auto res = p_queryResults.GetResult(i);
+							if (res->VID != -1)
+							{
+								auto_ws->m_postingIDs.emplace_back(res->VID);
+							}
+						}
+					}
+
+					if (m_vectorTranslateMap != nullptr)
+					{
+						for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
+						{
+							auto res = p_queryResults.GetResult(i);
+							if (res->VID != -1)
+							{
+								res->VID = static_cast<int>(m_vectorTranslateMap[res->VID]);
+							}
+						}
+					}
+
+					if (nullptr != m_extraSearcher)
+					{
+						p_queryResults.Reverse();
+
+						m_extraSearcher->Search(auto_ws, p_queryResults, m_index);
+						RetWs(auto_ws);
+					}
 				}
 
 				class SearchAsyncJob : public SPTAG::Helper::ThreadPool::Job
@@ -229,7 +282,7 @@ namespace SPTAG {
 					}
 				}
 
-			private:
+			protected:
 				void ProcessAsyncSearch(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, std::function<void()> p_callback)
 				{
 					static thread_local int tid = m_tids.fetch_add(1);
