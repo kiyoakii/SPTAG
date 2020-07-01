@@ -47,7 +47,7 @@ namespace SPTAG {
 				{
 					slOpts.SetParameter(iter.first.c_str(), iter.second.c_str());
 				}
-				SSDServing::SelectHead_BKT::Bootstrap(slOpts);
+				//SSDServing::SelectHead_BKT::Bootstrap(slOpts);
 			}
 			double selectHeadTime = sw.getElapsedSec();
 			sw.reset();
@@ -60,7 +60,7 @@ namespace SPTAG {
 				{
 					bhOpts.SetParameter(iter.first.c_str(), iter.second.c_str());
 				}
-				SSDServing::BuildHead::Bootstrap(bhOpts);
+				//SSDServing::BuildHead::Bootstrap(bhOpts);
 			}
 			double buildHeadTime = sw.getElapsedSec();
 			sw.reset();
