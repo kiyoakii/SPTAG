@@ -51,6 +51,7 @@ namespace SPTAG {
 						exit(1);
 					}
 					p_index->SetParameter("NumberOfThreads", std::to_string(p_opts.m_iNumberOfThreads));
+					p_index->SetParameter("MaxCheck", std::to_string(p_opts.m_maxCheck));
 					Helper::IniReader iniReader;
 					if (!p_opts.m_headConfig.empty())
 					{

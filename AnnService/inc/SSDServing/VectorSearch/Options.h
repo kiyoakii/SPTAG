@@ -29,6 +29,7 @@ namespace SPTAG {
 				int m_qpsLimit;
 				int m_resultNum;
 				int m_queryCountLimit;
+				int m_maxCheck;
 
 				Options() {
 #define DefineSSDParameter(VarName, VarType, DefaultValue, RepresentStr) \
