@@ -22,13 +22,14 @@ namespace SPTAG {
 
                 struct Edge
                 {
-                    Edge() : headID(INT_MAX), fullID(INT_MAX), distance(FLT_MAX)
+                    Edge() : headID(INT_MAX), fullID(INT_MAX), distance(FLT_MAX), order(0)
                     {
                     }
 
                     int headID;
                     int fullID;
                     float distance;
+					char order;
                 };
 
                 struct EdgeCompare
@@ -362,8 +363,7 @@ namespace SPTAG {
 
                 fprintf(stderr, "Full vector loaded.\n");
 
-                std::vector<Edge> selections;
-                selections.resize(static_cast<size_t>(fullVectors.Count())* p_opts.m_replicaCount);
+                std::vector<Edge> selections(static_cast<size_t>(fullVectors.Count())* p_opts.m_replicaCount);
 
                 std::vector<int> replicaCount(fullVectors.Count(), 0);
                 std::vector<std::atomic_int> postingListSize(searcher.HeadIndex()->GetNumSamples());
@@ -412,7 +412,7 @@ namespace SPTAG {
                                 {
                                     if (queryResults[i].VID == -1)
                                     {
-                                        continue;
+                                        break;
                                     }
 
                                     // RNG Check.
@@ -444,6 +444,7 @@ namespace SPTAG {
                                     selections[selectionOffset + replicaCount[fullID]].headID = queryResults[i].VID;
                                     selections[selectionOffset + replicaCount[fullID]].fullID = fullID;
                                     selections[selectionOffset + replicaCount[fullID]].distance = queryResults[i].Dist;
+									selections[selectionOffset + replicaCount[fullID]].order = (char)replicaCount[fullID];
                                     ++replicaCount[fullID];
                                 }
                             }
@@ -496,12 +497,38 @@ namespace SPTAG {
                     }
 
                     std::size_t selectIdx = std::lower_bound(selections.begin(), selections.end(), i, g_edgeComparer) - selections.begin();
+					/*
+					int deletenum = postingListSize[i] - postingSizeLimit;
+					for (char remove = p_opts.m_replicaCount - 1; deletenum > 0 && remove > 0; remove--)
+					{
+						for (int dropID = postingListSize[i] - 1; deletenum > 0 && dropID >= 0; --dropID)
+						{
+							if (selections[selectIdx + dropID].order == remove) {
+								selections[selectIdx + dropID].order = -1;
+								--replicaCount[selections[selectIdx + dropID].fullID];
+								deletenum--;
+							}
+						}
+					}
+
+					for (int iid = 0; iid < postingSizeLimit + deletenum; iid++) {
+						if (selections[selectIdx + iid].order < 0) {
+							for (int ij = iid + 1; ij < postingListSize[i]; ij++) {
+								if (selections[selectIdx + ij].order >= 0) {
+									std::swap(selections[selectIdx + iid], selections[selectIdx + ij]);
+									break;
+								}
+							}
+						}
+					}
+					*/
+					
                     for (size_t dropID = postingSizeLimit; dropID < postingListSize[i]; ++dropID)
                     {
                         int fullID = selections[selectIdx + dropID].fullID;
                         --replicaCount[fullID];
                     }
-
+					
                     postingListSize[i] = postingSizeLimit;
                 }
 

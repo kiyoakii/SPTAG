@@ -15,7 +15,7 @@
 #include "CommonUtils.h"
 #include "QueryResultSet.h"
 #include "WorkSpace.h"
-#include "DataSet.h"
+#include "Dataset.h"
 #include "DistanceUtils.h"
 
 #pragma warning(disable:4996)  // 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
