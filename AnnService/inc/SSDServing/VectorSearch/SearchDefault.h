@@ -8,215 +8,320 @@
 #include "inc/SSDServing/VectorSearch/ExtraFullGraphSearcherLinux.h"
 #endif
 
-#include "inc/Helper/ThreadPool.h"
+#include "inc/SSDServing/IndexBuildManager/Utils.h"
 #include "inc/SSDServing/VectorSearch/SearchProcessor.h"
-#include "inc/Core/VectorIndex.h"
 #include "inc/SSDServing/VectorSearch/TimeUtils.h"
+#include "inc/Helper/ThreadPool.h"
+#include "inc/Core/VectorIndex.h"
 
 #include <boost/lockfree/stack.hpp>
 
 #include <atomic>
 
-using namespace std;
-
 namespace SPTAG {
-    namespace SSDServing {
-        namespace VectorSearch {
+	namespace SSDServing {
+		namespace VectorSearch {
+			// LARGE_INTEGER g_systemPerfFreq;
 
-            template <typename ValueType>
-            class SearchDefault : public SearchProcessor<ValueType>
-            {
-            public:
-                SearchDefault(shared_ptr<VectorIndex> p_index): m_index(p_index)
-                {
-                    m_tids = 0;
-                }
+			template <typename ValueType>
+			class SearchDefault : public SearchProcessor<ValueType>
+			{
+			public:
+				SearchDefault()
+					:m_workspaces(128)
+				{
+					m_tids = 0;
+					//QueryPerformanceFrequency(&g_systemPerfFreq);
+				}
 
-                virtual ~SearchDefault()
-                {
-                }
+				virtual ~SearchDefault()
+				{
+					ExtraWorkSpace* context;
+					while (m_workspaces.pop(context))
+					{
+						delete context;
+					}
+				}
+
+				void LoadHeadIndex(Options& p_opts, std::shared_ptr<VectorIndex>& p_index) {
+					fprintf(stdout, "Start loading head index. \n");
+
+					if (VectorIndex::LoadIndex(p_opts.m_headIndexFolder, p_index) != ErrorCode::Success) {
+						std::cerr << "ERROR: Cannot Load index files!" << std::endl;
+						exit(1);
+					}
+					p_index->SetParameter("NumberOfThreads", std::to_string(p_opts.m_iNumberOfThreads));
+					p_index->SetParameter("MaxCheck", std::to_string(p_opts.m_maxCheck));
+					Helper::IniReader iniReader;
+					if (!p_opts.m_headConfig.empty())
+					{
+						if (iniReader.LoadIniFile(p_opts.m_headConfig) != ErrorCode::Success) {
+							std::cerr << "ERROR of loading head index config: " << p_opts.m_headConfig << std::endl;
+							exit(1);
+						}
+
+						for (const auto& iter : iniReader.GetParameters("Index"))
+						{
+							p_index->SetParameter(iter.first.c_str(), iter.second.c_str());
+						}
+					}
+
+					fprintf(stdout, "End loading head index. \n");
+				}
+
+				virtual void Setup(Options& p_config)
+				{
+					LoadHeadIndex(p_config, m_index);
+					if (m_index->GetVectorValueType() != GetEnumValueType<ValueType>()) {
+						std::cout << SPTAG::Helper::Convert::ConvertToString(m_index->GetVectorValueType()) << std::endl;
+						std::cout << SPTAG::Helper::Convert::ConvertToString(GetEnumValueType<ValueType>()) << std::endl;
+						fprintf(stderr, "Head index and vectors don't have the same value type.\n");
+						exit(1);
+					}
+
+					if (!p_config.m_buildSsdIndex)
+					{
+						std::string vectorTranslateMap = p_config.m_vectorIDTranslate;
+						std::string extraFullGraphFile = p_config.m_ssdIndex;
+
+						if (!vectorTranslateMap.empty())
+						{
+							m_vectorTranslateMap.reset(new long long[m_index->GetNumSamples()]);
+
+							std::ifstream input(vectorTranslateMap, std::ios::binary);
+							if (!input.is_open())
+							{
+								fprintf(stderr, "failed open %s\n", vectorTranslateMap.c_str());
+								exit(1);
+							}
+
+							input.read(reinterpret_cast<char*>(m_vectorTranslateMap.get()), sizeof(long long) * m_index->GetNumSamples());
+							input.close();
+
+							fprintf(stderr, "Loaded %lu Vector IDs\n", input.gcount() / sizeof(long long));
+						}
+						else
+						{
+							fprintf(stderr, "Config error: VectorTranlateMap Empty for Searching SSD vectors.\n");
+							exit(1);
+						}
+
+						if (!extraFullGraphFile.empty())
+						{
+							fprintf(stderr, "Using FullGraph without cache.\n");
+							m_extraSearcher.reset(new ExtraFullGraphSearcher<ValueType>(extraFullGraphFile));
+							m_extraSearcher->Setup(p_config);
+						}
+						else {
+							fprintf(stderr, "Config error: SsdIndex empty for Searching SSD vectors.\n");
+							exit(1);
+						}
+					}
+				}
+
+				void Setup(const char* configFile) {
+					VectorSearch::Options opts;
+					readSearchSSDSec(configFile, opts);
+					Setup(opts);
+				}
+
+				virtual void Search(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats)
+				{
+					//LARGE_INTEGER qpcStartTime;
+					//LARGE_INTEGER qpcEndTime;
+					//QueryPerformanceCounter(&qpcStartTime);
+					TimeUtils::StopW sw;
+					double StartingTime, EndingTime, ExEndingTime;
+
+					StartingTime = sw.getElapsedMs();
+
+					m_index->SearchIndex(p_queryResults);
+
+					EndingTime = sw.getElapsedMs();
+
+					ExtraWorkSpace* auto_ws = nullptr;
+					if (nullptr != m_extraSearcher)
+					{
+						auto_ws = GetWs();
+						auto_ws->m_postingIDs.clear();
+
+						for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
+						{
+							auto res = p_queryResults.GetResult(i);
+							if (res->VID != -1)
+							{
+								auto_ws->m_postingIDs.emplace_back(res->VID);
+							}
+						}
+					}
+
+					if (m_vectorTranslateMap != nullptr)
+					{
+						for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
+						{
+							auto res = p_queryResults.GetResult(i);
+							if (res->VID != -1)
+							{
+								res->VID = static_cast<int>(m_vectorTranslateMap[res->VID]);
+							}
+						}
+					}
+
+					if (nullptr != m_extraSearcher)
+					{
+						p_queryResults.Reverse();
+
+						m_extraSearcher->Search(auto_ws, p_queryResults, m_index, p_stats);
+						RetWs(auto_ws);
+					}
+
+					ExEndingTime = sw.getElapsedMs();
+					//QueryPerformanceCounter(&qpcEndTime);
+					//unsigned __int32 latency = static_cast<unsigned __int32>(static_cast<double>(qpcEndTime.QuadPart - qpcStartTime.QuadPart) * 1000000 / g_systemPerfFreq.QuadPart);
+
+					p_stats.m_exLatency = ExEndingTime - EndingTime;
+					p_stats.m_totalSearchLatency = ExEndingTime - StartingTime;
+					p_stats.m_totalLatency = p_stats.m_totalSearchLatency;
+					//p_stats.m_totalLatency = latency * 1.0;
+				}
+
+				//this is for use of ANNIndexTestTool
+				virtual void Search(COMMON::QueryResultSet<ValueType>& p_queryResults)
+				{
+					m_index->SearchIndex(p_queryResults);
+
+					ExtraWorkSpace* auto_ws = nullptr;
+					if (nullptr != m_extraSearcher)
+					{
+						auto_ws = GetWs();
+						auto_ws->m_postingIDs.clear();
+
+						for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
+						{
+							auto res = p_queryResults.GetResult(i);
+							if (res->VID != -1)
+							{
+								auto_ws->m_postingIDs.emplace_back(res->VID);
+							}
+						}
+					}
+
+					if (m_vectorTranslateMap != nullptr)
+					{
+						for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
+						{
+							auto res = p_queryResults.GetResult(i);
+							if (res->VID != -1)
+							{
+								res->VID = static_cast<int>(m_vectorTranslateMap[res->VID]);
+							}
+						}
+					}
+
+					if (nullptr != m_extraSearcher)
+					{
+						p_queryResults.Reverse();
+
+						m_extraSearcher->Search(auto_ws, p_queryResults, m_index);
+						RetWs(auto_ws);
+					}
+				}
+
+				class SearchAsyncJob : public SPTAG::Helper::ThreadPool::Job
+				{
+				private:
+					SearchDefault* m_processor;
+					COMMON::QueryResultSet<ValueType>& m_queryResults;
+					SearchStats& m_stats;
+					std::function<void()> m_callback;
+				public:
+					SearchAsyncJob(SearchDefault* p_processor,
+						COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, std::function<void()> p_callback)
+						: m_processor(p_processor),
+						m_queryResults(p_queryResults), m_stats(p_stats), m_callback(p_callback) {}
+
+					~SearchAsyncJob() {}
+
+					void exec() {
+						m_processor->ProcessAsyncSearch(m_queryResults, m_stats, std::move(m_callback));
+					}
+				};
+
+				virtual void SearchAsync(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, std::function<void()> p_callback)
+				{
+					p_stats.m_searchRequestTime = std::chrono::steady_clock::now();
+
+					SearchAsyncJob* curJob = new SearchAsyncJob(this, p_queryResults, p_stats, p_callback);
+
+					m_threadPool->add(curJob);
+				}
 
 
-                virtual void Setup(Options& p_config)
-                {   
-                    std::string vectorTranslateMap = p_config.m_vectorIDTranslate;
-                    std::string extraFullGraphFile = p_config.m_extraFullGraphFile;
+				virtual void SetHint(int p_threadNum, int p_resultNum, bool p_asyncCall, const Options& p_opts)
+				{
+					fprintf(stderr, "ThreadNum: %d, ResultNum: %d, AsyncCall: %d\n", p_threadNum, p_resultNum, p_asyncCall ? 1 : 0);
 
-                    if (!vectorTranslateMap.empty())
-                    {
-                        m_vectorTranslateMap.reset(new long long[m_index->GetNumSamples()]);
+					if (p_asyncCall)
+					{
+						m_threadPool.reset(new Helper::ThreadPool());
+						m_threadPool->init(p_threadNum);
+					}
+				}
 
-                        std::ifstream input(vectorTranslateMap, std::ios::binary);
-                        if (!input.is_open())
-                        {
-                            fprintf(stderr, "failed open %s\n", vectorTranslateMap.c_str());
-                            exit(1);
-                        }
+				std::shared_ptr<VectorIndex> HeadIndex() {
+					return m_index;
+				}
 
-                        input.read(reinterpret_cast<char*>(m_vectorTranslateMap.get()), sizeof(long long)* m_index->GetNumSamples());
-                        input.close();
+				virtual ExtraWorkSpace* GetWs() {
+					ExtraWorkSpace* ws = nullptr;
+					if (!m_workspaces.pop(ws)) {
+						ws = new ExtraWorkSpace();
+					}
 
-                        fprintf(stderr, "Loaded %zu Vector IDs\n", input.gcount() / sizeof(long long));
-                    }
+					return ws;
+				}
 
-                    if (!extraFullGraphFile.empty())
-                    {
-                        fprintf(stderr, "Using FullGraph without cache.\n");
-                        m_extraSearcher.reset(new ExtraFullGraphSearcher<ValueType>(extraFullGraphFile));
-                        m_extraSearcher->Setup(p_config);
-                    }
-                }
+				virtual void RetWs(ExtraWorkSpace* ws) {
+					if (ws != nullptr)
+					{
+						m_workspaces.push(ws);
+					}
+				}
 
+			protected:
+				void ProcessAsyncSearch(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, std::function<void()> p_callback)
+				{
+					static thread_local int tid = m_tids.fetch_add(1);
 
-                virtual void Search(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats)
-                {
-                    TimeUtils::StopW sw;
-                    double StartingTime, EndingTime, ExEndingTime;
+					std::chrono::steady_clock::time_point startPoint = std::chrono::steady_clock::now();
+					p_stats.m_queueLatency = TimeUtils::getMsInterval(p_stats.m_searchRequestTime, startPoint);
 
-                    StartingTime = sw.getElapsedMs();
+					p_stats.m_threadID = tid;
 
-                    m_index->SearchIndex(p_queryResults);
+					static thread_local std::chrono::steady_clock::time_point m_lastQuit = startPoint;
+					p_stats.m_sleepLatency = TimeUtils::getMsInterval(m_lastQuit, startPoint);
 
-                    EndingTime = sw.getElapsedMs();
+					Search(p_queryResults, p_stats);
 
-                    ExtraWorkSpace* auto_ws = nullptr;
-                    if (nullptr != m_extraSearcher)
-                    {
-                        auto_ws = GetWs();
-                        auto_ws->m_postingIDs.clear();
+					p_stats.m_totalLatency = TimeUtils::getMsInterval(p_stats.m_searchRequestTime, std::chrono::steady_clock::now());
 
-                        for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
-                        {
-                            auto res = p_queryResults.GetResult(i);
-                            if (res->VID != -1)
-                            {
-                                auto_ws->m_postingIDs.emplace_back(res->VID);
-                            }
-                        }
-                    }
+					p_callback();
 
-                    if (m_vectorTranslateMap != nullptr)
-                    {
-                        for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
-                        {
-                            auto res = p_queryResults.GetResult(i);
-                            if (res->VID != -1)
-                            {
-                                res->VID = static_cast<int>(m_vectorTranslateMap[res->VID]);
-                            }
-                        }
-                    }
+					m_lastQuit = std::chrono::steady_clock::now();
+				}
 
-                    if (nullptr != m_extraSearcher)
-                    {
-                        p_queryResults.Reverse();
+				std::shared_ptr<VectorIndex> m_index;
 
-                        m_extraSearcher->Search(auto_ws, p_queryResults, m_index, p_stats);
-                        RetWs(auto_ws);
-                    }
+				std::unique_ptr<long long[]> m_vectorTranslateMap;
 
-                    ExEndingTime = sw.getElapsedMs();
+				std::unique_ptr<IExtraSearcher<ValueType>> m_extraSearcher;
 
-                    p_stats.m_exLatency = ExEndingTime - EndingTime;
-                    p_stats.m_totalSearchLatency = ExEndingTime - StartingTime;
-                    p_stats.m_totalLatency = p_stats.m_totalSearchLatency;
-                }
+				std::unique_ptr<Helper::ThreadPool> m_threadPool;
 
-                class SearchAsyncJob : public SPTAG::Helper::ThreadPool::Job
-                {
-                private:
-                    SearchDefault* m_processor;
-                    COMMON::QueryResultSet<ValueType>& m_queryResults;
-                    SearchStats& m_stats;
-                    std::function<void()> m_callback;
-                public:
-                    SearchAsyncJob(SearchDefault* p_processor,
-                        COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, std::function<void()> p_callback)
-                        : m_processor(p_processor),
-                        m_queryResults(p_queryResults), m_stats(p_stats), m_callback(p_callback) {}
+				std::atomic<std::int32_t> m_tids;
 
-                    ~SearchAsyncJob() {}
-
-                    void exec() {
-                        m_processor->ProcessAsyncSearch(m_queryResults, m_stats, std::move(m_callback));
-                    }
-                };
-
-                virtual void SearchAsync(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, std::function<void()> p_callback)
-                {
-                    p_stats.m_searchRequestTime = std::chrono::steady_clock::now();
-                    
-                    SearchAsyncJob* curJob = new SearchAsyncJob(this, p_queryResults, p_stats, p_callback);
-
-                    m_threadPool->add(curJob);
-                }
-
-
-                virtual void SetHint(int p_threadNum, int p_resultNum, bool p_asyncCall, const Options& p_opts)
-                {
-                    fprintf(stderr, "ThreadNum: %d, ResultNum: %d, AsyncCall: %d\n", p_threadNum, p_resultNum, p_asyncCall ? 1 : 0);
-
-                    if (p_asyncCall)
-                    {
-                        m_threadPool.reset(new Helper::ThreadPool());
-                        m_threadPool->init(p_threadNum);
-                    }
-                }
-
-                virtual shared_ptr<VectorIndex> HeadIndex() {
-                    return m_index;
-                }
-
-                virtual ExtraWorkSpace* GetWs() {
-                    ExtraWorkSpace* ws = nullptr;
-                    if (!m_workspaces.pop(ws)) {
-                        ws = new ExtraWorkSpace();
-                    }
-
-                    return ws;
-                }
-
-                virtual void RetWs(ExtraWorkSpace* ws) {
-                    if (ws != nullptr)
-                    {
-                        m_workspaces.push(ws);
-                    }
-                }
-
-            private:
-                void ProcessAsyncSearch(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, std::function<void()> p_callback)
-                {
-                    static thread_local int tid = m_tids.fetch_add(1);
-
-                    std::chrono::steady_clock::time_point startPoint = std::chrono::steady_clock::now();
-                    p_stats.m_queueLatency = TimeUtils::getMsInterval(p_stats.m_searchRequestTime, startPoint);
-
-                    p_stats.m_threadID = tid;
-
-                    static thread_local std::chrono::steady_clock::time_point m_lastQuit = startPoint;
-                    p_stats.m_sleepLatency = TimeUtils::getMsInterval(m_lastQuit, startPoint);
-
-                    Search(p_queryResults, p_stats);
-
-                    p_stats.m_totalLatency = TimeUtils::getMsInterval(p_stats.m_searchRequestTime, std::chrono::steady_clock::now());
-
-                    p_callback();
-
-                    m_lastQuit = std::chrono::steady_clock::now();
-                }
-
-                shared_ptr<VectorIndex> m_index;
-
-                std::unique_ptr<long long[]> m_vectorTranslateMap;
-
-                std::unique_ptr<IExtraSearcher<ValueType>> m_extraSearcher;
-                
-                std::unique_ptr<Helper::ThreadPool> m_threadPool;
-
-                std::atomic<std::int32_t> m_tids;
-
-                boost::lockfree::stack<ExtraWorkSpace*> m_workspaces;
-            };
-        }
-    }
+				boost::lockfree::stack<ExtraWorkSpace*> m_workspaces;
+			};
+		}
+	}
 }

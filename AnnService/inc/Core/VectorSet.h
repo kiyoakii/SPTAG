@@ -42,7 +42,7 @@ public:
                    DimensionType p_dimension,
                    SizeType p_vectorCount);
 
-    BasicVectorSet(const char* p_filePath, VectorValueType p_valueType,
+    BasicVectorSet(std::string p_filePath, VectorValueType p_valueType,
         DimensionType p_dimension, SizeType p_vectorCount, VectorFileType p_fileType, std::string p_delimiter, DistCalcMethod p_distCalcMethod);
 
     virtual ~BasicVectorSet();
@@ -74,12 +74,12 @@ private:
 
     size_t m_perVectorDataSize;
 
-    void readXvec(const char* p_filePath, VectorValueType p_valueType,
+    void readXvec(std::string p_filePath, VectorValueType p_valueType,
         DimensionType p_dimension, SizeType p_vectorCount);
 
-    void readDefault(const char* p_filePath, VectorValueType p_valueType);
+    void readDefault(std::string p_filePath, VectorValueType p_valueType);
 
-    void readTxt(const char* p_filePath, VectorValueType p_valueType, 
+    void readTxt(std::string p_filePath, VectorValueType p_valueType,
         DimensionType p_dimension, std::string p_delimiter);
 };
 

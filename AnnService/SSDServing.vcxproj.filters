@@ -136,6 +136,18 @@
     <ClInclude Include="inc\SSDServing\VectorSearch\TimeUtils.h">
       <Filter>VectorSearch\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="inc\SSDServing\IndexBuildManager\CommonDefines.h">
+      <Filter>IndexBuildManager\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\SSDServing\IndexBuildManager\Options.h">
+      <Filter>IndexBuildManager\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\SSDServing\IndexBuildManager\ParameterDefinitionList.h">
+      <Filter>IndexBuildManager\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\SSDServing\IndexBuildManager\Utils.h">
+      <Filter>IndexBuildManager\Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\SSDServing\SelectHead_BKT\SelectHead.cpp">
@@ -170,6 +182,9 @@
     </ClCompile>
     <ClCompile Include="src\SSDServing\VectorSearch\VectorSearchUtils.cpp">
       <Filter>VectorSearch\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SSDServing\IndexBuildManager\Utils.cpp">
+      <Filter>IndexBuildManager\Source Files</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
