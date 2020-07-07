@@ -425,10 +425,6 @@ namespace SPTAG {
 
                 std::shared_ptr<IDiskFileReader> m_indexFile;
 
-                int m_parallelLoadPercentage;
-
-                int m_maxCheck;
-
                 int m_iDataDimension;
 
                 int m_listCount;

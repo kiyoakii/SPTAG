@@ -36,6 +36,11 @@ namespace SPTAG {
 
 				virtual ~SearchDefault()
 				{
+					ExtraWorkSpace* context;
+					while (m_workspaces.pop(context))
+					{
+						delete context;
+					}
 				}
 
 				void LoadHeadIndex(Options& p_opts, std::shared_ptr<VectorIndex>& p_index) {
