@@ -69,6 +69,9 @@ namespace SPTAG {
 			}
 
 			double selectHeadTime = sw.getElapsedSec();
+			fprintf(stdout, "select head time: %.2lf\n",
+				selectHeadTime
+			);
 			sw.reset();
 
 			SSDServing::BuildHead::Options bhOpts;
@@ -82,6 +85,10 @@ namespace SPTAG {
 			}
 
 			double buildHeadTime = sw.getElapsedSec();
+			fprintf(stdout, "select head time: %.2lf\nbuild head time: %.2lf\n",
+				selectHeadTime,
+				buildHeadTime
+			);
 			sw.reset();
 
 			SSDServing::VectorSearch::Options vsOpts;
@@ -95,6 +102,11 @@ namespace SPTAG {
 			}
 
 			double buildSSDTime = sw.getElapsedSec();
+			fprintf(stdout, "select head time: %.2lf\nbuild head time: %.2lf\nbuild ssd time: %.2lf\n",
+				selectHeadTime,
+				buildHeadTime,
+				buildSSDTime
+			);
 			sw.reset();
 
 			VectorSearch::Options opts;
@@ -128,7 +140,7 @@ namespace SPTAG {
 
 			double searchSSDTime = sw.getElapsedSec();
 
-			fprintf(stderr, "select head time: %.2lf\nbuild head time: %.2lf\nbuild ssd time: %.2lf\nsearch ssd time: %.2lf\n",
+			fprintf(stdout, "select head time: %.2lf\nbuild head time: %.2lf\nbuild ssd time: %.2lf\nsearch ssd time: %.2lf\n",
 				selectHeadTime,
 				buildHeadTime,
 				buildSSDTime,
