@@ -186,5 +186,8 @@
     <ClCompile Include="src\SSDServing\IndexBuildManager\Utils.cpp">
       <Filter>IndexBuildManager\Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\SSDServing\VectorSearch\ExtraFullGraphSearcher.cpp">
+      <Filter>VectorSearch\Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

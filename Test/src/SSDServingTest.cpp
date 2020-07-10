@@ -85,17 +85,23 @@ break; \
 	}
 }
 
-std::string CreateBaseConfig(SPTAG::VectorValueType p_valueType, SPTAG::DistCalcMethod p_distCalcMethod, SPTAG::DimensionType p_dim,
+std::string CreateBaseConfig(SPTAG::VectorValueType p_valueType, SPTAG::DistCalcMethod p_distCalcMethod, 
+	SPTAG::IndexAlgoType p_indexAlgoType, SPTAG::DimensionType p_dim,
 	std::string p_vectorPath, SPTAG::VectorFileType p_vectorType, SPTAG::SizeType p_vectorSize, std::string p_vectorDelimiter,
 	std::string p_queryPath, SPTAG::VectorFileType p_queryType, SPTAG::SizeType p_querySize, std::string p_queryDelimiter,
 	std::string p_warmupPath, SPTAG::VectorFileType p_warmupType, SPTAG::SizeType p_warmupSize, std::string p_warmupDelimiter,
 	std::string p_truthPath, SPTAG::TruthFileType p_truthType,
-	bool p_generateTruth
+	bool p_generateTruth,
+	std::string p_headIDFile,
+	std::string p_headVectorsFile,
+	std::string p_headIndexFolder,
+	std::string p_ssdIndex
 ) {
 	std::ostringstream config;
 	config << "[Base]" << std::endl;
 	config << "ValueType=" << SPTAG::Helper::Convert::ConvertToString(p_valueType) << std::endl;
 	config << "DistCalcMethod=" << SPTAG::Helper::Convert::ConvertToString(p_distCalcMethod) << std::endl;
+	config << "IndexAlgoType=" << SPTAG::Helper::Convert::ConvertToString(p_indexAlgoType) << std::endl;
 	config << "Dim=" << p_dim << std::endl;
 	config << "VectorPath=" << p_vectorPath << std::endl;
 	config << "VectorType=" << SPTAG::Helper::Convert::ConvertToString(p_vectorType) << std::endl;
@@ -112,6 +118,11 @@ std::string CreateBaseConfig(SPTAG::VectorValueType p_valueType, SPTAG::DistCalc
 	config << "TruthPath=" << p_truthPath << std::endl;
 	config << "TruthType=" << SPTAG::Helper::Convert::ConvertToString(p_truthType) << std::endl;
 	config << "GenerateTruth=" << SPTAG::Helper::Convert::ConvertToString(p_generateTruth) << std::endl;
+	config << "IndexDirectory=" << "zbtest" << std::endl;
+	config << "HeadVectorIDs=zbtest\\" << p_headIDFile << std::endl;
+	config << "HeadVectors=zbtest\\" << p_headVectorsFile << std::endl;
+	config << "HeadIndexFolder=zbtest\\" << p_headIndexFolder << std::endl;
+	config << "SSDIndex=zbtest\\" << p_ssdIndex << std::endl;
 	config << std::endl;
 	return config.str();
 }
@@ -129,12 +140,13 @@ void TestHead(std::string configName, std::string OutputIDFile, std::string Outp
 	config << baseConfig;
 
 	config << "[SelectHead]" << std::endl;
+	config << "isExecute=true" << std::endl;
 	config << "TreeNumber=" << "1" << std::endl;
 	config << "BKTKmeansK=" << 3 << std::endl;
 	config << "BKTLeafSize=" << 6 << std::endl;
 	config << "SamplesNumber=" << 100 << std::endl;
 	config << "NumberOfThreads=" << "2" << std::endl;
-	config << "SaveBKT=" << "true" << std::endl;
+	config << "SaveBKT=" << "false" << std::endl;
 
 	config << "AnalyzeOnly=" << "false" << std::endl;
 	config << "CalcStd=" << "true" << std::endl;
@@ -148,16 +160,9 @@ void TestHead(std::string configName, std::string OutputIDFile, std::string Outp
 	config << "RecursiveCheckSmallCluster=" << "true" << std::endl;
 	config << "PrintSizeCount=" << "true" << std::endl;
 
-	config << "OutputIDFile=" << OutputIDFile << std::endl;
-	config << "OutputVectorFile=" << OutputVectorFile << std::endl;
-
 	config.close();
 
-	char arg1[255], arg2[255];
-	strncpy(arg1, "SSDServing", 255);
-	strncpy(arg2, configName.c_str(), 255);
-	char* params[2] = { arg1, arg2 };
-	SPTAG::SSDServing::internalMain(2, params);
+	SPTAG::SSDServing::BootProgram(configName.c_str());
 }
 
 void TestBuildHead(
@@ -203,19 +208,12 @@ void TestBuildHead(
 	config << baseConfig;
 
 	config << "[BuildHead]" << std::endl;
-	config << "HeadVectorFile=" << p_headVectorFile << std::endl;
-	config << "HeadIndex=" << p_headIndexFile << std::endl;
-	config << "IndexAlgoType=" << SPTAG::Helper::Convert::ConvertToString(p_indexAlgoType) << std::endl;
-	config << "BuilderConfigFile=" << p_builderFile << std::endl;
+	config << "isExecute=true" << std::endl;
 	config << "NumberOfThreads=" << 2 << std::endl;
 
 	config.close();
 
-	char arg1[255], arg2[255];
-	strncpy(arg1, "SSDServing", 255);
-	strncpy(arg2, configName.c_str(), 255);
-	char* params[2] = { arg1, arg2 };
-	SPTAG::SSDServing::internalMain(2, params);
+	SPTAG::SSDServing::BootProgram(configName.c_str());
 }
 
 void TestBuildSSDIndex(std::string configName,
@@ -256,13 +254,11 @@ void TestBuildSSDIndex(std::string configName,
 	config << baseConfig;
 
 	config << "[BuildSSDIndex]" << std::endl;
+	config << "isExecute=true" << std::endl;
 	config << "BuildSsdIndex=" << "true" << std::endl;
-	config << "VectorIDTranslate=" << p_vectorIDTranslate << std::endl;
-	config << "HeadIndexFolder=" << p_headIndexFolder << std::endl;
 	config << "InternalResultNum=" << 60 << std::endl;
 	config << "NumberOfThreads=" << 2 << std::endl;
 	config << "HeadConfig=" << p_headConfig << std::endl;
-	config << "SsdIndex=" << p_ssdIndex << std::endl;
 
 	config << "ReplicaCount=" << 4 << std::endl;
 	config << "PostingPageLimit=" << 2 << std::endl;
@@ -270,11 +266,7 @@ void TestBuildSSDIndex(std::string configName,
 
 	config.close();
 
-	char arg1[255], arg2[255];
-	strncpy(arg1, "SSDServing", 255);
-	strncpy(arg2, configName.c_str(), 255);
-	char* params[2] = { arg1, arg2 };
-	SPTAG::SSDServing::internalMain(2, params);
+	SPTAG::SSDServing::BootProgram(configName.c_str());
 }
 
 void TestSearchSSDIndex(
@@ -317,51 +309,41 @@ void TestSearchSSDIndex(
 	config << baseConfig;
 
 	config << "[SearchSSDIndex]" << std::endl;
+	config << "isExecute=true" << std::endl;
 	config << "BuildSsdIndex=" << "false" << std::endl;
-	config << "VectorIDTranslate=" << p_vectorIDTranslate << std::endl;
-	config << "HeadIndexFolder=" << p_headIndexFolder << std::endl;
 	config << "InternalResultNum=" << 64 << std::endl;
 	config << "NumberOfThreads=" << 2 << std::endl;
 	config << "HeadConfig=" << p_headConfig << std::endl;
-	config << "SsdIndex=" << p_ssdIndex << std::endl;
 
 	config << "SearchResult=" << p_searchResult << std::endl;
 	config << "LogFile=" << p_logFile << std::endl;
 	config << "QpsLimit=" << 0 << std::endl;
-	config << "ResultNum=" << 64 << std::endl;
+	config << "ResultNum=" << 32 << std::endl;
+	config << "MaxCheck=" << 2048 << std::endl;
 	config << "QueryCountLimit=" << 10000 << std::endl;
 
 	config.close();
 
-	char arg1[255], arg2[255];
-	strncpy(arg1, "SSDServing", 255);
-	strncpy(arg2, configName.c_str(), 255);
-	char* params[2] = { arg1, arg2 };
-	SPTAG::SSDServing::internalMain(2, params);
+	SPTAG::SSDServing::BootProgram(configName.c_str());
 }
 
 BOOST_AUTO_TEST_SUITE(SSDServingTest)
 
-#define SSDTEST_DIRECTORY_NAME "sddtest"
-#define RAW_VECTOR_NUM 1000
-#define VECTOR_NUM 2000
+// #define RAW_VECTOR_NUM 1000
+#define VECTOR_NUM 1000
 #define QUERY_NUM 10
 #define VECTOR_DIM 100
-//#if defined(_WIN32)
-//#define SSDTEST_DIRECTORY SSDTEST_DIRECTORY_NAME "\\"
-//#else
-//#define SSDTEST_DIRECTORY SSDTEST_DIRECTORY_NAME "/"
-//#endif
-#define SSDTEST_DIRECTORY SSDTEST_DIRECTORY_NAME "/"
 
-#define RAW_VECTORS(VT, FT) SSDTEST_DIRECTORY "vectors_"#VT"_"#FT".bin"
-#define VECTORS(VT, FT) RAW_VECTORS(VT, FT) "," RAW_VECTORS(VT, FT)
-#define QUERIES(VT, FT) SSDTEST_DIRECTORY "vectors_"#VT"_"#FT".query"
-#define TRUTHSET(VT, DM, FT, TFT) SSDTEST_DIRECTORY "vectors_"#VT"_"#DM"_"#FT"_"#TFT".truth"
-#define HEAD_IDS(VT, DM, FT) SSDTEST_DIRECTORY "head_ids_"#VT"_"#DM"_"#FT".bin"
-#define HEAD_VECTORS(VT, DM, FT) SSDTEST_DIRECTORY "head_vectors_"#VT"_"#DM"_"#FT".bin"
-#define HEAD_INDEX(VT, DM, ALGO, FT) SSDTEST_DIRECTORY "head_"#VT"_"#DM"_"#ALGO"_"#FT".head_index"
-#define SSD_INDEX(VT, DM, ALGO, FT) SSDTEST_DIRECTORY "ssd_"#VT"_"#DM"_"#ALGO"_"#FT".ssd_index"
+#define SSDTEST_DIRECTORY_NAME "sddtest"
+#define SSDTEST_DIRECTORY SSDTEST_DIRECTORY_NAME "/"
+// #define RAW_VECTORS(VT, FT)  "vectors_"#VT"_"#FT".bin"
+#define VECTORS(VT, FT) SSDTEST_DIRECTORY "vectors_"#VT"_"#FT".bin"
+#define QUERIES(VT, FT)  SSDTEST_DIRECTORY "vectors_"#VT"_"#FT".query"
+#define TRUTHSET(VT, DM, FT, TFT) SSDTEST_DIRECTORY  "vectors_"#VT"_"#DM"_"#FT"_"#TFT".truth"
+#define HEAD_IDS(VT, DM, FT)  "head_ids_"#VT"_"#DM"_"#FT".bin"
+#define HEAD_VECTORS(VT, DM, FT)  "head_vectors_"#VT"_"#DM"_"#FT".bin"
+#define HEAD_INDEX(VT, DM, ALGO, FT)  "head_"#VT"_"#DM"_"#ALGO"_"#FT".head_index"
+#define SSD_INDEX(VT, DM, ALGO, FT)  "ssd_"#VT"_"#DM"_"#ALGO"_"#FT".ssd_index"
 
 #define SELECT_HEAD_CONFIG(VT, DM, FT) SSDTEST_DIRECTORY "test_head_"#VT"_"#DM"_"#FT".ini"
 #define BUILD_HEAD_CONFIG(VT, DM, ALGO) SSDTEST_DIRECTORY "test_build_head_"#VT"_"#DM"_"#ALGO".ini"
@@ -375,7 +357,7 @@ BOOST_AUTO_TEST_SUITE(SSDServingTest)
 #define GVQ(VT, FT) \
 BOOST_AUTO_TEST_CASE(GenerateVectorsQueries##VT##FT) { \
 boost::filesystem::create_directory(SSDTEST_DIRECTORY_NAME); \
-GenVec(RAW_VECTORS(VT, FT), SPTAG::VectorValueType::VT, SPTAG::VectorFileType::FT, RAW_VECTOR_NUM, VECTOR_DIM); \
+GenVec(VECTORS(VT, FT), SPTAG::VectorValueType::VT, SPTAG::VectorFileType::FT, VECTOR_NUM, VECTOR_DIM); \
 GenVec(QUERIES(VT, FT), SPTAG::VectorValueType::VT, SPTAG::VectorFileType::FT, QUERY_NUM, VECTOR_DIM); \
 } \
 
@@ -395,12 +377,16 @@ BOOST_AUTO_TEST_CASE(TestHead##VT##DM##FT) { \
 	std::string configName = SELECT_HEAD_CONFIG(VT, DM, FT); \
 	std::string OutputIDFile = HEAD_IDS(VT, DM, FT); \
 	std::string OutputVectorFile = HEAD_VECTORS(VT, DM, FT); \
-	std::string base_config = CreateBaseConfig(SPTAG::VectorValueType::VT, SPTAG::DistCalcMethod::DM, VECTOR_DIM, \
+	std::string base_config = CreateBaseConfig(SPTAG::VectorValueType::VT, SPTAG::DistCalcMethod::DM, SPTAG::IndexAlgoType::Undefined, VECTOR_DIM, \
 		VECTORS(VT, FT), SPTAG::VectorFileType::FT, VECTOR_NUM, "", \
 		"", SPTAG::VectorFileType::Undefined, -1, "", \
 		"", SPTAG::VectorFileType::Undefined, -1, "", \
 		"", SPTAG::TruthFileType::Undefined, \
-		false \
+		false, \
+		OutputIDFile, \
+		OutputVectorFile, \
+		"", \
+		"" \
 		); \
 	TestHead(configName, OutputIDFile, OutputVectorFile, base_config);  \
 } \
@@ -429,12 +415,16 @@ WTEV(Int8, Cosine, XVEC)
 BOOST_AUTO_TEST_CASE(TestBuildHead##VT##DM##ALGO##FT) { \
 	std::string configName = BUILD_HEAD_CONFIG(VT, DM, ALGO); \
 	std::string builderFile = BUILD_HEAD_BUILDER_CONFIG(VT, DM, ALGO); \
-	std::string base_config = CreateBaseConfig(SPTAG::VectorValueType::VT, SPTAG::DistCalcMethod::DM, VECTOR_DIM, \
+	std::string base_config = CreateBaseConfig(SPTAG::VectorValueType::VT, SPTAG::DistCalcMethod::DM, SPTAG::IndexAlgoType::ALGO, VECTOR_DIM, \
 		VECTORS(VT, FT), SPTAG::VectorFileType::FT, VECTOR_NUM, "", \
 		"", SPTAG::VectorFileType::Undefined, -1, "", \
 		"", SPTAG::VectorFileType::Undefined, -1, "", \
 		"", SPTAG::TruthFileType::Undefined, \
-		false \
+		false, \
+		"", \
+		HEAD_VECTORS(VT, DM, FT), \
+		HEAD_INDEX(VT, DM, ALGO, FT), \
+		"" \
 		); \
 TestBuildHead( \
 	configName, \
@@ -492,12 +482,16 @@ BDHD(Int16, Cosine, KDT, XVEC)
 #define BDSSD(VT, DM, ALGO, FT) \
 BOOST_AUTO_TEST_CASE(TestBuildSSDIndex##VT##DM##ALGO##FT) { \
 	std::string configName = BUILD_SSD_CONFIG(VT, DM, ALGO); \
-	std::string base_config = CreateBaseConfig(SPTAG::VectorValueType::VT, SPTAG::DistCalcMethod::DM, VECTOR_DIM, \
+	std::string base_config = CreateBaseConfig(SPTAG::VectorValueType::VT, SPTAG::DistCalcMethod::DM, SPTAG::IndexAlgoType::ALGO, VECTOR_DIM, \
 		VECTORS(VT, FT), SPTAG::VectorFileType::FT, VECTOR_NUM, "", \
 		"", SPTAG::VectorFileType::Undefined, -1, "", \
 		"", SPTAG::VectorFileType::Undefined, -1, "", \
 		"", SPTAG::TruthFileType::Undefined, \
-		false \
+		false, \
+		HEAD_IDS(VT, DM, FT), \
+		"", \
+		HEAD_INDEX(VT, DM, ALGO, FT), \
+		SSD_INDEX(VT, DM, ALGO, FT) \
 		); \
 TestBuildSSDIndex(\
 	configName, \
@@ -556,12 +550,16 @@ BDSSD(Int16, Cosine, KDT, XVEC)
 #define SCSSD(VT, DM, ALGO, FT, TFT) \
 BOOST_AUTO_TEST_CASE(TestSearchSSDIndex##VT##DM##ALGO##FT##TFT) { \
 	std::string configName = SEARCH_SSD_CONFIG(VT, DM, ALGO); \
-	std::string base_config = CreateBaseConfig(SPTAG::VectorValueType::VT, SPTAG::DistCalcMethod::DM, VECTOR_DIM, \
+	std::string base_config = CreateBaseConfig(SPTAG::VectorValueType::VT, SPTAG::DistCalcMethod::DM, SPTAG::IndexAlgoType::ALGO, VECTOR_DIM, \
 		VECTORS(VT, FT), SPTAG::VectorFileType::FT, VECTOR_NUM, "", \
 		QUERIES(VT, FT), SPTAG::VectorFileType::FT, QUERY_NUM, "", \
 		QUERIES(VT, FT), SPTAG::VectorFileType::FT, QUERY_NUM, "", \
 		TRUTHSET(VT, DM, FT, TFT), SPTAG::TruthFileType::TFT, \
-		true \
+		true, \
+		HEAD_IDS(VT, DM, FT), \
+		"", \
+		HEAD_INDEX(VT, DM, ALGO, FT), \
+		SSD_INDEX(VT, DM, ALGO, FT) \
 		); \
 TestSearchSSDIndex( \
 	configName, \

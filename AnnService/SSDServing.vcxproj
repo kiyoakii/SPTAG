@@ -28,6 +28,7 @@
     <ClCompile Include="src\SSDServing\VectorSearch\BootVectorSearch.cpp" />
     <ClCompile Include="src\SSDServing\VectorSearch\DiskAccessUtils.cpp" />
     <ClCompile Include="src\SSDServing\VectorSearch\DiskFileReader.cpp" />
+    <ClCompile Include="src\SSDServing\VectorSearch\ExtraFullGraphSearcher.cpp" />
     <ClCompile Include="src\SSDServing\VectorSearch\PrioritizedDiskFileReader.cpp" />
     <ClCompile Include="src\SSDServing\VectorSearch\TimeUtils.cpp" />
     <ClCompile Include="src\SSDServing\VectorSearch\VectorSearchUtils.cpp" />
@@ -93,7 +94,7 @@
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v140</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>

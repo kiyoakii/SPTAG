@@ -338,7 +338,7 @@ namespace SPTAG {
 
                 TimeUtils::StopW sw;
 
-                std::string outputFile = p_opts.m_ssdIndex;
+                std::string outputFile = COMMON_OPTS.m_ssdIndex;
 
                 if (outputFile.empty())
                 {
@@ -350,7 +350,7 @@ namespace SPTAG {
                 int candidateNum = p_opts.m_internalResultNum;
 
                 std::unordered_set<int> headVectorIDS;
-                LoadHeadVectorIDSet(p_opts.m_vectorIDTranslate, headVectorIDS);
+                LoadHeadVectorIDSet(COMMON_OPTS.m_headIDFile, headVectorIDS);
 
                 SearchDefault<ValueType> searcher;
                 fprintf(stderr, "Start setup index...\n");

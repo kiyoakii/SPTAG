@@ -10,13 +10,11 @@ namespace SPTAG {
 			class Options {
 			public:
 				// Both Building and Searching
+				bool m_execute;
 				bool m_buildSsdIndex;
-				std::string m_vectorIDTranslate;
-				std::string m_headIndexFolder;
 				int m_internalResultNum;
 				int m_iNumberOfThreads;
 				std::string m_headConfig;
-				std::string m_ssdIndex;
 
 				// Building
 				int m_replicaCount;

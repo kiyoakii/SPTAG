@@ -56,6 +56,7 @@ if(NOT WIN32)
             ${VECTORSEARCH_IMP_DIR}/DiskAccessUtils.cpp
             ${VECTORSEARCH_IMP_DIR}/DiskFileReader.cpp
             ${VECTORSEARCH_IMP_DIR}/PrioritizedDiskFileReader.cpp
+            ${VECTORSEARCH_IMP_DIR}/ExtraFullGraphSearcher.cpp
             )
 elseif(WIN32)
     list(REMOVE_ITEM SSD_SERVING_HDR_FILES 

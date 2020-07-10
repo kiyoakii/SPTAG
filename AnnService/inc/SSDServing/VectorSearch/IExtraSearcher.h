@@ -90,8 +90,6 @@ namespace SPTAG {
 
                 virtual void InitWorkSpace(ExtraWorkSpace* p_space, int p_resNumHint) = 0;
 
-                virtual void Setup(Options& p_config) = 0;
-
                 virtual void FinishPrepare()
                 {
                 }

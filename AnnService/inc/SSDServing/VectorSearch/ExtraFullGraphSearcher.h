@@ -17,30 +17,7 @@
 namespace SPTAG {
     namespace SSDServing {
         namespace VectorSearch {
-            void ErrorExit()
-            {
-                // Retrieve the system error message for the last-error code
-
-                LPVOID lpMsgBuf;
-                DWORD dw = GetLastError();
-
-                FormatMessage(
-                    FORMAT_MESSAGE_ALLOCATE_BUFFER |
-                    FORMAT_MESSAGE_FROM_SYSTEM |
-                    FORMAT_MESSAGE_IGNORE_INSERTS,
-                    NULL,
-                    dw,
-                    0,
-                    (LPTSTR)&lpMsgBuf,
-                    0, NULL);
-
-                // Display the error message and exit the process
-
-                std::fprintf(stderr, "Failed with: %s\n", (char*)lpMsgBuf);
-
-                LocalFree(lpMsgBuf);
-                ExitProcess(dw);
-            }
+            void ErrorExit();
 
             template <typename ValueType>
             class ExtraFullGraphSearcher : public IExtraSearcher<ValueType>
@@ -70,10 +47,6 @@ namespace SPTAG {
                     {
                         p_space->m_diskRequests.resize(p_resNumHint);
                     }
-                }
-
-                virtual void Setup(Options& p_config)
-                {
                 }
 
                 virtual void Search(ExtraWorkSpace* p_exWorkSpace,
