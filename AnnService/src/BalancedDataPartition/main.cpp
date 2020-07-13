@@ -344,7 +344,7 @@ void Process(MPI_Datatype type) {
 				std::cout << "cluster " << i << " contains vectors:" << args.counts[i] << std::endl << std::flush;
 		}
 		for (int k = 0; k < args._K; k++)
-			myLimit[k] += (totalCount - args.counts[k]) / size;
+			myLimit[k] += (static_cast<SizeType>(totalCount) - args.counts[k]) / size;
 	}
 	d += HardMultipleClustersAssign<T>(data, localindices, 0, data.R(), args, myLimit.data(), options.m_clusterassign - 1, true);
 	std::memcpy(args.newCounts, args.counts, sizeof(SizeType)*args._K);
@@ -362,13 +362,13 @@ void Process(MPI_Datatype type) {
 
     if (options.m_outdir.compare("-") != 0) {
         for (int i = 0; i < args._K; i++) {
-            noImprovement = 0;
             if (i % size == rank) {
                 std::cout << "Cluster " << i << " start ......" << std::endl << std::flush;
-                std::string vecfile = options.m_outdir + "/" + options.m_outfile + "." + std::to_string(i);
-                if (fileexists(vecfile.c_str())) noImprovement = 1;
             }
-            MPI_Bcast(&noImprovement, 1, MPI_INT, i % size, MPI_COMM_WORLD);
+            noImprovement = 0;
+            std::string vecfile = options.m_outdir + "/" + options.m_outfile + "." + std::to_string(i + 1);
+            if (fileexists(vecfile.c_str())) noImprovement = 1;
+            MPI_Allreduce(MPI_IN_PLACE, &noImprovement, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
             if (noImprovement) continue;
 
             if (i % size == rank) {
