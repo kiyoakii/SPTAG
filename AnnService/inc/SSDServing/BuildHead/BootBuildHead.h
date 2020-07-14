@@ -5,7 +5,7 @@
 namespace SPTAG {
 	namespace SSDServing {
 		namespace BuildHead {
-			ErrorCode Bootstrap(Options& opts);
+			ErrorCode Bootstrap(Options& options, const SPTAG::Helper::IniReader::ParameterValueMap& params);
 		}
 	}
 }

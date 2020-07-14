@@ -193,7 +193,7 @@ namespace SPTAG {
 
 
             template <typename ValueType>
-            void SearchSequential(SearchProcessor<ValueType>& p_searcher,
+            void SearchSequential(SearchDefault<ValueType>& p_searcher,
                 int p_numThreads,
                 std::vector<COMMON::QueryResultSet<ValueType>>& p_results,
                 std::vector<SearchStats>& p_stats,
@@ -227,7 +227,7 @@ namespace SPTAG {
 
 
             template <typename ValueType>
-            void SearchAsync(SearchProcessor<ValueType>& p_searcher,
+            void SearchAsync(SearchDefault<ValueType>& p_searcher,
                 uint32_t p_qps,
                 std::vector<COMMON::QueryResultSet<ValueType>>& p_results,
                 std::vector<SearchStats>& p_stats,

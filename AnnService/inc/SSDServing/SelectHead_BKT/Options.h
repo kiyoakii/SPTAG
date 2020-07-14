@@ -8,6 +8,7 @@ namespace SPTAG {
 			class Options {
 			public:
 				// Section 2: for building BKT
+				bool m_execute;
 				int m_iTreeNumber;
 				int m_iBKTKmeansK;
 				int m_iBKTLeafSize; 
@@ -27,9 +28,6 @@ namespace SPTAG {
 				double m_ratio;
 				bool m_recursiveCheckSmallCluster;
 				bool m_printSizeCount;
-				// output
-				std::string m_outputIDFile;
-				std::string m_outputVectorFile;
 				
 				Options() {
 #define DefineSelectHeadParameter(VarName, VarType, DefaultValue, RepresentStr) \

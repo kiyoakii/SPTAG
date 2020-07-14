@@ -9,7 +9,7 @@
 #endif
 
 #include "inc/SSDServing/IndexBuildManager/Utils.h"
-#include "inc/SSDServing/VectorSearch/SearchProcessor.h"
+#include "inc/SSDServing/IndexBuildManager/CommonDefines.h"
 #include "inc/SSDServing/VectorSearch/TimeUtils.h"
 #include "inc/Helper/ThreadPool.h"
 #include "inc/Core/VectorIndex.h"
@@ -24,7 +24,7 @@ namespace SPTAG {
 			// LARGE_INTEGER g_systemPerfFreq;
 
 			template <typename ValueType>
-			class SearchDefault : public SearchProcessor<ValueType>
+			class SearchDefault
 			{
 			public:
 				SearchDefault()
@@ -34,7 +34,7 @@ namespace SPTAG {
 					//QueryPerformanceFrequency(&g_systemPerfFreq);
 				}
 
-				virtual ~SearchDefault()
+				~SearchDefault()
 				{
 					ExtraWorkSpace* context;
 					while (m_workspaces.pop(context))
@@ -43,18 +43,20 @@ namespace SPTAG {
 					}
 				}
 
-				void LoadHeadIndex(Options& p_opts, std::shared_ptr<VectorIndex>& p_index) {
+				void LoadHeadIndex(Options& p_opts) {
 					fprintf(stdout, "Start loading head index. \n");
 
-					if (VectorIndex::LoadIndex(p_opts.m_headIndexFolder, p_index) != ErrorCode::Success) {
-						std::cerr << "ERROR: Cannot Load index files!" << std::endl;
+					if (VectorIndex::LoadIndex(COMMON_OPTS.m_headIndexFolder, m_index) != ErrorCode::Success) {
+						fprintf(stderr, "ERROR: Cannot Load index files!\n");
 						exit(1);
 					}
-					p_index->SetParameter("NumberOfThreads", std::to_string(p_opts.m_iNumberOfThreads));
-					p_index->SetParameter("MaxCheck", std::to_string(p_opts.m_maxCheck));
-					Helper::IniReader iniReader;
+
+					m_index->SetParameter("NumberOfThreads", std::to_string(p_opts.m_iNumberOfThreads));
+					m_index->SetParameter("MaxCheck", std::to_string(p_opts.m_maxCheck));
+
 					if (!p_opts.m_headConfig.empty())
 					{
+						Helper::IniReader iniReader;
 						if (iniReader.LoadIniFile(p_opts.m_headConfig) != ErrorCode::Success) {
 							std::cerr << "ERROR of loading head index config: " << p_opts.m_headConfig << std::endl;
 							exit(1);
@@ -62,70 +64,78 @@ namespace SPTAG {
 
 						for (const auto& iter : iniReader.GetParameters("Index"))
 						{
-							p_index->SetParameter(iter.first.c_str(), iter.second.c_str());
+							m_index->SetParameter(iter.first.c_str(), iter.second.c_str());
 						}
 					}
 
 					fprintf(stdout, "End loading head index. \n");
 				}
 
-				virtual void Setup(Options& p_config)
+				void LoadVectorIdsSSDIndex(std::string vectorTranslateMap, std::string extraFullGraphFile)
 				{
-					LoadHeadIndex(p_config, m_index);
-					if (m_index->GetVectorValueType() != GetEnumValueType<ValueType>()) {
-						std::cout << SPTAG::Helper::Convert::ConvertToString(m_index->GetVectorValueType()) << std::endl;
-						std::cout << SPTAG::Helper::Convert::ConvertToString(GetEnumValueType<ValueType>()) << std::endl;
-						fprintf(stderr, "Head index and vectors don't have the same value type.\n");
+					if (vectorTranslateMap.empty()) {
+						fprintf(stderr, "Config error: VectorTranlateMap Empty for Searching SSD vectors.\n");
 						exit(1);
 					}
 
-					if (!p_config.m_buildSsdIndex)
+					if (extraFullGraphFile.empty()) {
+						fprintf(stderr, "Config error: SsdIndex empty for Searching SSD vectors.\n");
+						exit(1);
+					}
+
+					m_vectorTranslateMap.reset(new long long[m_index->GetNumSamples()]);
+
+					std::ifstream input(vectorTranslateMap, std::ios::binary);
+					if (!input.is_open())
 					{
-						std::string vectorTranslateMap = p_config.m_vectorIDTranslate;
-						std::string extraFullGraphFile = p_config.m_ssdIndex;
+						fprintf(stderr, "failed open %s\n", vectorTranslateMap.c_str());
+						exit(1);
+					}
 
-						if (!vectorTranslateMap.empty())
-						{
-							m_vectorTranslateMap.reset(new long long[m_index->GetNumSamples()]);
+					input.read(reinterpret_cast<char*>(m_vectorTranslateMap.get()), sizeof(long long) * m_index->GetNumSamples());
+					input.close();
 
-							std::ifstream input(vectorTranslateMap, std::ios::binary);
-							if (!input.is_open())
-							{
-								fprintf(stderr, "failed open %s\n", vectorTranslateMap.c_str());
-								exit(1);
-							}
+					fprintf(stderr, "Loaded %lu Vector IDs\n", input.gcount() / sizeof(long long));
+					fprintf(stderr, "Using FullGraph without cache.\n");
 
-							input.read(reinterpret_cast<char*>(m_vectorTranslateMap.get()), sizeof(long long) * m_index->GetNumSamples());
-							input.close();
+					m_extraSearcher.reset(new ExtraFullGraphSearcher<ValueType>(extraFullGraphFile));
+				}
 
-							fprintf(stderr, "Loaded %lu Vector IDs\n", input.gcount() / sizeof(long long));
-						}
-						else
-						{
-							fprintf(stderr, "Config error: VectorTranlateMap Empty for Searching SSD vectors.\n");
-							exit(1);
-						}
-
-						if (!extraFullGraphFile.empty())
-						{
-							fprintf(stderr, "Using FullGraph without cache.\n");
-							m_extraSearcher.reset(new ExtraFullGraphSearcher<ValueType>(extraFullGraphFile));
-							m_extraSearcher->Setup(p_config);
-						}
-						else {
-							fprintf(stderr, "Config error: SsdIndex empty for Searching SSD vectors.\n");
-							exit(1);
-						}
+				void CheckHeadIndexType() {
+					SPTAG::VectorValueType v1 = m_index->GetVectorValueType(), v2 = GetEnumValueType<ValueType>();
+					if (v1 != v2) {
+						fprintf(stderr, "Head index and vectors don't have the same value types, which are %s %s\n",
+							SPTAG::Helper::Convert::ConvertToString(v1),
+							SPTAG::Helper::Convert::ConvertToString(v2)
+						);
+						exit(1);
 					}
 				}
 
-				void Setup(const char* configFile) {
-					VectorSearch::Options opts;
-					readSearchSSDSec(configFile, opts);
-					Setup(opts);
+				void LoadIndex4ANNIndexTestTool(const std::string& p_config,
+					const std::vector<ByteArray>& p_indexBlobs,
+					std::string& vectorTranslateMap,
+					std::string& extraFullGraphFile)
+				{
+					if (VectorIndex::LoadIndex(p_config, p_indexBlobs, m_index) != SPTAG::ErrorCode::Success) {
+						fprintf(stderr, "LoadIndex error in LoadIndex4ANNIndexTestTool.\n");
+						exit(1);
+					}
+					CheckHeadIndexType();
+					LoadVectorIdsSSDIndex(vectorTranslateMap, extraFullGraphFile);
 				}
 
-				virtual void Search(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats)
+				void Setup(Options& p_config)
+				{
+					LoadHeadIndex(p_config);
+					CheckHeadIndexType();
+					if (!p_config.m_buildSsdIndex)
+					{
+						LoadVectorIdsSSDIndex(COMMON_OPTS.m_headIDFile, COMMON_OPTS.m_ssdIndex);
+					}
+				}
+
+				void Search(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats)
 				{
 					//LARGE_INTEGER qpcStartTime;
 					//LARGE_INTEGER qpcEndTime;
@@ -185,46 +195,28 @@ namespace SPTAG {
 					//p_stats.m_totalLatency = latency * 1.0;
 				}
 
-				//this is for use of ANNIndexTestTool
-				virtual void Search(COMMON::QueryResultSet<ValueType>& p_queryResults)
+				void Search4ANNIndexTestTool(COMMON::QueryResultSet<ValueType>& p_queryResults)
 				{
 					m_index->SearchIndex(p_queryResults);
 
 					ExtraWorkSpace* auto_ws = nullptr;
-					if (nullptr != m_extraSearcher)
-					{
-						auto_ws = GetWs();
-						auto_ws->m_postingIDs.clear();
+					auto_ws = GetWs();
+					auto_ws->m_postingIDs.clear();
 
-						for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
+					for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
+					{
+						auto res = p_queryResults.GetResult(i);
+						if (res->VID != -1)
 						{
-							auto res = p_queryResults.GetResult(i);
-							if (res->VID != -1)
-							{
-								auto_ws->m_postingIDs.emplace_back(res->VID);
-							}
+							auto_ws->m_postingIDs.emplace_back(res->VID);
+							res->VID = static_cast<int>(m_vectorTranslateMap[res->VID]);
 						}
 					}
 
-					if (m_vectorTranslateMap != nullptr)
-					{
-						for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
-						{
-							auto res = p_queryResults.GetResult(i);
-							if (res->VID != -1)
-							{
-								res->VID = static_cast<int>(m_vectorTranslateMap[res->VID]);
-							}
-						}
-					}
+					p_queryResults.Reverse();
 
-					if (nullptr != m_extraSearcher)
-					{
-						p_queryResults.Reverse();
-
-						m_extraSearcher->Search(auto_ws, p_queryResults, m_index);
-						RetWs(auto_ws);
-					}
+					m_extraSearcher->Search(auto_ws, p_queryResults, m_index);
+					RetWs(auto_ws);
 				}
 
 				class SearchAsyncJob : public SPTAG::Helper::ThreadPool::Job
@@ -247,7 +239,7 @@ namespace SPTAG {
 					}
 				};
 
-				virtual void SearchAsync(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, std::function<void()> p_callback)
+				void SearchAsync(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, std::function<void()> p_callback)
 				{
 					p_stats.m_searchRequestTime = std::chrono::steady_clock::now();
 
@@ -257,7 +249,7 @@ namespace SPTAG {
 				}
 
 
-				virtual void SetHint(int p_threadNum, int p_resultNum, bool p_asyncCall, const Options& p_opts)
+				void SetHint(int p_threadNum, int p_resultNum, bool p_asyncCall, const Options& p_opts)
 				{
 					fprintf(stderr, "ThreadNum: %d, ResultNum: %d, AsyncCall: %d\n", p_threadNum, p_resultNum, p_asyncCall ? 1 : 0);
 
@@ -272,7 +264,7 @@ namespace SPTAG {
 					return m_index;
 				}
 
-				virtual ExtraWorkSpace* GetWs() {
+				ExtraWorkSpace* GetWs() {
 					ExtraWorkSpace* ws = nullptr;
 					if (!m_workspaces.pop(ws)) {
 						ws = new ExtraWorkSpace();
@@ -281,7 +273,7 @@ namespace SPTAG {
 					return ws;
 				}
 
-				virtual void RetWs(ExtraWorkSpace* ws) {
+				void RetWs(ExtraWorkSpace* ws) {
 					if (ws != nullptr)
 					{
 						m_workspaces.push(ws);

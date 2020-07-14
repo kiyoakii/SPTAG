@@ -10,6 +10,7 @@ namespace SPTAG {
             public:
                 SPTAG::VectorValueType m_valueType;
                 SPTAG::DistCalcMethod m_distCalcMethod;
+                SPTAG::IndexAlgoType m_indexAlgoType;
                 SPTAG::DimensionType m_dim; 
                 std::string m_vectorPath;
                 SPTAG::VectorFileType m_vectorType;
@@ -26,6 +27,11 @@ namespace SPTAG {
                 std::string m_truthPath;
                 SPTAG::TruthFileType m_truthType;
                 bool m_generateTruth;
+                std::string m_indexDirectory;
+                std::string m_headIDFile;
+                std::string m_headVectorFile;
+                std::string m_headIndexFolder;
+                std::string m_ssdIndex;
 
                 BaseOptions() {
 #define DefineBasicParameter(VarName, VarType, DefaultValue, RepresentStr) \
