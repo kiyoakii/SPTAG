@@ -5,7 +5,8 @@
 
 #include "inc/SSDServing/SelectHead_BKT/SelectHead.h"
 #include "inc/SSDServing/SelectHead_BKT/BKTNodeInfo.h"
-#include "inc/SSDServing/Common/Utils.h"
+#include "inc/SSDServing/IndexBuildManager/Utils.h"
+#include "inc/SSDServing/IndexBuildManager/CommonDefines.h"
 
 namespace SPTAG {
 	namespace SSDServing {
@@ -115,7 +116,7 @@ namespace SPTAG {
                 }
 
                 std::unordered_set<int> overallSelected;
-                overallSelected.reserve(selectLimit * 2);
+                overallSelected.reserve(static_cast<size_t>(selectLimit) * 2);
                 // only use the first tree
                 int rootIdOfFirstTree = 0;
                 DfsSelect(rootIdOfFirstTree, p_tree, candidates, bktNodeInfos);
@@ -471,8 +472,8 @@ namespace SPTAG {
                 {
                     std::sort(selected.begin(), selected.end());
 
-                    std::ofstream output(opts.m_outputVectorFile, std::ios::binary);
-                    std::ofstream outputIDs(opts.m_outputIDFile, std::ios::binary);
+                    std::ofstream output(COMMON_OPTS.m_headVectorFile, std::ios::binary);
+                    std::ofstream outputIDs(COMMON_OPTS.m_headIDFile, std::ios::binary);
 
                     SizeType val = static_cast<SizeType>(selected.size());
 

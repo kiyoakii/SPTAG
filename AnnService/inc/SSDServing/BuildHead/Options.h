@@ -12,11 +12,7 @@ namespace SPTAG {
             class Options
             {
             public:
-                std::string m_inputFiles;
-                std::string m_outputFolder;
-                SPTAG::IndexAlgoType m_indexAlgoType;
-                std::string m_builderConfigFile;
-                std::uint32_t m_threadNum;
+                bool m_execute;
 
                 Options() {
 #define DefineBuildHeadParameter(VarName, VarType, DefaultValue, RepresentStr) \

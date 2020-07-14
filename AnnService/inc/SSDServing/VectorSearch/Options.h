@@ -4,31 +4,26 @@
 #include "inc/Core/Common.h"
 #include "inc/Helper/StringConvert.h"
 
-using namespace std;
-
 namespace SPTAG {
 	namespace SSDServing {
 		namespace VectorSearch {
 			class Options {
 			public:
 				// Both Building and Searching
+				bool m_execute;
 				bool m_buildSsdIndex;
-				string m_vectorIDTranslate;
-				string m_headIndexFolder;
 				int m_internalResultNum;
 				int m_iNumberOfThreads;
-				string m_headConfig;
+				std::string m_headConfig;
 
 				// Building
-				string m_ssdIndex;
 				int m_replicaCount;
 				int m_postingPageLimit;
 				bool m_outputEmptyReplicaID;
 
 				// Searching
-				string m_searchResult;
-				string m_extraFullGraphFile;
-				string m_logFile;
+				std::string m_searchResult;
+				std::string m_logFile;
 				int m_qpsLimit;
 				int m_resultNum;
 				int m_queryCountLimit;

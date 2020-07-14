@@ -8,20 +8,12 @@
 namespace SPTAG {
 	namespace SSDServing {
 		namespace BuildHead {
-			ErrorCode Bootstrap(Options& options) {
-                auto indexBuilder = SPTAG::VectorIndex::CreateInstance(options.m_indexAlgoType, COMMON_OPTS.m_valueType);
-
-                SPTAG::Helper::IniReader iniReader;
-                if (!options.m_builderConfigFile.empty())
-                {
-                    iniReader.LoadIniFile(options.m_builderConfigFile);
-                }
-                // if we don't have one, set by ourselves.
-                if (!iniReader.DoesParameterExist("Index", "NumberOfThreads")) {
-                    iniReader.SetParameter("Index", "NumberOfThreads", std::to_string(options.m_threadNum));
-                }
+			ErrorCode Bootstrap(Options& options, const SPTAG::Helper::IniReader::ParameterValueMap& params) {
+                // These three params are mandatory.
+                auto indexBuilder = SPTAG::VectorIndex::CreateInstance(COMMON_OPTS.m_indexAlgoType, COMMON_OPTS.m_valueType);
                 indexBuilder->SetParameter("DistCalcMethod", SPTAG::Helper::Convert::ConvertToString(COMMON_OPTS.m_distCalcMethod));
-                for (const auto& iter : iniReader.GetParameters("Index"))
+
+                for (const auto& iter : params)
                 {
                     indexBuilder->SetParameter(iter.first.c_str(), iter.second.c_str());
                 }
@@ -29,7 +21,7 @@ namespace SPTAG {
                 SPTAG::ErrorCode code;
 
                 {
-                    std::vector<std::string> files = SPTAG::Helper::StrUtils::SplitString(options.m_inputFiles, ",");
+                    std::vector<std::string> files = SPTAG::Helper::StrUtils::SplitString(COMMON_OPTS.m_headVectorFile, ",");
                     std::ifstream inputStream(files[0], std::ifstream::binary);
                     if (!inputStream.is_open()) {
                         fprintf(stderr, "Failed to read input file.\n");
@@ -51,7 +43,7 @@ namespace SPTAG {
                         p_metaSet.reset(new SPTAG::FileMetadataSet(files[1], files[2]));
                     }
                     code = indexBuilder->BuildIndex(p_vectorSet, p_metaSet);
-                    indexBuilder->SaveIndex(options.m_outputFolder);
+                    indexBuilder->SaveIndex(COMMON_OPTS.m_headIndexFolder);
                 }
 
                 if (SPTAG::ErrorCode::Success != code)

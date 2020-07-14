@@ -14,7 +14,7 @@ namespace SPTAG {
 
 				fprintf(stdout, "Start loading vector file.\n");
 				BasicVectorSet vectorSet(
-					COMMON_OPTS.m_vectorPath.c_str(), 
+					COMMON_OPTS.m_vectorPath, 
 					COMMON_OPTS.m_valueType, 
 					COMMON_OPTS.m_dim, 
 					COMMON_OPTS.m_vectorSize,

@@ -90,16 +90,18 @@ namespace SPTAG {
 
                 virtual void InitWorkSpace(ExtraWorkSpace* p_space, int p_resNumHint) = 0;
 
-                virtual void Setup(Options& p_config) = 0;
-
                 virtual void FinishPrepare()
                 {
                 }
 
                 virtual void Search(ExtraWorkSpace* p_exWorkSpace,
                     COMMON::QueryResultSet<ValueType>& p_queryResults,
-                    shared_ptr<VectorIndex> p_index,
+                    std::shared_ptr<VectorIndex> p_index,
                     SearchStats& p_stats) = 0;
+
+                virtual void Search(ExtraWorkSpace* p_exWorkSpace,
+                    COMMON::QueryResultSet<ValueType>& p_queryResults,
+                    std::shared_ptr<VectorIndex> p_index) = 0;
             };
         }
     }
