@@ -49,6 +49,8 @@ namespace SPTAG
             int* label;
             SizeType* clusterIdx;
             float* clusterDist;
+			float* weightedCounts;
+			float* newWeightedCounts;
             float(*fComputeDistance)(const T* pX, const T* pY, DimensionType length);
 
             KmeansArgs(int k, DimensionType dim, SizeType datasize, int threadnum, DistCalcMethod distMethod) : _K(k), _DK(k), _D(dim), _T(threadnum), _M(distMethod) {
@@ -60,6 +62,8 @@ namespace SPTAG
                 label = new int[datasize];
                 clusterIdx = new SizeType[threadnum * k];
                 clusterDist = new float[threadnum * k];
+				weightedCounts = new float[k];
+				newWeightedCounts = new float[threadnum * k];
                 fComputeDistance = COMMON::DistanceCalcSelector<T>(distMethod);
             }
 
@@ -72,10 +76,13 @@ namespace SPTAG
                 delete[] label;
                 delete[] clusterIdx;
                 delete[] clusterDist;
+				delete[] weightedCounts;
+				delete[] newWeightedCounts;
             }
 
             inline void ClearCounts() {
                 memset(newCounts, 0, sizeof(SizeType) * _T * _K);
+				memset(newWeightedCounts, 0, sizeof(float) * _T * _K);
             }
 
             inline void ClearCenters() {

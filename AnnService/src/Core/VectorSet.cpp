@@ -74,7 +74,7 @@ void BasicVectorSet::readXvec(std::string p_filePath, VectorValueType p_valueTyp
         }
     }
 
-    SizeType vectorDataSize = GetValueTypeSize(p_valueType) * p_dimension;
+    size_t vectorDataSize = GetValueTypeSize(p_valueType) * p_dimension;
     size_t totalRecordVectorBytes = static_cast<size_t>(vectorDataSize) * p_vectorCount;
     ByteArray l_data = ByteArray::Alloc(totalRecordVectorBytes);
     char* vecBuf = reinterpret_cast<char*>(l_data.Data());
@@ -94,7 +94,7 @@ void BasicVectorSet::readXvec(std::string p_filePath, VectorValueType p_valueTyp
                 break;
             }
             if (dim != p_dimension) {
-                fprintf(stderr, "Error: Xvec file %s has No.%ld vector whose dims are not as many as expected. Expected: %d, Fact: %d\n", p_filePath.c_str(), i, p_dimension, dim);
+                fprintf(stderr, "Error: Xvec file %s has No.%zd vector whose dims are not as many as expected. Expected: %d, Fact: %d\n", p_filePath.c_str(), i, p_dimension, dim);
                 exit(-1);
             }
             files[i]->read(curAddr, vectorDataSize);
@@ -183,7 +183,7 @@ void BasicVectorSet::readDefault(std::string p_filePath, VectorValueType p_value
         }
     }
 
-    SizeType vectorDataSize = GetValueTypeSize(p_valueType) * col;
+    size_t vectorDataSize = GetValueTypeSize(p_valueType) * col;
     std::size_t ULLVectorDataSize = static_cast<std::size_t>(vectorDataSize);
     std::size_t totalRecordVectorBytes = ULLVectorDataSize * row;
     ByteArray l_data = ByteArray::Alloc(totalRecordVectorBytes);
@@ -334,5 +334,5 @@ BasicVectorSet::Save(const std::string& p_vectorFile) const
 }
 
 SizeType BasicVectorSet::PerVectorDataSize() const {
-    return m_perVectorDataSize;
+    return (SizeType)m_perVectorDataSize;
 }
