@@ -275,6 +275,7 @@ void Process(MPI_Datatype type) {
     std::shared_ptr<MetadataSet> metas = vectorReader->GetMetadataSet();
 	std::vector<float> weights(vectors->Count(), 0.0f);
 	if (options.m_weightfile.compare("-") != 0) {
+		options.m_weightfile = Helper::StrUtils::ReplaceAll(options.m_weightfile, "*", std::to_string(rank));
 		std::ifstream win(options.m_weightfile, std::ifstream::binary);
 		if (!win.is_open()) {
 			fprintf(stderr, "Failed to read weight file.\n");
