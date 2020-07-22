@@ -278,7 +278,7 @@ void Process(MPI_Datatype type) {
 		options.m_weightfile = Helper::StrUtils::ReplaceAll(options.m_weightfile, "*", std::to_string(rank));
 		std::ifstream win(options.m_weightfile, std::ifstream::binary);
 		if (!win.is_open()) {
-			fprintf(stderr, "Failed to read weight file.\n");
+			fprintf(stderr, "Rank %d failed to read weight file %s.\n", rank, options.m_weightfile.c_str());
 			exit(1);
 		}
 		SizeType rows;
