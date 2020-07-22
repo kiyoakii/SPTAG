@@ -5,6 +5,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <shared_mutex>
 
 using namespace SPTAG;
 
@@ -27,10 +28,15 @@ MetadataSet::RefineMetadata(std::vector<SizeType>& indices, std::ostream& p_meta
     for (SizeType i = 0; i < R; i++) {
         p_metaIndexOut.write((char*)&offset, sizeof(std::uint64_t));
         ByteArray meta = GetMetadata(indices[i]);
-        p_metaOut.write((char*)meta.Data(), sizeof(uint8_t)*meta.Length());
         offset += meta.Length();
     }
     p_metaIndexOut.write((char*)&offset, sizeof(std::uint64_t));
+
+    for (SizeType i = 0; i < R; i++) {
+        ByteArray meta = GetMetadata(indices[i]);
+        p_metaOut.write((char*)meta.Data(), sizeof(uint8_t)*meta.Length());
+    }
+    std::cout << "Save MetaIndex(" << R << ") Meta(" << offset << ")" << std::endl;
     return ErrorCode::Success;
 }
 
@@ -88,6 +94,7 @@ FileMetadataSet::FileMetadataSet(const std::string& p_metafile, const std::strin
     m_pOffsets.resize(m_count + 1);
     fpidx.read((char *)m_pOffsets.data(), sizeof(std::uint64_t) * (m_count + 1));
     fpidx.close();
+    std::cout << "Load MetaIndex(" << m_pOffsets.size() - 1 << ") Meta(" << m_pOffsets.back() << ")" << std::endl;
 }
 
 
@@ -116,6 +123,23 @@ FileMetadataSet::GetMetadata(SizeType p_vectorID) const
         startoff -= m_pOffsets[m_count];
         return ByteArray((std::uint8_t*)m_newdata.data() + startoff, bytes, false);
     }
+}
+
+
+ByteArray
+FileMetadataSet::GetMetadataCopy(SizeType p_vectorID) const
+{
+    std::uint64_t startoff = m_pOffsets[p_vectorID];
+    std::uint64_t bytes = m_pOffsets[p_vectorID + 1] - startoff;
+    ByteArray b = ByteArray::Alloc(bytes);
+    if (p_vectorID < m_count) {
+        m_fp->seekg(startoff, std::ios_base::beg);   
+        m_fp->read((char*)b.Data(), bytes);
+    }
+    else {
+        std::memcpy(b.Data(), m_newdata.data() + (startoff - m_pOffsets[m_count]), bytes);
+    }
+    return b;
 }
 
 
@@ -152,6 +176,10 @@ FileMetadataSet::Add(const ByteArray& data)
 ErrorCode
 FileMetadataSet::SaveMetadata(std::ostream& p_metaOut, std::ostream& p_metaIndexOut)
 {
+    SizeType count = Count();
+    p_metaIndexOut.write((char*)&count, sizeof(SizeType));
+    p_metaIndexOut.write((char*)m_pOffsets.data(), sizeof(std::uint64_t) * m_pOffsets.size());
+
     m_fp->seekg(0, std::ios_base::beg);
 
     int bufsize = 1000000;
@@ -165,10 +193,7 @@ FileMetadataSet::SaveMetadata(std::ostream& p_metaOut, std::ostream& p_metaIndex
     if (m_newdata.size() > 0) {
         p_metaOut.write((char*)m_newdata.data(), m_newdata.size());
     }
-
-    SizeType count = Count();
-    p_metaIndexOut.write((char*)&count, sizeof(SizeType));
-    p_metaIndexOut.write((char*)m_pOffsets.data(), sizeof(std::uint64_t) * m_pOffsets.size());
+    std::cout << "Save MetaIndex(" << m_pOffsets.size() - 1 << ") Meta(" << m_pOffsets.back() << ")" << std::endl;
     return ErrorCode::Success;
 }
 
@@ -197,8 +222,28 @@ FileMetadataSet::SaveMetadata(const std::string& p_metaFile, const std::string& 
 MemMetadataSet::MemMetadataSet(): m_count(0), m_metadataHolder(ByteArray::c_empty)
 {
     m_offsets.push_back(0);
+    m_lock.reset(new std::shared_timed_mutex, std::default_delete<std::shared_timed_mutex>());
 }
 
+
+void
+MemMetadataSet::Init(std::istream& p_metain, std::istream& p_metaindexin)
+{
+    p_metaindexin.read((char *)&m_count, sizeof(m_count));
+    m_offsets.resize(m_count + 1);
+    p_metaindexin.read((char *)m_offsets.data(), sizeof(std::uint64_t) * (m_count + 1));
+
+    m_metadataHolder = ByteArray::Alloc(m_offsets[m_count]);
+    p_metain.read((char *)m_metadataHolder.Data(), m_metadataHolder.Length());
+    m_lock.reset(new std::shared_timed_mutex, std::default_delete<std::shared_timed_mutex>());
+    std::cout << "Load MetaIndex(" << m_offsets.size() - 1 << ") Meta(" << m_offsets.back() << ")" << std::endl;
+}
+
+
+MemMetadataSet::MemMetadataSet(std::istream& p_metain, std::istream& p_metaindexin)
+{
+    Init(p_metain, p_metaindexin);
+}
 
 MemMetadataSet::MemMetadataSet(const std::string& p_metafile, const std::string& p_metaindexfile)
 {
@@ -209,15 +254,9 @@ MemMetadataSet::MemMetadataSet(const std::string& p_metafile, const std::string&
         std::cerr << "ERROR: Cannot open meta files " << p_metafile << " and " << p_metaindexfile << "!" << std::endl;
         return;
     }
-
-    metaidx.read((char *)&m_count, sizeof(m_count));
-    m_offsets.resize(m_count + 1);
-    metaidx.read((char *)m_offsets.data(), sizeof(std::uint64_t) * (m_count + 1));
-    metaidx.close();
-
-    m_metadataHolder = ByteArray::Alloc(m_offsets[m_count]);
-    meta.read((char *)m_metadataHolder.Data(), m_metadataHolder.Length());
+    Init(meta, metaidx);
     meta.close();
+    metaidx.close();
 }
 
 
@@ -226,7 +265,8 @@ MemMetadataSet::MemMetadataSet(ByteArray p_metadata, ByteArray p_offsets, SizeTy
       m_count(p_count)
 {
     const std::uint64_t* newdata = reinterpret_cast<const std::uint64_t*>(p_offsets.Data());
-    m_offsets.insert(m_offsets.end(), newdata, newdata + p_count + 1);
+    m_offsets.assign(newdata, newdata + p_count + 1);
+    m_lock.reset(new std::shared_timed_mutex, std::default_delete<std::shared_timed_mutex>());
 }
 
 
@@ -238,6 +278,7 @@ MemMetadataSet::~MemMetadataSet()
 ByteArray
 MemMetadataSet::GetMetadata(SizeType p_vectorID) const
 {
+    std::shared_lock<std::shared_timed_mutex> lock(*static_cast<std::shared_timed_mutex*>(m_lock.get()));
     if (p_vectorID < m_count)
     {
         return ByteArray(m_metadataHolder.Data() + m_offsets[p_vectorID],
@@ -254,9 +295,27 @@ MemMetadataSet::GetMetadata(SizeType p_vectorID) const
 }
 
 
+ByteArray
+MemMetadataSet::GetMetadataCopy(SizeType p_vectorID) const
+{
+    std::shared_lock<std::shared_timed_mutex> lock(*static_cast<std::shared_timed_mutex*>(m_lock.get()));
+    std::uint64_t startoff = m_offsets[p_vectorID];
+    std::uint64_t bytes = m_offsets[p_vectorID + 1] - startoff;
+    ByteArray b = ByteArray::Alloc(bytes);
+    if (p_vectorID < m_count) {
+        std::memcpy(b.Data(), m_metadataHolder.Data() + startoff, bytes);
+    }
+    else {
+        std::memcpy(b.Data(), m_newdata.data() + (startoff - m_offsets[m_count]), bytes);
+    }
+    return b;
+}
+
+
 SizeType
 MemMetadataSet::Count() const
 {
+    std::shared_lock<std::shared_timed_mutex> lock(*static_cast<std::shared_timed_mutex*>(m_lock.get()));
     return static_cast<SizeType>(m_offsets.size() - 1);
 }
 
@@ -264,14 +323,16 @@ MemMetadataSet::Count() const
 bool
 MemMetadataSet::Available() const
 {
-    return m_metadataHolder.Length() > 0 && m_offsets.size() > 0;
+    std::shared_lock<std::shared_timed_mutex> lock(*static_cast<std::shared_timed_mutex*>(m_lock.get()));
+    return m_offsets.size() > 1;
 }
 
 
 std::pair<std::uint64_t, std::uint64_t>
 MemMetadataSet::BufferSize() const
 {
-    return std::make_pair(m_offsets[m_offsets.size() - 1],
+    std::shared_lock<std::shared_timed_mutex> lock(*static_cast<std::shared_timed_mutex*>(m_lock.get()));
+    return std::make_pair(m_offsets.back(),
         sizeof(SizeType) + sizeof(std::uint64_t) * m_offsets.size());
 }
 
@@ -279,6 +340,7 @@ MemMetadataSet::BufferSize() const
 void
 MemMetadataSet::Add(const ByteArray& data)
 {
+    std::unique_lock<std::shared_timed_mutex> lock(*static_cast<std::shared_timed_mutex*>(m_lock.get()));
     m_newdata.insert(m_newdata.end(), data.Data(), data.Data() + data.Length());
     m_offsets.push_back(m_offsets.back() + data.Length());
 }
@@ -287,14 +349,16 @@ MemMetadataSet::Add(const ByteArray& data)
 ErrorCode
 MemMetadataSet::SaveMetadata(std::ostream& p_metaOut, std::ostream& p_metaIndexOut)
 {
+    std::shared_lock<std::shared_timed_mutex> lock(*static_cast<std::shared_timed_mutex*>(m_lock.get()));
+    SizeType count = Count();
+    p_metaIndexOut.write((char*)&count, sizeof(SizeType));
+    p_metaIndexOut.write((char*)m_offsets.data(), sizeof(std::uint64_t) * m_offsets.size());
+
     p_metaOut.write(reinterpret_cast<const char*>(m_metadataHolder.Data()), m_metadataHolder.Length());
     if (m_newdata.size() > 0) {
         p_metaOut.write((char*)m_newdata.data(), m_newdata.size());
     }
-
-    SizeType count = Count();
-    p_metaIndexOut.write((char*)&count, sizeof(SizeType));
-    p_metaIndexOut.write((char*)m_offsets.data(), sizeof(std::uint64_t) * m_offsets.size());
+    std::cout << "Save MetaIndex(" << m_offsets.size() - 1 << ") Meta(" << m_offsets.back() << ")" << std::endl;
     return ErrorCode::Success;
 }
 

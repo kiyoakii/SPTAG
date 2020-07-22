@@ -92,7 +92,6 @@ namespace SPTAG
 #include "inc/Core/BKT/ParameterDefinitionList.h"
 #undef DefineBKTParameter
 
-                m_bReady = false;
                 m_pSamples.SetName("Vector");
                 m_fComputeDistance = COMMON::DistanceCalcSelector<T>(m_iDistCalcMethod);
                 m_iBaseSquare = (m_iDistCalcMethod == DistCalcMethod::Cosine) ? COMMON::Utils::GetBase<T>() * COMMON::Utils::GetBase<T>() : 1;
@@ -132,11 +131,21 @@ namespace SPTAG
                 return std::move(buffersize);
             }
 
+            std::shared_ptr<std::vector<std::string>> GetIndexFiles() const
+            {
+                std::shared_ptr<std::vector<std::string>> files(new std::vector<std::string>);
+                files->push_back(m_sDataPointsFilename);
+                files->push_back(m_sBKTFilename);
+                files->push_back(m_sGraphFilename);
+                files->push_back(m_sDeleteDataPointsFilename);
+                return std::move(files);
+            }
+
             ErrorCode SaveConfig(std::ostream& p_configout) const;
-            ErrorCode SaveIndexData(const std::string& p_folderPath);
             ErrorCode SaveIndexData(const std::vector<std::ostream*>& p_indexStreams);
 
             ErrorCode LoadConfig(Helper::IniReader& p_reader);
+            ErrorCode LoadIndexData(const std::vector<std::istream*>& p_indexStreams);
             ErrorCode LoadIndexData(const std::string& p_folderPath);
             ErrorCode LoadIndexDataFromMemory(const std::vector<ByteArray>& p_indexBlobs);
 
@@ -150,8 +159,7 @@ namespace SPTAG
             ErrorCode SetParameter(const char* p_param, const char* p_value);
             std::string GetParameter(const char* p_param) const;
 
-            ErrorCode RefineIndex(const std::string& p_folderPath);
-            ErrorCode RefineIndex(const std::vector<std::ostream*>& p_indexStreams);
+            ErrorCode RefineIndex(const std::vector<std::ostream*>& p_indexStreams, IAbortOperation* p_abort);
             ErrorCode RefineIndex(std::shared_ptr<VectorIndex>& p_newIndex);
 
         private:

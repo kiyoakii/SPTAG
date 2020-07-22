@@ -21,6 +21,8 @@ public:
 
     virtual ByteArray GetMetadata(SizeType p_vectorID) const = 0;
 
+    virtual ByteArray GetMetadataCopy(SizeType p_vectorID) const = 0;
+
     virtual SizeType Count() const = 0;
 
     virtual bool Available() const = 0;
@@ -51,6 +53,8 @@ public:
     ~FileMetadataSet();
 
     ByteArray GetMetadata(SizeType p_vectorID) const;
+
+    ByteArray GetMetadataCopy(SizeType p_vectorID) const;
 
     SizeType Count() const;
 
@@ -88,9 +92,13 @@ public:
 
     MemMetadataSet(const std::string& p_metafile, const std::string& p_metaindexfile);
 
+    MemMetadataSet(std::istream& p_metain, std::istream& p_metaindexin);
+
     ~MemMetadataSet();
 
     ByteArray GetMetadata(SizeType p_vectorID) const;
+    
+    ByteArray GetMetadataCopy(SizeType p_vectorID) const;
 
     SizeType Count() const;
 
@@ -105,6 +113,8 @@ public:
     ErrorCode SaveMetadata(const std::string& p_metaFile, const std::string& p_metaindexFile);
 
 private:
+    void Init(std::istream& p_metain, std::istream& p_metaindexin);
+
     std::vector<std::uint64_t> m_offsets;
 
     SizeType m_count;
@@ -112,6 +122,8 @@ private:
     ByteArray m_metadataHolder;
 
     std::vector<std::uint8_t> m_newdata;
+
+    std::shared_ptr<void> m_lock;
 };
 
 
