@@ -63,7 +63,7 @@ namespace SPTAG {
 
 				std::vector<Neighbor> neighbours;
 				bool isFirst = true;
-				for (size_t j = 0; j < vectorSet.Count(); j++)
+				for (SPTAG::SizeType j = 0; j < vectorSet.Count(); j++)
 				{
 					float dist = SPTAG::COMMON::DistanceUtils::ComputeDistance<T>(reinterpret_cast<T *>(querySet.GetVector(i)), reinterpret_cast<T*>(vectorSet.GetVector(j)), querySet.Dimension(), distMethod);
 

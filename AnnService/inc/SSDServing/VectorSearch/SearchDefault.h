@@ -95,7 +95,7 @@ namespace SPTAG {
 					input.read(reinterpret_cast<char*>(m_vectorTranslateMap.get()), sizeof(long long) * m_index->GetNumSamples());
 					input.close();
 
-					fprintf(stderr, "Loaded %lu Vector IDs\n", input.gcount() / sizeof(long long));
+					fprintf(stderr, "Loaded %zu Vector IDs\n", input.gcount() / sizeof(long long));
 					fprintf(stderr, "Using FullGraph without cache.\n");
 
 					m_extraSearcher.reset(new ExtraFullGraphSearcher<ValueType>(extraFullGraphFile));
@@ -105,8 +105,8 @@ namespace SPTAG {
 					SPTAG::VectorValueType v1 = m_index->GetVectorValueType(), v2 = GetEnumValueType<ValueType>();
 					if (v1 != v2) {
 						fprintf(stderr, "Head index and vectors don't have the same value types, which are %s %s\n",
-							SPTAG::Helper::Convert::ConvertToString(v1),
-							SPTAG::Helper::Convert::ConvertToString(v2)
+							SPTAG::Helper::Convert::ConvertToString(v1).c_str(),
+							SPTAG::Helper::Convert::ConvertToString(v2).c_str()
 						);
 						exit(1);
 					}
