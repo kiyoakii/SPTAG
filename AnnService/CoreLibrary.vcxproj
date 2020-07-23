@@ -175,7 +175,6 @@
   <ItemGroup>
     <ClCompile Include="src\Core\VectorSet.cpp" />
     <ClCompile Include="src\Core\MetadataSet.cpp" />
-    <ClCompile Include="inc\Helper\DynamicNeighbors.cpp" />
     <ClCompile Include="src\Core\BKT\BKTIndex.cpp" />
     <ClCompile Include="src\Core\KDT\KDTIndex.cpp" />
     <ClCompile Include="src\Core\Common\NeighborhoodGraph.cpp" />
@@ -187,6 +186,7 @@
     <ClCompile Include="src\Helper\Concurrent.cpp" />
     <ClCompile Include="src\Helper\SimpleIniReader.cpp" />
     <ClCompile Include="src\Helper\VectorSetReader.cpp" />
+    <ClCompile Include="src\Helper\DynamicNeighbors.cpp" />
     <ClCompile Include="src\Helper\VectorSetReaders\DefaultReader.cpp" />
   </ItemGroup>
   <ItemGroup>

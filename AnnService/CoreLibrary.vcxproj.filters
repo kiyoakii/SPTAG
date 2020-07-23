@@ -204,7 +204,7 @@
     <ClCompile Include="src\Helper\VectorSetReader.cpp">
       <Filter>Source Files\Helper</Filter>
     </ClCompile>
-    <ClCompile Include="inc\Helper\DynamicNeighbors.cpp">
+    <ClCompile Include="src\Helper\DynamicNeighbors.cpp">
       <Filter>Source Files\Helper</Filter>
     </ClCompile>
   </ItemGroup>
