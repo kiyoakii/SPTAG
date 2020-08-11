@@ -78,7 +78,7 @@ namespace SPTAG {
                     return;
                 }
 
-                fprintf(stdout,
+                LOG(Helper::LogLevel::LL_Info,
                     "CheckNode: %8d, Height: %3d, MinDepth: %3d, MaxDepth: %3d, Children: %3d, Single: %3d\n",
                     p_nodeID,
                     p_height,
@@ -89,7 +89,7 @@ namespace SPTAG {
 
                 for (int nodeId = node.childStart; nodeId < node.childEnd; ++nodeId)
                 {
-                    fprintf(stdout,
+                    LOG(Helper::LogLevel::LL_Info,
                         "    ChildNode: %8d, MinDepth: %3d, MaxDepth: %3d, ChildrenCount: %3d, LeafCount: %3d\n",
                         nodeId,
                         p_nodeInfos[nodeId].minDepth,

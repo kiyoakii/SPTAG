@@ -36,7 +36,7 @@ namespace SPTAG {
 
                 if (SPTAG::ErrorCode::Success != code)
                 {
-                    fprintf(stderr, "Failed to build index.\n");
+                    LOG(Helper::LogLevel::LL_Error, "Failed to build index.\n");
                     return ErrorCode::Fail;
                 }
 				return ErrorCode::Success;

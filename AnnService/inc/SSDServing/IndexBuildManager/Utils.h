@@ -1,7 +1,6 @@
 #pragma once
 #include <string>
 #include <vector>
-#include <fstream>
 #include "inc/Core/Common.h"
 #include <algorithm>
 #include "inc/Core/Common/DistanceUtils.h"
@@ -57,7 +56,7 @@ namespace SPTAG {
 			{
 				if (querySet->Dimension() != vectorSet->Dimension())
 				{
-					fprintf(stderr, "query and vector have different dimensions.");
+					LOG(Helper::LogLevel::LL_Error, "query and vector have different dimensions.");
 					exit(-1);
 				}
 
@@ -84,7 +83,7 @@ namespace SPTAG {
 
 				if (K != neighbours.size())
 				{
-					fprintf(stderr, "K is too big.\n");
+					LOG(Helper::LogLevel::LL_Error, "K is too big.\n");
 					exit(-1);
 				}
 

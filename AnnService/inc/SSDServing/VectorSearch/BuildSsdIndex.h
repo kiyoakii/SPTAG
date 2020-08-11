@@ -1,7 +1,6 @@
 #pragma once
 #include <unordered_set>
 #include <string>
-#include <fstream>
 #include <memory>
 #include <vector>
 #include <set>
@@ -65,25 +64,22 @@ namespace SPTAG {
                 {
                     if (!p_filename.empty())
                     {
-                        std::ifstream input(p_filename, std::ios::binary);
-                        if (!input.is_open())
-                        {
-                            fprintf(stderr, "failed open VectorIDTranslate: %s\n", p_filename.c_str());
+                        auto ptr = SPTAG::f_createIO();
+                        if (ptr == nullptr || !ptr->Initialize(p_filename.c_str(), std::ios::binary | std::ios::in)) {
+                            LOG(Helper::LogLevel::LL_Error, "failed open VectorIDTranslate: %s\n", p_filename.c_str());
                             exit(1);
                         }
 
                         long long vid;
-                        while (input.read(reinterpret_cast<char*>(&vid), sizeof(vid)))
+                        while (ptr->ReadBinary(sizeof(vid), reinterpret_cast<char*>(&vid)) == sizeof(vid))
                         {
                             p_set.insert(static_cast<int>(vid));
                         }
-
-                        input.close();
-                        fprintf(stderr, "Loaded %u Vector IDs\n", static_cast<uint32_t>(p_set.size()));
+                        LOG(Helper::LogLevel::LL_Info, "Loaded %u Vector IDs\n", static_cast<uint32_t>(p_set.size()));
                     }
                     else
                     {
-                        fprintf(stderr, "Not found VectorIDTranslate!\n");
+                        LOG(Helper::LogLevel::LL_Error, "Not found VectorIDTranslate!\n");
                         exit(1);
                     }
                 }
@@ -155,7 +151,7 @@ namespace SPTAG {
                             currOffset += iter->rest;
                             if (currOffset > c_pageSize)
                             {
-                                fprintf(stderr, "Crossing extra pages\n");
+                                LOG(Helper::LogLevel::LL_Error, "Crossing extra pages\n");
                                 exit(1);
                             }
 
@@ -171,7 +167,7 @@ namespace SPTAG {
                         }
                     }
 
-                    fprintf(stderr, "TotalPageNumbers: %d, IndexSize: %llu\n", currPageNum, static_cast<uint64_t>(currPageNum)* c_pageSize + currOffset);
+                    LOG(Helper::LogLevel::LL_Info, "TotalPageNumbers: %d, IndexSize: %llu\n", currPageNum, static_cast<uint64_t>(currPageNum)* c_pageSize + currOffset);
                 }
 
 
@@ -184,12 +180,12 @@ namespace SPTAG {
                     const std::vector<int>& p_postingOrderInIndex,
                     std::shared_ptr<VectorSet> p_fullVectors)
                 {
-                    fprintf(stdout, "Start output...\n");
+                    LOG(Helper::LogLevel::LL_Info, "Start output...\n");
 
-                    std::ofstream output(p_outputFile, std::ios::binary);
-                    if (!output.is_open())
+                    auto ptr = SPTAG::f_createIO();
+                    if (ptr == nullptr || !ptr->Initialize(p_outputFile.c_str(), std::ios::binary | std::ios::out))
                     {
-                        fprintf(stderr, "Failed open file %s\n", p_outputFile.c_str());
+                        LOG(Helper::LogLevel::LL_Error, "Failed open file %s\n", p_outputFile.c_str());
                         exit(1);
                     }
 
@@ -211,19 +207,31 @@ namespace SPTAG {
 
                     // Number of lists.
                     int i32Val = static_cast<int>(p_postingListSizes.size());
-                    output.write(reinterpret_cast<char*>(&i32Val), sizeof(i32Val));
+                    if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
+                        exit(1);
+                    }
 
                     // Number of all documents.
                     i32Val = static_cast<int>(p_fullVectors->Count());
-                    output.write(reinterpret_cast<char*>(&i32Val), sizeof(i32Val));
+                    if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
+                        exit(1);
+                    }
 
                     // Bytes of each vector.
                     i32Val = static_cast<int>(p_fullVectors->Dimension());
-                    output.write(reinterpret_cast<char*>(&i32Val), sizeof(i32Val));
+                    if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
+                        exit(1);
+                    }
 
                     // Page offset of list content section.
                     i32Val = static_cast<int>(listOffset / c_pageSize);
-                    output.write(reinterpret_cast<char*>(&i32Val), sizeof(i32Val));
+                    if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
+                        exit(1);
+                    }
 
                     for (int i = 0; i < p_postingListSizes.size(); ++i)
                     {
@@ -243,25 +251,39 @@ namespace SPTAG {
                                 ++listPageCount;
                             }
                         }
-
-                        output.write(reinterpret_cast<char*>(&pageNum), sizeof(pageNum));
-                        output.write(reinterpret_cast<char*>(&pageOffset), sizeof(pageOffset));
-                        output.write(reinterpret_cast<char*>(&listEleCount), sizeof(listEleCount));
-                        output.write(reinterpret_cast<char*>(&listPageCount), sizeof(listPageCount));
+                        if (ptr->WriteBinary(sizeof(pageNum), reinterpret_cast<char*>(&pageNum)) != sizeof(pageNum)) {
+                            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
+                            exit(1);
+                        }
+                        if (ptr->WriteBinary(sizeof(pageOffset), reinterpret_cast<char*>(&pageOffset)) != sizeof(pageOffset)) {
+                            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
+                            exit(1);
+                        }
+                        if (ptr->WriteBinary(sizeof(listEleCount), reinterpret_cast<char*>(&listEleCount)) != sizeof(listEleCount)) {
+                            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
+                            exit(1);
+                        }
+                        if (ptr->WriteBinary(sizeof(listPageCount), reinterpret_cast<char*>(&listPageCount)) != sizeof(listPageCount)) {
+                            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
+                            exit(1);
+                        }
                     }
 
                     if (paddingSize > 0)
                     {
-                        output.write(reinterpret_cast<char*>(paddingVals.get()), paddingSize);
+                        if (ptr->WriteBinary(paddingSize, reinterpret_cast<char*>(paddingVals.get())) != paddingSize) {
+                            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
+                            exit(1);
+                        }
                     }
 
-                    if (static_cast<uint64_t>(output.tellp()) != listOffset)
+                    if (static_cast<uint64_t>(ptr->TellP()) != listOffset)
                     {
-                        fprintf(stdout, "List offset not match!\n");
+                        LOG(Helper::LogLevel::LL_Info, "List offset not match!\n");
                         exit(1);
                     }
 
-                    fprintf(stdout, "SubIndex Size: %llu bytes, %llu MBytes\n", listOffset, listOffset >> 20);
+                    LOG(Helper::LogLevel::LL_Info, "SubIndex Size: %llu bytes, %llu MBytes\n", listOffset, listOffset >> 20);
 
                     listOffset = 0;
 
@@ -271,7 +293,7 @@ namespace SPTAG {
                         std::uint64_t targetOffset = static_cast<uint64_t>(p_postPageNum[id])* c_pageSize + p_postPageOffset[id];
                         if (targetOffset < listOffset)
                         {
-                            fprintf(stdout, "List offset not match, targetOffset < listOffset!\n");
+                            LOG(Helper::LogLevel::LL_Info, "List offset not match, targetOffset < listOffset!\n");
                             exit(1);
                         }
 
@@ -279,11 +301,14 @@ namespace SPTAG {
                         {
                             if (targetOffset - listOffset > c_pageSize)
                             {
-                                fprintf(stdout, "Padding size greater than page size!\n");
+                                LOG(Helper::LogLevel::LL_Error, "Padding size greater than page size!\n");
                                 exit(1);
                             }
 
-                            output.write(reinterpret_cast<char*>(paddingVals.get()), targetOffset - listOffset);
+                            if (ptr->WriteBinary(targetOffset - listOffset, reinterpret_cast<char*>(paddingVals.get())) != targetOffset - listOffset) {
+                                LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
+                                exit(1);
+                            }
 
                             paddedSize += targetOffset - listOffset;
 
@@ -296,14 +321,19 @@ namespace SPTAG {
                         {
                             if (p_postingSelections[selectIdx].headID != id)
                             {
-                                fprintf(stdout, "Selection ID NOT MATCH\n");
+                                LOG(Helper::LogLevel::LL_Error, "Selection ID NOT MATCH\n");
                                 exit(1);
                             }
 
                             i32Val = p_postingSelections[selectIdx++].fullID;
-                            output.write(reinterpret_cast<char*>(&i32Val), sizeof(i32Val));
-                            output.write(reinterpret_cast<char*>(p_fullVectors->GetVector(i32Val)), p_fullVectors->PerVectorDataSize());
-
+                            if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
+                                LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
+                                exit(1);
+                            }
+                            if (ptr->WriteBinary(p_fullVectors->PerVectorDataSize(), reinterpret_cast<char*>(p_fullVectors->GetVector(i32Val))) != p_fullVectors->PerVectorDataSize()) {
+                                LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
+                                exit(1);
+                            }
                             listOffset += p_spacePerVector;
                         }
                     }
@@ -321,14 +351,15 @@ namespace SPTAG {
 
                     if (paddingSize > 0)
                     {
-                        output.write(reinterpret_cast<char*>(paddingVals.get()), paddingSize);
+                        if (ptr->WriteBinary(paddingSize, reinterpret_cast<char*>(paddingVals.get())) != paddingSize) {
+                            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
+                            exit(1);
+                        }
                     }
 
-                    output.close();
+                    LOG(Helper::LogLevel::LL_Info, "Padded Size: %llu, final total size: %llu.\n", paddedSize, listOffset);
 
-                    fprintf(stdout, "Padded Size: %llu, final total size: %llu.\n", paddedSize, listOffset);
-
-                    fprintf(stdout, "Output done...\n");
+                    LOG(Helper::LogLevel::LL_Info, "Output done...\n");
                 }
             }
 
@@ -343,7 +374,7 @@ namespace SPTAG {
 
                 if (outputFile.empty())
                 {
-                    fprintf(stderr, "Output file can't be empty!\n");
+                    LOG(Helper::LogLevel::LL_Error, "Output file can't be empty!\n");
                     exit(1);
                 }
 
@@ -354,10 +385,10 @@ namespace SPTAG {
                 LoadHeadVectorIDSet(COMMON_OPTS.m_headIDFile, headVectorIDS);
 
                 SearchDefault<ValueType> searcher;
-                fprintf(stderr, "Start setup index...\n");
+                LOG(Helper::LogLevel::LL_Info, "Start setup index...\n");
                 searcher.Setup(p_opts);
 
-                fprintf(stderr, "Setup index finish, start setup hint...\n");
+                LOG(Helper::LogLevel::LL_Info, "Setup index finish, start setup hint...\n");
                 searcher.SetHint(numThreads, candidateNum, false, p_opts);
 
                 std::shared_ptr<Helper::ReaderOptions> vectorOptions(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_vectorType, COMMON_OPTS.m_vectorDelimiter));
@@ -370,7 +401,7 @@ namespace SPTAG {
                 auto fullVectors = vectorReader->GetVectorSet();
                 if (COMMON_OPTS.m_distCalcMethod == DistCalcMethod::Cosine) fullVectors->Normalize(p_opts.m_iNumberOfThreads);
 
-                fprintf(stderr, "Full vector loaded.\n");
+                LOG(Helper::LogLevel::LL_Info, "Full vector loaded.\n");
 
                 std::vector<Edge> selections(static_cast<size_t>(fullVectors->Count())* p_opts.m_replicaCount);
 
@@ -378,7 +409,7 @@ namespace SPTAG {
                 std::vector<std::atomic_int> postingListSize(searcher.HeadIndex()->GetNumSamples());
                 for (auto& pls : postingListSize) pls = 0;
 
-                fprintf(stderr, "Preparation done, start candidate searching.\n");
+                LOG(Helper::LogLevel::LL_Info, "Preparation done, start candidate searching.\n");
 
                 std::vector<std::thread> threads;
                 threads.reserve(numThreads);
@@ -434,7 +465,7 @@ namespace SPTAG {
                                             searcher.HeadIndex()->GetSample(queryResults[i].VID),
                                             searcher.HeadIndex()->GetSample(selections[selectionOffset + j].headID));
 
-                                        // fprintf(stdout, "NNDist: %f Original: %f\n", nnDist, queryResults[i].Score);
+                                        // LOG(Helper::LogLevel::LL_Info,  "NNDist: %f Original: %f\n", nnDist, queryResults[i].Score);
                                         if (nnDist <= queryResults[i].Dist)
                                         {
                                             rngAccpeted = false;
@@ -467,7 +498,7 @@ namespace SPTAG {
                     threads[tid].join();
                 }
 
-                fprintf(stderr, "Searching replicas ended. RNG failed count: %llu\n", static_cast<uint64_t>(rngFailedCountTotal.load()));
+                LOG(Helper::LogLevel::LL_Info, "Searching replicas ended. RNG failed count: %llu\n", static_cast<uint64_t>(rngFailedCountTotal.load()));
 
                 std::sort(selections.begin(), selections.end(), g_edgeComparer);
 
@@ -477,7 +508,7 @@ namespace SPTAG {
                     postingSizeLimit = static_cast<int>(p_opts.m_postingPageLimit * c_pageSize / (fullVectors->PerVectorDataSize() + sizeof(int)));
                 }
 
-                fprintf(stderr, "Posting size limit: %d\n", postingSizeLimit);
+                LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", postingSizeLimit);
 
                 {
                     std::vector<int> replicaCountDist(p_opts.m_replicaCount + 1, 0);
@@ -491,10 +522,10 @@ namespace SPTAG {
                         ++replicaCountDist[replicaCount[i]];
                     }
 
-                    fprintf(stderr, "Before Posting Cut:\n");
+                    LOG(Helper::LogLevel::LL_Info, "Before Posting Cut:\n");
                     for (int i = 0; i < replicaCountDist.size(); ++i)
                     {
-                        fprintf(stderr, "Replica Count Dist: %d, %d\n", i, replicaCountDist[i]);
+                        LOG(Helper::LogLevel::LL_Info, "Replica Count Dist: %d, %d\n", i, replicaCountDist[i]);
                     }
                 }
 
@@ -544,7 +575,11 @@ namespace SPTAG {
                 if (p_opts.m_outputEmptyReplicaID)
                 {
                     std::vector<int> replicaCountDist(p_opts.m_replicaCount + 1, 0);
-                    std::ofstream emptyReplicaIDS("EmptyReplicaID.bin", std::ios::binary);
+                    auto ptr = SPTAG::f_createIO();
+                    if (ptr == nullptr || !ptr->Initialize("EmptyReplicaID.bin", std::ios::binary | std::ios::out)) {
+                        LOG(Helper::LogLevel::LL_Error, "Fail to create EmptyReplicaID.bin!\n");
+                        exit(1);
+                    }
                     for (int i = 0; i < replicaCount.size(); ++i)
                     {
                         if (headVectorIDS.count(i) > 0)
@@ -557,14 +592,17 @@ namespace SPTAG {
                         if (replicaCount[i] < 2)
                         {
                             long long vid = i;
-                            emptyReplicaIDS.write(reinterpret_cast<char*>(&vid), sizeof(vid));
+                            if (ptr->WriteBinary(sizeof(vid), reinterpret_cast<char*>(&vid)) != sizeof(vid)) {
+                                LOG(Helper::LogLevel::LL_Error, "Failt to write EmptyReplicaID.bin!");
+                                exit(1);
+                            }
                         }
                     }
 
-                    fprintf(stderr, "After Posting Cut:\n");
+                    LOG(Helper::LogLevel::LL_Info, "After Posting Cut:\n");
                     for (int i = 0; i < replicaCountDist.size(); ++i)
                     {
-                        fprintf(stderr, "Replica Count Dist: %d, %d\n", i, replicaCountDist[i]);
+                        LOG(Helper::LogLevel::LL_Info, "Replica Count Dist: %d, %d\n", i, replicaCountDist[i]);
                     }
                 }
 
@@ -586,7 +624,7 @@ namespace SPTAG {
                     fullVectors);
 
                 double elapsedMinutes = sw.getElapsedMin();
-                fprintf(stderr, "Total used time: %.2lf minutes (about %.2lf hours).\n", elapsedMinutes, elapsedMinutes / 60.0);
+                LOG(Helper::LogLevel::LL_Info, "Total used time: %.2lf minutes (about %.2lf hours).\n", elapsedMinutes, elapsedMinutes / 60.0);
             }
         }
     }

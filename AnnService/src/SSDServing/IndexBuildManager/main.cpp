@@ -1,4 +1,5 @@
 #include "inc/Helper/SimpleIniReader.h"
+#include "inc/Helper/VectorSetReader.h"
 #include "inc/SSDServing/IndexBuildManager/main.h"
 #include "inc/SSDServing/IndexBuildManager/CommonDefines.h"
 #include "inc/SSDServing/IndexBuildManager/Options.h"
@@ -69,9 +70,7 @@ namespace SPTAG {
 			}
 
 			double selectHeadTime = sw.getElapsedSec();
-			fprintf(stdout, "select head time: %.2lf\n",
-				selectHeadTime
-			);
+			LOG(Helper::LogLevel::LL_Info, "select head time: %.2lf\n", selectHeadTime);
 			sw.reset();
 
 			SSDServing::BuildHead::Options bhOpts;
@@ -85,10 +84,7 @@ namespace SPTAG {
 			}
 
 			double buildHeadTime = sw.getElapsedSec();
-			fprintf(stdout, "select head time: %.2lf\nbuild head time: %.2lf\n",
-				selectHeadTime,
-				buildHeadTime
-			);
+			LOG(Helper::LogLevel::LL_Info, "select head time: %.2lf\nbuild head time: %.2lf\n", selectHeadTime, buildHeadTime);
 			sw.reset();
 
 			SSDServing::VectorSearch::Options vsOpts;
@@ -102,11 +98,7 @@ namespace SPTAG {
 			}
 
 			double buildSSDTime = sw.getElapsedSec();
-			fprintf(stdout, "select head time: %.2lf\nbuild head time: %.2lf\nbuild ssd time: %.2lf\n",
-				selectHeadTime,
-				buildHeadTime,
-				buildSSDTime
-			);
+			LOG(Helper::LogLevel::LL_Info, "select head time: %.2lf\nbuild head time: %.2lf\nbuild ssd time: %.2lf\n", selectHeadTime, buildHeadTime, buildSSDTime);
 			sw.reset();
 
 			VectorSearch::Options opts;
@@ -114,22 +106,35 @@ namespace SPTAG {
 			{
 				if (COMMON_OPTS.m_generateTruth)
 				{
-					fprintf(stdout, "Start generating truth. It's maybe a long time.\n");
-					BasicVectorSet* vectorSet = new BasicVectorSet(COMMON_OPTS.m_vectorPath, COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_vectorSize, COMMON_OPTS.m_vectorType, COMMON_OPTS.m_vectorDelimiter, COMMON_OPTS.m_distCalcMethod);
-					BasicVectorSet* querySet = new BasicVectorSet(COMMON_OPTS.m_queryPath, COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_querySize, COMMON_OPTS.m_queryType, COMMON_OPTS.m_queryDelimiter, COMMON_OPTS.m_distCalcMethod);
+					LOG(Helper::LogLevel::LL_Info, "Start generating truth. It's maybe a long time.\n");
+					std::shared_ptr<Helper::ReaderOptions> vectorOptions(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_vectorType, COMMON_OPTS.m_vectorDelimiter));
+					auto vectorReader = Helper::VectorSetReader::CreateInstance(vectorOptions);
+					if (ErrorCode::Success != vectorReader->LoadFile(COMMON_OPTS.m_vectorPath))
+					{
+						LOG(Helper::LogLevel::LL_Error, "Failed to read vector file.\n");
+						exit(1);
+					}
+					std::shared_ptr<Helper::ReaderOptions> queryOptions(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_queryType, COMMON_OPTS.m_queryDelimiter));
+					auto queryReader = Helper::VectorSetReader::CreateInstance(queryOptions);
+					if (ErrorCode::Success != queryReader->LoadFile(COMMON_OPTS.m_queryPath))
+					{
+						LOG(Helper::LogLevel::LL_Error, "Failed to read query file.\n");
+						exit(1);
+					}
+					auto vectorSet = vectorReader->GetVectorSet();
+					auto querySet = queryReader->GetVectorSet();
+					if (COMMON_OPTS.m_distCalcMethod == DistCalcMethod::Cosine) vectorSet->Normalize(opts.m_iNumberOfThreads);
 
 #define DefineVectorValueType(Name, Type) \
 	if (COMMON_OPTS.m_valueType == SPTAG::VectorValueType::Name) { \
-		GenerateTruth<Type>(*querySet, *vectorSet, COMMON_OPTS.m_truthPath, \
+		GenerateTruth<Type>(querySet, vectorSet, COMMON_OPTS.m_truthPath, \
 			COMMON_OPTS.m_distCalcMethod, opts.m_resultNum, COMMON_OPTS.m_truthType); \
 	} \
 
 #include "inc/Core/DefinitionList.h"
 #undef DefineVectorValueType
 
-					delete vectorSet;
-					delete querySet;
-					fprintf(stdout, "End generating truth.\n");
+					LOG(Helper::LogLevel::LL_Info, "End generating truth.\n");
 				}
 
 			}
@@ -140,7 +145,7 @@ namespace SPTAG {
 
 			double searchSSDTime = sw.getElapsedSec();
 
-			fprintf(stdout, "select head time: %.2lf\nbuild head time: %.2lf\nbuild ssd time: %.2lf\nsearch ssd time: %.2lf\n",
+			LOG(Helper::LogLevel::LL_Info, "select head time: %.2lf\nbuild head time: %.2lf\nbuild ssd time: %.2lf\nsearch ssd time: %.2lf\n",
 				selectHeadTime,
 				buildHeadTime,
 				buildSSDTime,
@@ -162,7 +167,7 @@ namespace SPTAG {
 int main(int argc, char* argv[]) {
 	if (argc < 2)
 	{
-		fprintf(stderr,
+		LOG(Helper::LogLevel::LL_Error,
 			"ssdserving configFilePath\n");
 		exit(-1);
 	}

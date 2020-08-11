@@ -34,75 +34,80 @@ namespace SPTAG {
 
             void LoadTruthTXT(std::string truthPath, std::vector<std::set<int>>& truth, int K, SizeType p_iTruthNumber)
             {
-                int get;
-                std::ifstream fp(truthPath);
-                if (!fp.is_open())
-                {
-                    fprintf(stderr, "Failed open truth file: %s\n", truthPath.c_str());
+                auto ptr = SPTAG::f_createIO();
+                if (ptr == nullptr || !ptr->Initialize(truthPath.c_str(), std::ios::in)) {
+                    LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", truthPath.c_str());
                     exit(1);
                 }
-
-                std::string line;
+                std::size_t lineBufferSize = 20;
+                std::unique_ptr<char[]> currentLine(new char[lineBufferSize]);
+                truth.clear();
                 truth.resize(p_iTruthNumber);
                 for (int i = 0; i < p_iTruthNumber; ++i)
                 {
                     truth[i].clear();
                     for (int j = 0; j < K; ++j)
                     {
-                        fp >> get;
-                        truth[i].insert(get);
+                        if (ptr->ReadString(lineBufferSize, currentLine, ' ') == 0) {
+                            LOG(Helper::LogLevel::LL_Error, "Fail to read truth file!\n");
+                            exit(1);
+                        }
+                        truth[i].insert(std::atoi(currentLine.get()));
                     }
-
-                    std::getline(fp, line);
+                    if (ptr->ReadString(lineBufferSize, currentLine, '\n') == 0) {
+                        LOG(Helper::LogLevel::LL_Error, "Fail to read truth file!\n");
+                        exit(1);
+                    }
                 }
-                fp.close();
             }
 
             void LoadTruthXVEC(std::string truthPath, std::vector<std::set<int>>& truth, int K, SizeType p_iTruthNumber)
             {
-                std::ifstream in(truthPath, std::ifstream::binary);
-                if (!in.is_open()) {
-                    fprintf(stderr, "Error: Failed to read input file: %s \n", truthPath.c_str());
+                auto ptr = SPTAG::f_createIO();
+                if (ptr == nullptr || !ptr->Initialize(truthPath.c_str(), std::ios::in | std::ios::binary)) {
+                    LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", truthPath.c_str());
                     exit(1);
                 }
 
                 DimensionType dim = K;
                 std::vector<int> temp_vec(K);
+                truth.clear();
                 truth.resize(p_iTruthNumber);
                 for (size_t i = 0; i < p_iTruthNumber; i++) {
-                    in.read((char*)&dim, 4);
-                    if (dim < K) {
-                        fprintf(stderr, "Error: Xvec file %s has No.%" PRId64 " vector whose dims are fewer than expected. Expected: %" PRId32 ", Fact: %" PRId32 "\n", truthPath.c_str(), i, K, dim);
+                    if (ptr->ReadBinary(4, (char*)&dim) != 4 || dim < K) {
+                        LOG(Helper::LogLevel::LL_Error, "Error: Xvec file %s has No.%" PRId64 " vector whose dims are fewer than expected. Expected: %" PRId32 ", Fact: %" PRId32 "\n", truthPath.c_str(), i, K, dim);
                         exit(1);
                     }
-
-                    in.read(reinterpret_cast<char*>(temp_vec.data()), K * 4);
-                    in.seekg((dim - K) * 4, std::ios_base::cur);
-                    truth[i].insert(temp_vec.begin(), temp_vec.end());
+                    if (dim > K) temp_vec.resize(dim);
+                    if (ptr->ReadBinary(dim * 4, (char*)temp_vec.data()) != dim * 4) {
+                        LOG(Helper::LogLevel::LL_Error, "Fail to read truth file!\n");
+                        exit(1);
+                    }
+                    truth[i].insert(temp_vec.begin(), temp_vec.begin() + K);
                 }
-
-                in.close();
             }
 
             void LoadTruthDefault(std::string truthPath, std::vector<std::set<int>>& truth, int K, SizeType p_iTruthNumber) {
-                std::ifstream in(truthPath, std::ifstream::binary);
-                if (!in) {
-                    fprintf(stderr, "Error: Failed to read input file: %s \n", truthPath.c_str());
+                auto ptr = SPTAG::f_createIO();
+                if (ptr == nullptr || !ptr->Initialize(truthPath.c_str(), std::ios::in | std::ios::binary)) {
+                    LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", truthPath.c_str());
                     exit(1);
                 }
+
                 int row, column;
-                in.read(reinterpret_cast<char*>(&row), 4);
-                in.read(reinterpret_cast<char*>(&column), 4);
+                if (ptr->ReadBinary(4, (char*)&row) != 4 || ptr->ReadBinary(4, (char*)&column) != 4) {
+                    LOG(Helper::LogLevel::LL_Error, "Fail to read truth file!\n");
+                    exit(1);
+                }
                 truth.clear();
                 truth.resize(row);
-                std::vector<int> vec;
-                vec.reserve(column);
+                std::vector<int> vec(column);
                 for (size_t i = 0; i < row; i++)
                 {
-                    vec.clear();
-                    vec.resize(column);
-                    in.read(reinterpret_cast<char*>(vec.data()), 4 * column);
-                    truth[i].clear();
+                    if (ptr->ReadBinary(4 * column, (char*)vec.data()) != 4 * column) {
+                        LOG(Helper::LogLevel::LL_Error, "Fail to read truth file!\n");
+                        exit(1);
+                    }
                     truth[i].insert(vec.begin(), vec.begin() + K);
                 }
             }
@@ -122,7 +127,7 @@ namespace SPTAG {
                 }
                 else
                 {
-                    fprintf(stderr, "TruthFileType Unsupported.\n");
+                    LOG(Helper::LogLevel::LL_Error, "TruthFileType Unsupported.\n");
                     exit(1);
                 }
             }
@@ -132,12 +137,21 @@ namespace SPTAG {
             {
                 if (!p_output.empty())
                 {
-                    std::ofstream resultOutput(p_output, std::ios::binary);
+                    auto ptr = SPTAG::f_createIO();
+                    if (ptr == nullptr || !ptr->Initialize(p_output.c_str(), std::ios::binary | std::ios::out)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed create file: %s\n", p_output.c_str());
+                        exit(1);
+                    }
                     int32_t i32Val = static_cast<int32_t>(p_results.size());
-                    resultOutput.write(reinterpret_cast<char*>(&i32Val), sizeof(i32Val));
-
+                    if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
+                        LOG(Helper::LogLevel::LL_Error, "Fail to write result file!\n");
+                        exit(1);
+                    }
                     i32Val = p_resultNum;
-                    resultOutput.write(reinterpret_cast<char*>(&i32Val), sizeof(i32Val));
+                    if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
+                        LOG(Helper::LogLevel::LL_Error, "Fail to write result file!\n");
+                        exit(1);
+                    }
 
                     float fVal = 0;
                     for (size_t i = 0; i < p_results.size(); ++i)
@@ -145,17 +159,23 @@ namespace SPTAG {
                         for (int j = 0; j < p_resultNum; ++j)
                         {
                             i32Val = p_results[i].GetResult(j)->VID;
-                            resultOutput.write(reinterpret_cast<char*>(&i32Val), sizeof(i32Val));
+                            if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
+                                LOG(Helper::LogLevel::LL_Error, "Fail to write result file!\n");
+                                exit(1);
+                            }
 
                             fVal = p_results[i].GetResult(j)->Dist;
-                            resultOutput.write(reinterpret_cast<char*>(&fVal), sizeof(fVal));
+                            if (ptr->WriteBinary(sizeof(fVal), reinterpret_cast<char*>(&fVal)) != sizeof(fVal)) {
+                                LOG(Helper::LogLevel::LL_Error, "Fail to write result file!\n");
+                                exit(1);
+                            }
                         }
                     }
                 }
             }
 
             template<typename T, typename V>
-            void PrintPercentiles(FILE* p_output, const std::vector<V>& p_values, std::function<T(const V&)> p_get, const char* p_format)
+            void PrintPercentiles(const std::vector<V>& p_values, std::function<T(const V&)> p_get, const char* p_format)
             {
                 double sum = 0;
                 std::vector<T> collects;
@@ -169,7 +189,7 @@ namespace SPTAG {
 
                 std::sort(collects.begin(), collects.end());
 
-                fprintf(p_output, "Avg\t50tiles\t90tiles\t95tiles\t99tiles\t99.9tiles\tMax\n");
+                LOG(Helper::LogLevel::LL_Info, "Avg\t50tiles\t90tiles\t95tiles\t99tiles\t99.9tiles\tMax\n");
 
                 std::string formatStr("%.3lf");
                 for (int i = 1; i < 7; ++i)
@@ -180,7 +200,7 @@ namespace SPTAG {
 
                 formatStr += '\n';
 
-                fprintf(p_output,
+                LOG(Helper::LogLevel::LL_Info,
                     formatStr.c_str(),
                     sum / collects.size(),
                     collects[static_cast<size_t>(collects.size() * 0.50)],
@@ -197,20 +217,19 @@ namespace SPTAG {
                 int p_numThreads,
                 std::vector<COMMON::QueryResultSet<ValueType>>& p_results,
                 std::vector<SearchStats>& p_stats,
-                int p_maxQueryCount,
-                FILE* p_logOut)
+                int p_maxQueryCount)
             {
                 int numQueries = min(static_cast<int>(p_results.size()), p_maxQueryCount);
 
                 TimeUtils::StopW sw;
 
-                fprintf(stdout, "Searching: numThread: %d, numQueries: %d.\n", p_numThreads, numQueries);
+                LOG(Helper::LogLevel::LL_Info, "Searching: numThread: %d, numQueries: %d.\n", p_numThreads, numQueries);
 #pragma omp parallel for num_threads(p_numThreads)
                 for (int next = 0; next < numQueries; ++next)
                 {
                     if ((next & ((1 << 14) - 1)) == 0)
                     {
-                        fprintf(stderr, "Processed %.2lf%%...\r", next * 100.0 / numQueries);
+                        LOG(Helper::LogLevel::LL_Info, "Processed %.2lf%%...\n", next * 100.0 / numQueries);
                     }
 
                     p_searcher.Search(p_results[next], p_stats[next]);
@@ -218,7 +237,7 @@ namespace SPTAG {
 
                 double sendingCost = sw.getElapsedSec();
 
-                fprintf(p_logOut,
+                LOG(Helper::LogLevel::LL_Info,
                     "Finish sending in %.3lf seconds, actuallQPS is %.2lf, query count %u.\n",
                     sendingCost,
                     numQueries / sendingCost,
@@ -231,12 +250,11 @@ namespace SPTAG {
                 uint32_t p_qps,
                 std::vector<COMMON::QueryResultSet<ValueType>>& p_results,
                 std::vector<SearchStats>& p_stats,
-                int p_maxQueryCount,
-                FILE* p_logOut)
+                int p_maxQueryCount)
             {
                 size_t numQueries = std::min<size_t>(p_results.size(), p_maxQueryCount);
 
-                fprintf(p_logOut, "Using Async sending with QPS setting %u\n", p_qps);
+                LOG(Helper::LogLevel::LL_Info, "Using Async sending with QPS setting %u\n", p_qps);
 
                 Helper::Concurrent::WaitSignal waitFinish;
                 waitFinish.Reset(static_cast<uint32_t>(numQueries));
@@ -272,7 +290,7 @@ namespace SPTAG {
 
                                 if ((index & ((1 << 14) - 1)) == 0)
                                 {
-                                    fprintf(stderr, "Sent %.2lf%%...\r", index * 100.0 / numQueries);
+                                    LOG(Helper::LogLevel::LL_Info, "Sent %.2lf%%...\n", index * 100.0 / numQueries);
                                 }
                             }
                             else
@@ -294,7 +312,7 @@ namespace SPTAG {
                 TimeUtils::SteadClock::time_point finishSending = TimeUtils::SteadClock::now();
                 double sendingCost = TimeUtils::getSecInterval(startTime, finishSending);
 
-                fprintf(p_logOut,
+                LOG(Helper::LogLevel::LL_Info,
                     "Finish sending in %.3lf seconds, QPS setting is %u, actuallQPS is %.2lf, query count %u.\n",
                     sendingCost,
                     p_qps,
@@ -306,7 +324,7 @@ namespace SPTAG {
                 TimeUtils::SteadClock::time_point finishSearch = TimeUtils::SteadClock::now();
                 double searchCost = TimeUtils::getSecInterval(startTime, finishSearch);
 
-                fprintf(p_logOut,
+                LOG(Helper::LogLevel::LL_Info,
                     "Finish searching in %.3lf seconds.\n",
                     searchCost);
             }
@@ -318,12 +336,10 @@ namespace SPTAG {
                 std::string truthFile = COMMON_OPTS.m_truthPath;
                 std::string warmupFile = COMMON_OPTS.m_warmupPath;
 
-                FILE* logOut = stdout;
                 if (!p_opts.m_logFile.empty())
                 {
-                    logOut = fopen(p_opts.m_logFile.c_str(), "w");
+                    SPTAG::g_pLogger.reset(new Helper::FileLogger(Helper::LogLevel::LL_Info, p_opts.m_logFile.c_str()));
                 }
-
                 int numThreads = p_opts.m_iNumberOfThreads;
                 int asyncCallQPS = p_opts.m_qpsLimit;
 
@@ -331,15 +347,15 @@ namespace SPTAG {
                 int K = std::min<int>(p_opts.m_resultNum, internalResultNum);
 
                 SearchDefault<ValueType> searcher;
-                fprintf(stderr, "Start setup index...\n");
+                LOG(Helper::LogLevel::LL_Info, "Start setup index...\n");
                 searcher.Setup(p_opts);
 
-                fprintf(stderr, "Setup index finish, start setup hint...\n");
+                LOG(Helper::LogLevel::LL_Info, "Setup index finish, start setup hint...\n");
                 searcher.SetHint(numThreads, internalResultNum, asyncCallQPS > 0, p_opts);
 
                 if (!warmupFile.empty())
                 {
-                    fprintf(stderr, "Start loading warmup query set...\n");
+                    LOG(Helper::LogLevel::LL_Info, "Start loading warmup query set...\n");
                     std::shared_ptr<Helper::ReaderOptions> queryOptions(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_warmupType, COMMON_OPTS.m_warmupDelimiter));
                     auto queryReader = Helper::VectorSetReader::CreateInstance(queryOptions);
                     if (ErrorCode::Success != queryReader->LoadFile(COMMON_OPTS.m_warmupPath))
@@ -358,20 +374,20 @@ namespace SPTAG {
                         warmupResults[i].Reset();
                     }
 
-                    fprintf(stderr, "Start warmup...\n");
+                    LOG(Helper::LogLevel::LL_Info, "Start warmup...\n");
                     if (asyncCallQPS == 0)
                     {
-                        SearchSequential(searcher, numThreads, warmupResults, warmpUpStats, p_opts.m_queryCountLimit, logOut);
+                        SearchSequential(searcher, numThreads, warmupResults, warmpUpStats, p_opts.m_queryCountLimit);
                     }
                     else
                     {
-                        SearchAsync(searcher, asyncCallQPS, warmupResults, warmpUpStats, p_opts.m_queryCountLimit, logOut);
+                        SearchAsync(searcher, asyncCallQPS, warmupResults, warmpUpStats, p_opts.m_queryCountLimit);
                     }
 
-                    fprintf(stderr, "\nFinish warmup...\n");
+                    LOG(Helper::LogLevel::LL_Info, "\nFinish warmup...\n");
                 }
 
-                fprintf(stderr, "Start loading QuerySet...\n");
+                LOG(Helper::LogLevel::LL_Info, "Start loading QuerySet...\n");
                 std::shared_ptr<Helper::ReaderOptions> queryOptions(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_queryType, COMMON_OPTS.m_queryDelimiter));
                 auto queryReader = Helper::VectorSetReader::CreateInstance(queryOptions);
                 if (ErrorCode::Success != queryReader->LoadFile(COMMON_OPTS.m_queryPath))
@@ -386,7 +402,7 @@ namespace SPTAG {
                 if (!truthFile.empty())
                 {
 
-                    fprintf(stderr, "Start loading TruthFile...\n");
+                    LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
                     LoadTruth(truthFile, truth, numQueries, K);
                 }
 
@@ -399,25 +415,25 @@ namespace SPTAG {
                 }
 
 
-                fprintf(stderr, "Start ANN Search...\n");
+                LOG(Helper::LogLevel::LL_Info, "Start ANN Search...\n");
 
                 if (asyncCallQPS == 0)
                 {
-                    SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit, logOut);
+                    SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
                 }
                 else
                 {
-                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit, logOut);
+                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
                 }
 
-                fprintf(stderr, "\nFinish ANN Search...\n");
+                LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
 
                 float recall = 0;
 
                 if (!truthFile.empty())
                 {
                     recall = CalcRecall(results, truth, K);
-                    fprintf(stderr, "Recall: %f\n", recall);
+                    LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
                 }
 
                 long long exCheckSum = 0;
@@ -430,15 +446,14 @@ namespace SPTAG {
                         exListSum += p_stat.m_totalListElementsCount;
                     });
 
-                fprintf(stderr,
+                LOG(Helper::LogLevel::LL_Info,
                     "Max Ex Dist Check: %d, Average Ex Dist Check: %.2lf, Average Ex Elements Count: %.2lf.\n",
                     exCheckMax,
                     static_cast<double>(exCheckSum) / numQueries,
                     static_cast<double>(exListSum) / numQueries);
 
-                fprintf(logOut, "\nSleep Latency Distribution:\n");
-                PrintPercentiles<double, SearchStats>(logOut,
-                    stats,
+                LOG(Helper::LogLevel::LL_Info, "\nSleep Latency Distribution:\n");
+                PrintPercentiles<double, SearchStats>(stats,
                     [](const SearchStats& ss) -> double
                     {
                         return ss.m_sleepLatency;
@@ -446,100 +461,86 @@ namespace SPTAG {
                     "%.3lf");
 
 
-                fprintf(logOut, "\nIn Queue Latency Distribution:\n");
-                PrintPercentiles<double, SearchStats>(logOut,
-                    stats,
+                LOG(Helper::LogLevel::LL_Info, "\nIn Queue Latency Distribution:\n");
+                PrintPercentiles<double, SearchStats>(stats,
                     [](const SearchStats& ss) -> double
                     {
                         return ss.m_queueLatency;
                     },
                     "%.3lf");
 
-                fprintf(logOut, "\nEx Latency Distribution:\n");
-                PrintPercentiles<double, SearchStats>(logOut,
-                    stats,
+                LOG(Helper::LogLevel::LL_Info, "\nEx Latency Distribution:\n");
+                PrintPercentiles<double, SearchStats>(stats,
                     [](const SearchStats& ss) -> double
                     {
                         return ss.m_exLatency;
                     },
                     "%.3lf");
 
-                fprintf(logOut, "\nTotal Search Latency Distribution:\n");
-                PrintPercentiles<double, SearchStats>(logOut,
-                    stats,
+                LOG(Helper::LogLevel::LL_Info, "\nTotal Search Latency Distribution:\n");
+                PrintPercentiles<double, SearchStats>(stats,
                     [](const SearchStats& ss) -> double
                     {
                         return ss.m_totalSearchLatency;
                     },
                     "%.3lf");
 
-                fprintf(logOut, "\nTotal Latency Distribution:\n");
-                PrintPercentiles<double, SearchStats>(logOut,
-                    stats,
+                LOG(Helper::LogLevel::LL_Info, "\nTotal Latency Distribution:\n");
+                PrintPercentiles<double, SearchStats>(stats,
                     [](const SearchStats& ss) -> double
                     {
                         return ss.m_totalLatency;
                     },
                     "%.3lf");
 
-                fprintf(logOut, "\nTotal Disk Acess Distribution:\n");
-                PrintPercentiles<int, SearchStats>(logOut,
-                    stats,
+                LOG(Helper::LogLevel::LL_Info, "\nTotal Disk Acess Distribution:\n");
+                PrintPercentiles<int, SearchStats>(stats,
                     [](const SearchStats& ss) -> int
                     {
                         return ss.m_diskAccessCount;
                     },
                     "%4d");
 
-                fprintf(logOut, "\nTotal Async Latency 0 Distribution:\n");
-                PrintPercentiles<double, SearchStats>(logOut,
-                    stats,
+                LOG(Helper::LogLevel::LL_Info, "\nTotal Async Latency 0 Distribution:\n");
+                PrintPercentiles<double, SearchStats>(stats,
                     [](const SearchStats& ss) -> double
                     {
                         return ss.m_asyncLatency0;
                     },
                     "%.3lf");
 
-                fprintf(logOut, "\nTotal Async Latency 1 Distribution:\n");
-                PrintPercentiles<double, SearchStats>(logOut,
-                    stats,
+                LOG(Helper::LogLevel::LL_Info, "\nTotal Async Latency 1 Distribution:\n");
+                PrintPercentiles<double, SearchStats>(stats,
                     [](const SearchStats& ss) -> double
                     {
                         return ss.m_asyncLatency1;
                     },
                     "%.3lf");
 
-                fprintf(logOut, "\nTotal Async Latency 2 Distribution:\n");
-                PrintPercentiles<double, SearchStats>(logOut,
-                    stats,
+                LOG(Helper::LogLevel::LL_Info, "\nTotal Async Latency 2 Distribution:\n");
+                PrintPercentiles<double, SearchStats>(stats,
                     [](const SearchStats& ss) -> double
                     {
                         return ss.m_asyncLatency2;
                     },
                     "%.3lf");
 
-                fprintf(logOut, "\n");
+                LOG(Helper::LogLevel::LL_Info, "\n");
 
                 if (!outputFile.empty())
                 {
-                    fprintf(stderr, "Start output to %s\n", outputFile.c_str());
+                    LOG(Helper::LogLevel::LL_Info, "Start output to %s\n", outputFile.c_str());
                     OutputResult(outputFile, results, K);
                 }
 
-                fprintf(stdout,
+                LOG(Helper::LogLevel::LL_Info,
                     "Recall: %f, MaxExCheck: %d, AverageExCheck: %.2lf, AverageExElements: %.2lf\n",
                     recall,
                     exCheckMax,
                     static_cast<double>(exCheckSum) / numQueries,
                     static_cast<double>(exListSum) / numQueries);
 
-                fprintf(stdout, "\n");
-
-
-                if (!p_opts.m_logFile.empty())
-                {
-                    fclose(logOut);
-                }
+                LOG(Helper::LogLevel::LL_Info, "\n");
             }
 		}
 	}

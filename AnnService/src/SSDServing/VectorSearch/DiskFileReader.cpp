@@ -1,6 +1,5 @@
 #include "inc/SSDServing/VectorSearch/DiskFileReader.h"
 
-#include <sstream>
 #include <cstdio>
 
 using namespace SPTAG::SSDServing::VectorSearch;

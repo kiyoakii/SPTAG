@@ -144,7 +144,7 @@ namespace SPTAG {
                 {
                     if (c.depth > nextDepth)
                     {
-                        fprintf(stderr,
+                        LOG(Helper::LogLevel::LL_Info,
                             "Iteration of depth %d, selected %u heads, about %.2lf%%\n",
                             nextDepth,
                             static_cast<uint32_t>(overallSelected.size() - lastSelected),
@@ -181,7 +181,7 @@ namespace SPTAG {
                                 }
                             }
 
-                            fprintf(stderr,
+                            LOG(Helper::LogLevel::LL_Info,
                                 "Iteration of Revisit, selected %u heads, about %.2lf%%\n",
                                 static_cast<uint32_t>(overallSelected.size() - lastSelected),
                                 overallSelected.size() * 100.0 / p_vectorCount);
@@ -234,7 +234,7 @@ namespace SPTAG {
 
                 overallSelected.erase(p_vectorCount);
 
-                fprintf(stderr,
+                LOG(Helper::LogLevel::LL_Info,
                     "Iteration of depth %d, selected %u heads, about %.2lf%%\n",
                     nextDepth,
                     static_cast<uint32_t>(overallSelected.size() - lastSelected),
@@ -244,22 +244,22 @@ namespace SPTAG {
                 p_selected.reserve(overallSelected.size());
                 p_selected.assign(overallSelected.begin(), overallSelected.end());
 
-                fprintf(stderr,
+                LOG(Helper::LogLevel::LL_Info,
                     "Finally selected %u heads, about %.2lf%%\n",
                     static_cast<uint32_t>(p_selected.size()),
                     p_selected.size() * 100.0 / p_vectorCount);
 
-                fprintf(stderr,
+                LOG(Helper::LogLevel::LL_Info,
                     "Total leaf count %d, big cluster count %d\n",
                     overallLeafCount,
                     bigClusterCount);
 
                 if (p_opts.m_printSizeCount)
                 {
-                    fprintf(stderr, "Leaf size count:\n");
+                    LOG(Helper::LogLevel::LL_Info, "Leaf size count:\n");
                     for (const auto& ele : sizeCount)
                     {
-                        fprintf(stderr, "%3d %10d\n", ele.first, ele.second);
+                        LOG(Helper::LogLevel::LL_Info, "%3d %10d\n", ele.first, ele.second);
                     }
                 }
 
@@ -272,10 +272,10 @@ namespace SPTAG {
                     }
                 }
 
-                fprintf(stderr, "Leaf sum count > set leaf size: %d\n", sumGreaterThanLeafSize);
+                LOG(Helper::LogLevel::LL_Info, "Leaf sum count > set leaf size: %d\n", sumGreaterThanLeafSize);
 
                 int covered = DfsCovered(rootIdOfFirstTree, p_tree, overallSelected, false);
-                fprintf(stderr,
+                LOG(Helper::LogLevel::LL_Info,
                     "Total covered leaf count %d, about %.2lf\n",
                     covered,
                     covered * 100.0 / p_vectorCount);
@@ -370,7 +370,7 @@ namespace SPTAG {
 
                         double diff = static_cast<double>(p_selected.size()) / p_vectorCount - p_opts.m_ratio;
 
-                        fprintf(stdout,
+                        LOG(Helper::LogLevel::LL_Info,
                             "Select Threshold: %d, Split Threshold: %d, diff: %.2lf%%.\n",
                             opts.m_selectThreshold,
                             opts.m_splitThreshold,
@@ -398,7 +398,7 @@ namespace SPTAG {
                 opts.m_selectThreshold = selectThreshold;
                 opts.m_splitThreshold = splitThreshold;
 
-                fprintf(stdout,
+                LOG(Helper::LogLevel::LL_Info,
                     "Final Select Threshold: %d, Split Threshold: %d.\n",
                     opts.m_selectThreshold,
                     opts.m_splitThreshold);
@@ -415,19 +415,19 @@ namespace SPTAG {
                 std::vector<int> selected;
                 selected.reserve(vectorSet->Count());
 
-                fprintf(stdout, "Start selecting nodes...\n");
+                LOG(Helper::LogLevel::LL_Info, "Start selecting nodes...\n");
                 if (!opts.m_selectDynamically)
                 {
-                    fprintf(stdout, "Select Head Statically...\n");
+                    LOG(Helper::LogLevel::LL_Info, "Select Head Statically...\n");
                     SelectHeadStatically(bkt, vectorSet->Count(), opts, selected);
                 }
                 else
                 {
-                    fprintf(stdout, "Select Head Dynamically...\n");
+                    LOG(Helper::LogLevel::LL_Info, "Select Head Dynamically...\n");
                     SelectHeadDynamically(bkt, vectorSet->Count(), opts, selected);
                 }
 
-                fprintf(stdout,
+                LOG(Helper::LogLevel::LL_Info,
                     "Seleted Nodes: %u, about %.2lf%% of total.\n",
                     static_cast<unsigned int>(selected.size()),
                     selected.size() * 100.0 / vectorSet->Count());
@@ -438,7 +438,7 @@ namespace SPTAG {
                     {
                         if (counter.count(item) <= 0)
                         {
-                            fprintf(stderr, "selected node: %d can't be used to calculate std.", item);
+                            LOG(Helper::LogLevel::LL_Error, "selected node: %d can't be used to calculate std.", item);
                             return ErrorCode::Fail;
                         }
                         leafSizes.push_back(counter[item]);
@@ -456,41 +456,53 @@ namespace SPTAG {
                     int sum = 0;
                     for (auto& kv : leafDict)
                     {
-                        fprintf(stdout, "leaf size: %d, nodes: %d. \n", kv.first, kv.second);
+                        LOG(Helper::LogLevel::LL_Info, "leaf size: %d, nodes: %d. \n", kv.first, kv.second);
                         sum += kv.second;
                     }
                     if (sum != selected.size())
                     {
-                        fprintf(stderr, "please recheck std computation. \n");
+                        LOG(Helper::LogLevel::LL_Error, "please recheck std computation. \n");
                         return ErrorCode::Fail;
                     }
                     float std = Std(leafSizes.data(), leafSizes.size());
-                    fprintf(stdout, "standard deviation is %.3f.\n", std);
+                    LOG(Helper::LogLevel::LL_Info, "standard deviation is %.3f.\n", std);
                 }
 
                 if (!opts.m_noOutput)
                 {
                     std::sort(selected.begin(), selected.end());
 
-                    std::ofstream output(COMMON_OPTS.m_headVectorFile, std::ios::binary);
-                    std::ofstream outputIDs(COMMON_OPTS.m_headIDFile, std::ios::binary);
+                    std::shared_ptr<Helper::DiskPriorityIO> output = SPTAG::f_createIO(), outputIDs = SPTAG::f_createIO();
+                    if (output == nullptr || outputIDs == nullptr ||
+                        !output->Initialize(COMMON_OPTS.m_headVectorFile.c_str(), std::ios::binary | std::ios::out) ||
+                        !outputIDs->Initialize(COMMON_OPTS.m_headIDFile.c_str(), std::ios::binary | std::ios::out)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed to create output file:%s %s\n", COMMON_OPTS.m_headVectorFile.c_str(), COMMON_OPTS.m_headIDFile.c_str());
+                        exit(1);
+                    }
 
                     SizeType val = static_cast<SizeType>(selected.size());
-
-                    output.write(reinterpret_cast<char*>(&val), sizeof(val));
+                    if (output->WriteBinary(sizeof(val), reinterpret_cast<char*>(&val)) != sizeof(val)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed to write output file!\n");
+                        exit(1);
+                    }
                     DimensionType dt = vectorSet->Dimension();
-                    output.write(reinterpret_cast<char*>(&dt), sizeof(dt));
+                    if (output->WriteBinary(sizeof(dt), reinterpret_cast<char*>(&dt)) != sizeof(dt)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed to write output file!\n");
+                        exit(1);
+                    }
                     for (auto& ele : selected)
                     {
                         uint64_t vid = static_cast<uint64_t>(ele);
-                        outputIDs.write(reinterpret_cast<char*>(&vid), sizeof(vid));
-                        output.write(reinterpret_cast<char*>(vectorSet->GetVector(static_cast<SizeType>(vid))), vectorSet->PerVectorDataSize());
+                        if (outputIDs->WriteBinary(sizeof(vid), reinterpret_cast<char*>(&vid)) != sizeof(vid)) {
+                            LOG(Helper::LogLevel::LL_Error, "Failed to write output file!\n");
+                            exit(1);
+                        }
+                        if (output->WriteBinary(vectorSet->PerVectorDataSize(), (char*)(vectorSet->GetVector((SizeType)vid))) != vectorSet->PerVectorDataSize()) {
+                            LOG(Helper::LogLevel::LL_Error, "Failed to write output file!\n");
+                            exit(1);
+                        }
                     }
-
-                    output.close();
-                    outputIDs.close();
                 }
-
 				return ErrorCode::Success;
 			}
 		}
