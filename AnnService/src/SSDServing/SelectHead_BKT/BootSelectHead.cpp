@@ -1,3 +1,4 @@
+#include "inc/Helper/VectorSetReader.h"
 #include "inc/SSDServing/SelectHead_BKT/BootSelectHead.h"
 #include "inc/SSDServing/SelectHead_BKT/BuildBKT.h"
 #include "inc/SSDServing/SelectHead_BKT/AnalyzeTree.h"
@@ -13,14 +14,15 @@ namespace SPTAG {
 				VectorSearch::TimeUtils::StopW sw;
 
 				fprintf(stdout, "Start loading vector file.\n");
-				BasicVectorSet vectorSet(
-					COMMON_OPTS.m_vectorPath, 
-					COMMON_OPTS.m_valueType, 
-					COMMON_OPTS.m_dim, 
-					COMMON_OPTS.m_vectorSize,
-					COMMON_OPTS.m_vectorType,
-					COMMON_OPTS.m_vectorDelimiter,
-					COMMON_OPTS.m_distCalcMethod);
+				std::shared_ptr<Helper::ReaderOptions> options(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_vectorType, COMMON_OPTS.m_vectorDelimiter));
+				auto vectorReader = Helper::VectorSetReader::CreateInstance(options);
+				if (ErrorCode::Success != vectorReader->LoadFile(COMMON_OPTS.m_vectorPath))
+				{
+					LOG(Helper::LogLevel::LL_Error, "Failed to read vector file.\n");
+					exit(1);
+				}
+				auto vectorSet = vectorReader->GetVectorSet();
+				if (COMMON_OPTS.m_distCalcMethod == DistCalcMethod::Cosine) vectorSet->Normalize(opts.m_iNumberOfThreads);
 				fprintf(stdout, "Finish loading vector file.\n");
 
 				fprintf(stdout, "Start generating BKT.\n");

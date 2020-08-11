@@ -26,7 +26,7 @@ namespace SPTAG {
 
             void DfsAnalyze(int p_nodeID,
                 const std::shared_ptr<COMMON::BKTree> p_tree,
-                const BasicVectorSet& p_vectorSet,
+                std::shared_ptr<VectorSet> p_vectorSet,
                 const Options& p_opts,
                 int p_height,
                 std::vector<BKTNodeInfo>& p_nodeInfos) {

@@ -3,8 +3,6 @@
 
 #include "inc/Helper/CommonHelper.h"
 
-#include <iostream>
-#include <fstream>
 #include <cctype>
 #include <functional>
 
@@ -147,13 +145,13 @@ StrUtils::StrEqualIgnoreCase(const char* p_left, const char* p_right)
 std::string
 StrUtils::ReplaceAll(const std::string& orig, const std::string& from, const std::string& to)
 {
-	std::string ret = orig;
-	if (from.empty()) return ret;
+    std::string ret = orig;
+    if (from.empty()) return ret;
 
-	size_t pos = 0;
-	while ((pos = ret.find(from, pos)) != std::string::npos) {
-		ret.replace(pos, from.length(), to);
-		pos += to.length();
-	}
-	return ret;
+    size_t pos = 0;
+    while ((pos = ret.find(from, pos)) != std::string::npos) {
+        ret.replace(pos, from.length(), to);
+        pos += to.length();
+    }
+    return ret;
 }

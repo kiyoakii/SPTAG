@@ -340,15 +340,21 @@ namespace SPTAG {
                 if (!warmupFile.empty())
                 {
                     fprintf(stderr, "Start loading warmup query set...\n");
-                    BasicVectorSet warmupQuerySet(COMMON_OPTS.m_warmupPath, COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_warmupSize, COMMON_OPTS.m_warmupType, COMMON_OPTS.m_warmupDelimiter, COMMON_OPTS.m_distCalcMethod);
-
-                    int warmupNumQueries = warmupQuerySet.Count();
+                    std::shared_ptr<Helper::ReaderOptions> queryOptions(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_warmupType, COMMON_OPTS.m_warmupDelimiter));
+                    auto queryReader = Helper::VectorSetReader::CreateInstance(queryOptions);
+                    if (ErrorCode::Success != queryReader->LoadFile(COMMON_OPTS.m_warmupPath))
+                    {
+                        LOG(Helper::LogLevel::LL_Error, "Failed to read query file.\n");
+                        exit(1);
+                    }
+                    auto warmupQuerySet = queryReader->GetVectorSet();
+                    int warmupNumQueries = warmupQuerySet->Count();
 
                     std::vector<COMMON::QueryResultSet<ValueType>> warmupResults(warmupNumQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
                     std::vector<SearchStats> warmpUpStats(warmupNumQueries);
                     for (int i = 0; i < warmupNumQueries; ++i)
                     {
-                        warmupResults[i].SetTarget(reinterpret_cast<ValueType*>(warmupQuerySet.GetVector(i)));
+                        warmupResults[i].SetTarget(reinterpret_cast<ValueType*>(warmupQuerySet->GetVector(i)));
                         warmupResults[i].Reset();
                     }
 
@@ -366,9 +372,15 @@ namespace SPTAG {
                 }
 
                 fprintf(stderr, "Start loading QuerySet...\n");
-                BasicVectorSet querySet(COMMON_OPTS.m_queryPath, COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_querySize, COMMON_OPTS.m_queryType, COMMON_OPTS.m_queryDelimiter, COMMON_OPTS.m_distCalcMethod);
-
-                int numQueries = querySet.Count();
+                std::shared_ptr<Helper::ReaderOptions> queryOptions(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_queryType, COMMON_OPTS.m_queryDelimiter));
+                auto queryReader = Helper::VectorSetReader::CreateInstance(queryOptions);
+                if (ErrorCode::Success != queryReader->LoadFile(COMMON_OPTS.m_queryPath))
+                {
+                    LOG(Helper::LogLevel::LL_Error, "Failed to read query file.\n");
+                    exit(1);
+                }
+                auto querySet = queryReader->GetVectorSet();
+                int numQueries = querySet->Count();
 
                 std::vector<std::set<int>> truth;
                 if (!truthFile.empty())
@@ -382,7 +394,7 @@ namespace SPTAG {
                 std::vector<SearchStats> stats(numQueries);
                 for (int i = 0; i < numQueries; ++i)
                 {
-                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet.GetVector(i)));
+                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
                     results[i].Reset();
                 }
 

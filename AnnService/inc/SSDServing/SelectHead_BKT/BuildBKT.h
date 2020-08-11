@@ -8,7 +8,7 @@ namespace SPTAG {
 	namespace SSDServing {
 		namespace SelectHead_BKT {
 			template<typename T>
-			std::shared_ptr<COMMON::BKTree> BuildBKT(BasicVectorSet& p_vectorSet, const Options& opts) {
+			std::shared_ptr<COMMON::BKTree> BuildBKT(std::shared_ptr<VectorSet> p_vectorSet, const Options& opts) {
 				std::shared_ptr<COMMON::BKTree> bkt = std::make_shared<COMMON::BKTree>();
 				bkt->m_iBKTKmeansK = opts.m_iBKTKmeansK;
 				bkt->m_iBKTLeafSize = opts.m_iBKTLeafSize;
@@ -18,7 +18,7 @@ namespace SPTAG {
 				fprintf(stdout, "BKTKmeansK: %d, BKTLeafSize: %d, Samples: %d, TreeNumber: %d, ThreadNum: %d.\n", 
 					bkt->m_iBKTKmeansK, bkt->m_iBKTLeafSize, bkt->m_iSamples, bkt->m_iTreeNumber, opts.m_iNumberOfThreads);
 				VectorSearch::TimeUtils::StopW sw;
-				COMMON::Dataset<T> data(p_vectorSet.Count(), p_vectorSet.Dimension(), (T*)p_vectorSet.GetData());
+				COMMON::Dataset<T> data(p_vectorSet->Count(), p_vectorSet->Dimension(), (T*)(p_vectorSet->GetData()));
 				bkt->BuildTrees<T>(data, COMMON_OPTS.m_distCalcMethod, opts.m_iNumberOfThreads, nullptr, nullptr, true);
 				double elapsedMinutes = sw.getElapsedMin();
 

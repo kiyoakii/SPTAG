@@ -58,7 +58,7 @@ namespace SPTAG {
 					{
 						Helper::IniReader iniReader;
 						if (iniReader.LoadIniFile(p_opts.m_headConfig) != ErrorCode::Success) {
-							std::cerr << "ERROR of loading head index config: " << p_opts.m_headConfig << std::endl;
+							LOG(Helper::LogLevel::LL_Error, "ERROR of loading head index config: %s\n", p_opts.m_headConfig.c_str());
 							exit(1);
 						}
 

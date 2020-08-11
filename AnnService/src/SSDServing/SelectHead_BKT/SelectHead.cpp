@@ -411,26 +411,26 @@ namespace SPTAG {
 
             }
 
-			ErrorCode SelectHead(BasicVectorSet vectorSet, std::shared_ptr<COMMON::BKTree> bkt, Options& opts, std::unordered_map<int, int>& counter) {
+			ErrorCode SelectHead(std::shared_ptr<VectorSet> vectorSet, std::shared_ptr<COMMON::BKTree> bkt, Options& opts, std::unordered_map<int, int>& counter) {
                 std::vector<int> selected;
-                selected.reserve(vectorSet.Count());
+                selected.reserve(vectorSet->Count());
 
                 fprintf(stdout, "Start selecting nodes...\n");
                 if (!opts.m_selectDynamically)
                 {
                     fprintf(stdout, "Select Head Statically...\n");
-                    SelectHeadStatically(bkt, vectorSet.Count(), opts, selected);
+                    SelectHeadStatically(bkt, vectorSet->Count(), opts, selected);
                 }
                 else
                 {
                     fprintf(stdout, "Select Head Dynamically...\n");
-                    SelectHeadDynamically(bkt, vectorSet.Count(), opts, selected);
+                    SelectHeadDynamically(bkt, vectorSet->Count(), opts, selected);
                 }
 
                 fprintf(stdout,
                     "Seleted Nodes: %u, about %.2lf%% of total.\n",
                     static_cast<unsigned int>(selected.size()),
-                    selected.size() * 100.0 / vectorSet.Count());
+                    selected.size() * 100.0 / vectorSet->Count());
 
                 if (opts.m_calcStd) {
                     std::vector<int> leafSizes;
@@ -478,13 +478,13 @@ namespace SPTAG {
                     SizeType val = static_cast<SizeType>(selected.size());
 
                     output.write(reinterpret_cast<char*>(&val), sizeof(val));
-                    DimensionType dt = vectorSet.Dimension();
+                    DimensionType dt = vectorSet->Dimension();
                     output.write(reinterpret_cast<char*>(&dt), sizeof(dt));
                     for (auto& ele : selected)
                     {
                         uint64_t vid = static_cast<uint64_t>(ele);
                         outputIDs.write(reinterpret_cast<char*>(&vid), sizeof(vid));
-                        output.write(reinterpret_cast<char*>(vectorSet.GetVector(static_cast<SizeType>(vid))), vectorSet.PerVectorDataSize());
+                        output.write(reinterpret_cast<char*>(vectorSet->GetVector(static_cast<SizeType>(vid))), vectorSet->PerVectorDataSize());
                     }
 
                     output.close();

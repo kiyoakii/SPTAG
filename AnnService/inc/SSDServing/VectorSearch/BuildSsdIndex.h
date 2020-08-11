@@ -11,6 +11,7 @@
 #include "inc/SSDServing/VectorSearch/Options.h"
 #include "inc/SSDServing/VectorSearch/SearchDefault.h"
 #include "inc/Core/Common/QueryResultSet.h"
+#include "inc/Helper/VectorSetReader.h"
 #include "inc/SSDServing/VectorSearch/TimeUtils.h"
 
 namespace SPTAG {
@@ -181,7 +182,7 @@ namespace SPTAG {
                     const std::unique_ptr<int[]>& p_postPageNum,
                     const std::unique_ptr<std::uint16_t[]>& p_postPageOffset,
                     const std::vector<int>& p_postingOrderInIndex,
-                    const BasicVectorSet& p_fullVectors)
+                    std::shared_ptr<VectorSet> p_fullVectors)
                 {
                     fprintf(stdout, "Start output...\n");
 
@@ -213,11 +214,11 @@ namespace SPTAG {
                     output.write(reinterpret_cast<char*>(&i32Val), sizeof(i32Val));
 
                     // Number of all documents.
-                    i32Val = static_cast<int>(p_fullVectors.Count());
+                    i32Val = static_cast<int>(p_fullVectors->Count());
                     output.write(reinterpret_cast<char*>(&i32Val), sizeof(i32Val));
 
                     // Bytes of each vector.
-                    i32Val = static_cast<int>(p_fullVectors.Dimension());
+                    i32Val = static_cast<int>(p_fullVectors->Dimension());
                     output.write(reinterpret_cast<char*>(&i32Val), sizeof(i32Val));
 
                     // Page offset of list content section.
@@ -301,7 +302,7 @@ namespace SPTAG {
 
                             i32Val = p_postingSelections[selectIdx++].fullID;
                             output.write(reinterpret_cast<char*>(&i32Val), sizeof(i32Val));
-                            output.write(reinterpret_cast<char*>(p_fullVectors.GetVector(i32Val)), p_fullVectors.PerVectorDataSize());
+                            output.write(reinterpret_cast<char*>(p_fullVectors->GetVector(i32Val)), p_fullVectors->PerVectorDataSize());
 
                             listOffset += p_spacePerVector;
                         }
@@ -359,13 +360,21 @@ namespace SPTAG {
                 fprintf(stderr, "Setup index finish, start setup hint...\n");
                 searcher.SetHint(numThreads, candidateNum, false, p_opts);
 
-                BasicVectorSet fullVectors(COMMON_OPTS.m_vectorPath, COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_vectorSize, COMMON_OPTS.m_vectorType, COMMON_OPTS.m_vectorDelimiter, COMMON_OPTS.m_distCalcMethod);
+                std::shared_ptr<Helper::ReaderOptions> vectorOptions(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_vectorType, COMMON_OPTS.m_vectorDelimiter));
+                auto vectorReader = Helper::VectorSetReader::CreateInstance(vectorOptions);
+                if (ErrorCode::Success != vectorReader->LoadFile(COMMON_OPTS.m_vectorPath))
+                {
+                    LOG(Helper::LogLevel::LL_Error, "Failed to read vector file.\n");
+                    exit(1);
+                }
+                auto fullVectors = vectorReader->GetVectorSet();
+                if (COMMON_OPTS.m_distCalcMethod == DistCalcMethod::Cosine) fullVectors->Normalize(p_opts.m_iNumberOfThreads);
 
                 fprintf(stderr, "Full vector loaded.\n");
 
-                std::vector<Edge> selections(static_cast<size_t>(fullVectors.Count())* p_opts.m_replicaCount);
+                std::vector<Edge> selections(static_cast<size_t>(fullVectors->Count())* p_opts.m_replicaCount);
 
-                std::vector<int> replicaCount(fullVectors.Count(), 0);
+                std::vector<int> replicaCount(fullVectors->Count(), 0);
                 std::vector<std::atomic_int> postingListSize(searcher.HeadIndex()->GetNumSamples());
                 for (auto& pls : postingListSize) pls = 0;
 
@@ -389,7 +398,7 @@ namespace SPTAG {
                             while (true)
                             {
                                 int fullID = nextFullID.fetch_add(1);
-                                if (fullID >= fullVectors.Count())
+                                if (fullID >= fullVectors->Count())
                                 {
                                     break;
                                 }
@@ -399,7 +408,7 @@ namespace SPTAG {
                                     continue;
                                 }
 
-                                ValueType* buffer = reinterpret_cast<ValueType*>(fullVectors.GetVector(fullID));
+                                ValueType* buffer = reinterpret_cast<ValueType*>(fullVectors->GetVector(fullID));
                                 resultSet.SetTarget(buffer);
                                 resultSet.Reset();
 
@@ -465,7 +474,7 @@ namespace SPTAG {
                 int postingSizeLimit = INT_MAX;
                 if (p_opts.m_postingPageLimit > 0)
                 {
-                    postingSizeLimit = static_cast<int>(p_opts.m_postingPageLimit * c_pageSize / (fullVectors.PerVectorDataSize() + sizeof(int)));
+                    postingSizeLimit = static_cast<int>(p_opts.m_postingPageLimit * c_pageSize / (fullVectors->PerVectorDataSize() + sizeof(int)));
                 }
 
                 fprintf(stderr, "Posting size limit: %d\n", postingSizeLimit);
@@ -560,7 +569,7 @@ namespace SPTAG {
                 }
 
                 // VectorSize + VectorIDSize
-                size_t vectorInfoSize = sizeof(ValueType) * fullVectors.Dimension() + sizeof(int);
+                size_t vectorInfoSize = sizeof(ValueType) * fullVectors->Dimension() + sizeof(int);
 
                 std::unique_ptr<int[]> postPageNum;
                 std::unique_ptr<std::uint16_t[]> postPageOffset;
