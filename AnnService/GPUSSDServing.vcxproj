@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
       <Configuration>Debug</Configuration>
@@ -11,10 +11,10 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{85106062-3D9F-4B52-AFF3-97D0F9575888}</ProjectGuid>
-    <RootNamespace>GPUIndexBuilder</RootNamespace>
+    <ProjectGuid>{0CA39557-067E-4EBD-8264-9D09B00275A2}</ProjectGuid>
+    <RootNamespace>GPUSSDServing</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <ProjectName>GPUIndexBuilder</ProjectName>
+    <ProjectName>GPUSSDServing</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <Import Project="$(SolutionDir)\AnnService.users.props" />
@@ -96,14 +96,60 @@
     <CudaCompile>
       <TargetMachinePlatform>64</TargetMachinePlatform>
       <CodeGeneration>compute_70,sm_70</CodeGeneration>
-      <AdditionalCompilerOptions>/openmp /std:c++14 /Zc:__cplusplus /FS</AdditionalCompilerOptions>
+      <AdditionalCompilerOptions>/openmp /std:c++14 /Zc:__cplusplus /FS /D "_exe"</AdditionalCompilerOptions>
       <FastMath>true</FastMath>
       <Optimization>O2</Optimization>
       <Runtime>MT</Runtime>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <CudaCompile Include="src\IndexBuilder\main.cpp" />
+    <CudaCompile Include="src\SSDServing\BuildHead\BootBuildHead.cpp" />
+    <CudaCompile Include="src\SSDServing\IndexBuildManager\main.cpp" />
+    <CudaCompile Include="src\SSDServing\IndexBuildManager\Utils.cpp" />
+    <CudaCompile Include="src\SSDServing\SelectHead_BKT\AnalyzeTree.cpp" />
+    <CudaCompile Include="src\SSDServing\SelectHead_BKT\SelectHead.cpp" />
+    <CudaCompile Include="src\SSDServing\SelectHead_BKT\BootSelectHead.cpp" />
+    <CudaCompile Include="src\SSDServing\VectorSearch\BootVectorSearch.cpp" />
+    <CudaCompile Include="src\SSDServing\VectorSearch\DiskAccessUtils.cpp" />
+    <CudaCompile Include="src\SSDServing\VectorSearch\DiskFileReader.cpp" />
+    <CudaCompile Include="src\SSDServing\VectorSearch\ExtraFullGraphSearcher.cpp" />
+    <CudaCompile Include="src\SSDServing\VectorSearch\PrioritizedDiskFileReader.cpp" />
+    <CudaCompile Include="src\SSDServing\VectorSearch\TimeUtils.cpp" />
+    <CudaCompile Include="src\SSDServing\VectorSearch\VectorSearchUtils.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="inc\SSDServing\BuildHead\BootBuildHead.h" />
+    <ClInclude Include="inc\SSDServing\BuildHead\Options.h" />
+    <ClInclude Include="inc\SSDServing\BuildHead\ParameterDefinitionList.h" />
+    <ClInclude Include="inc\SSDServing\Common\Utils.h" />
+    <ClInclude Include="inc\SSDServing\IndexBuildManager\CommonDefines.h" />
+    <ClInclude Include="inc\SSDServing\IndexBuildManager\main.h" />
+    <ClInclude Include="inc\SSDServing\IndexBuildManager\Options.h" />
+    <ClInclude Include="inc\SSDServing\IndexBuildManager\ParameterDefinitionList.h" />
+    <ClInclude Include="inc\SSDServing\IndexBuildManager\Utils.h" />
+    <ClInclude Include="inc\SSDServing\SelectHead_BKT\AnalyzeTree.h" />
+    <ClInclude Include="inc\SSDServing\SelectHead_BKT\BKTNodeInfo.h" />
+    <ClInclude Include="inc\SSDServing\SelectHead_BKT\BuildBKT.h" />
+    <ClInclude Include="inc\SSDServing\SelectHead_BKT\Options.h" />
+    <ClInclude Include="inc\SSDServing\SelectHead_BKT\ParameterDefinitionList.h" />
+    <ClInclude Include="inc\SSDServing\SelectHead_BKT\SelectHead.h" />
+    <ClInclude Include="inc\SSDServing\SelectHead_BKT\BootSelectHead.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\BootVectorSearch.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\BuildSsdIndex.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\DiskAccessUtils.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\DiskFileReader.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\DiskListCommonUtils.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\ExtraFullGraphSearcher.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\IExtraSearcher.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\ParameterDefinitionList.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\PrioritizedDiskFileReader.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\SearchSsdIndex.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\TimeUtils.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\VectorSearchUtils.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\Options.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\SearchDefault.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\SearchProcessor.h" />
+    <ClInclude Include="inc\SSDServing\VectorSearch\SearchStats.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
