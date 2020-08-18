@@ -4,7 +4,6 @@
 #include "inc/Core/BKT/Index.h"
 #include <chrono>
 
-#pragma warning(disable:4996)  // 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
 #pragma warning(disable:4242)  // '=' : conversion from 'int' to 'short', possible loss of data
 #pragma warning(disable:4244)  // '=' : conversion from 'int' to 'short', possible loss of data
 #pragma warning(disable:4127)  // conditional expression is constant
@@ -517,6 +516,16 @@ namespace SPTAG
 
         template <typename T>
         ErrorCode
+            Index<T>::UpdateIndex()
+        {
+            omp_set_num_threads(m_iNumberOfThreads);
+            m_workSpacePool.reset(new COMMON::WorkSpacePool(max(m_iMaxCheck, m_pGraph.m_iMaxCheckForRefineGraph), GetNumSamples(), m_iHashTableExp));
+            m_workSpacePool->Init(m_iNumberOfThreads);
+            return ErrorCode::Success;
+        }
+
+        template <typename T>
+        ErrorCode
             Index<T>::SetParameter(const char* p_param, const char* p_value)
         {
             if (nullptr == p_param || nullptr == p_value) return ErrorCode::Fail;
@@ -535,8 +544,10 @@ namespace SPTAG
 #include "inc/Core/BKT/ParameterDefinitionList.h"
 #undef DefineBKTParameter
 
-            m_fComputeDistance = COMMON::DistanceCalcSelector<T>(m_iDistCalcMethod);
-            m_iBaseSquare = (m_iDistCalcMethod == DistCalcMethod::Cosine) ? COMMON::Utils::GetBase<T>() * COMMON::Utils::GetBase<T>() : 1;
+            if (SPTAG::Helper::StrUtils::StrEqualIgnoreCase(p_param, "DistCalcMethod")) {
+                m_fComputeDistance = COMMON::DistanceCalcSelector<T>(m_iDistCalcMethod);
+                m_iBaseSquare = (m_iDistCalcMethod == DistCalcMethod::Cosine) ? COMMON::Utils::GetBase<T>() * COMMON::Utils::GetBase<T>() : 1;
+            }
             return ErrorCode::Success;
         }
 
