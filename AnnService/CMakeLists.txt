@@ -15,7 +15,6 @@ list(REMOVE_ITEM HDR_FILES
     )
 
 list(REMOVE_ITEM SRC_FILES
-    ${AnnService}/src/Core/Common/DistanceUtils.cpp
     ${AnnService}/src/Core/Common/InstructionUtils.cpp
     )
 
@@ -23,7 +22,6 @@ add_library (DistanceUtils STATIC
     inc/Core/Common/DistanceUtils.h 
     inc/Core/Common/InstructionUtils.h
     inc/Core/Common/CommonUtils.h
-    src/Core/Common/DistanceUtils.cpp
     src/Core/Common/InstructionUtils.cpp
     )
 
@@ -105,9 +103,9 @@ if (MPI_FOUND)
     message (STATUS "MPI Include Path: ${MPI_CXX_INCLUDE_PATH}")
     message (STATUS "MPI Libraries: ${MPI_CXX_LIBRARIES}")
     include_directories (${MPI_CXX_INCLUDE_PATH})
-    file(GLOB PARTITION_FILES ${SRC_FILES} ${AnnService}/src/BalancedDataPartition/*.cpp)
-    add_executable (balanceddatapartition ${PARTITION_FILES} ${HDR_FILES})
-    target_link_libraries(balanceddatapartition ${Boost_LIBRARIES} ${MPI_CXX_LIBRARIES})
+    file(GLOB PARTITION_FILES ${AnnService}/src/BalancedDataPartition/*.cpp)
+    add_executable(balanceddatapartition ${PARTITION_FILES})
+    target_link_libraries(balanceddatapartition SPTAGLibStatic ${Boost_LIBRARIES} ${MPI_CXX_LIBRARIES})
 endif()
 
 install(TARGETS SPTAGLib SPTAGLibStatic server client aggregator indexbuilder indexsearcher ssdserving
