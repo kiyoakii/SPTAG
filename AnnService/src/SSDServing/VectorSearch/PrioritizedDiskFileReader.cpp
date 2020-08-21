@@ -1,5 +1,6 @@
 #include "inc/SSDServing/VectorSearch/PrioritizedDiskFileReader.h"
 #include "inc/SSDServing/VectorSearch/DiskAccessUtils.h"
+#include "inc/Core/Common.h"
 
 #include <sstream>
 #include <cstdio>
@@ -50,7 +51,7 @@ PrioritizedDiskFileReader::PrioritizedDiskFileReader(const char* p_filePath)
     : m_resources(4096),
     m_diskSectorSize(0)
 {
-    fprintf(stderr, "Start open file handle: %s\n", p_filePath);
+    LOG(Helper::LogLevel::LL_Info, "Start open file handle: %s\n", p_filePath);
 
     m_filePath = p_filePath;
 
@@ -64,7 +65,7 @@ PrioritizedDiskFileReader::PrioritizedDiskFileReader(const char* p_filePath)
 
     if (!m_fileHandle.IsValid())
     {
-        fprintf(stderr, "Failed to create file handle: %s\n", m_filePath.c_str());
+        LOG(Helper::LogLevel::LL_Error, "Failed to create file handle: %s\n", m_filePath.c_str());
         return;
     }
 
@@ -76,10 +77,10 @@ PrioritizedDiskFileReader::PrioritizedDiskFileReader(const char* p_filePath)
         m_fileIocpThreads.emplace_back(std::thread(std::bind(&PrioritizedDiskFileReader::ListionIOCP, this)));
     }
 
-    fprintf(stderr, "Success open file handle: %s\n", m_filePath.c_str());
+    LOG(Helper::LogLevel::LL_Info, "Success open file handle: %s\n", m_filePath.c_str());
 
     m_diskSectorSize = static_cast<uint32_t>(DiskUtils::GetSectorSize(m_filePath.c_str()));
-    fprintf(stderr, "DiskSectorSize: %u\n", m_diskSectorSize);
+    LOG(Helper::LogLevel::LL_Info, "DiskSectorSize: %u\n", m_diskSectorSize);
 
     PreAllocQueryContext();
 }
@@ -144,7 +145,7 @@ PrioritizedDiskFileReader::ReadFileAsync(const DiskFileReadRequest& p_request)
     {
         if (GetLastError() != ERROR_IO_PENDING)
         {
-            fprintf(stderr, "Failed to read file\n");
+            LOG(Helper::LogLevel::LL_Error, "Failed to read file\n");
             successRead = false;
         }
     }

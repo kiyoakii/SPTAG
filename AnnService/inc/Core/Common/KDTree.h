@@ -4,7 +4,6 @@
 #ifndef _SPTAG_COMMON_KDTREE_H_
 #define _SPTAG_COMMON_KDTREE_H_
 
-#include <iostream>
 #include <vector>
 #include <string>
 #include <shared_mutex>
@@ -14,8 +13,6 @@
 #include "CommonUtils.h"
 #include "QueryResultSet.h"
 #include "WorkSpace.h"
-
-#pragma warning(disable:4996)  // 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
 
 namespace SPTAG
 {
@@ -84,10 +81,10 @@ namespace SPTAG
                     std::random_shuffle(pindices.begin(), pindices.end());
 
                     m_pTreeStart[i] = i * (SizeType)pindices.size();
-                    std::cout << "Start to build KDTree " << i + 1 << std::endl;
+                    LOG(Helper::LogLevel::LL_Info, "Start to build KDTree %d\n", i + 1);
                     SizeType iTreeSize = m_pTreeStart[i];
                     DivideTree<T>(data, pindices, 0, (SizeType)pindices.size() - 1, m_pTreeStart[i], iTreeSize);
-                    std::cout << i + 1 << " KDTree built, " << iTreeSize - m_pTreeStart[i] << " " << pindices.size() << std::endl;
+                    LOG(Helper::LogLevel::LL_Info, "%d KDTree built, %d %zu\n", i + 1, iTreeSize - m_pTreeStart[i], pindices.size());
                 }
             }
 
@@ -97,29 +94,27 @@ namespace SPTAG
                     sizeof(SizeType) + sizeof(KDTNode) * m_pTreeRoots.size();
             }
 
-            bool SaveTrees(std::ostream& p_outstream) const
+            ErrorCode SaveTrees(std::shared_ptr<Helper::DiskPriorityIO> p_out) const
             {
                 std::shared_lock<std::shared_timed_mutex> lock(*m_lock);
-                p_outstream.write((char*)&m_iTreeNumber, sizeof(int));
-                p_outstream.write((char*)m_pTreeStart.data(), sizeof(SizeType) * m_iTreeNumber);
+                IOBINARY(p_out, WriteBinary, sizeof(m_iTreeNumber), (char*)&m_iTreeNumber);
+                IOBINARY(p_out, WriteBinary, sizeof(SizeType) * m_iTreeNumber, (char*)m_pTreeStart.data());
                 SizeType treeNodeSize = (SizeType)m_pTreeRoots.size();
-                p_outstream.write((char*)&treeNodeSize, sizeof(SizeType));
-                p_outstream.write((char*)m_pTreeRoots.data(), sizeof(KDTNode) * treeNodeSize);
-                std::cout << "Save KDT (" << m_iTreeNumber << "," << treeNodeSize << ") Finish!" << std::endl;
-                return true;
+                IOBINARY(p_out, WriteBinary, sizeof(treeNodeSize), (char*)&treeNodeSize);
+                IOBINARY(p_out, WriteBinary, sizeof(KDTNode) * treeNodeSize, (char*)m_pTreeRoots.data());
+                LOG(Helper::LogLevel::LL_Info, "Save KDT (%d,%d) Finish!\n", m_iTreeNumber, treeNodeSize);
+                return ErrorCode::Success;
             }
 
-            bool SaveTrees(std::string sTreeFileName) const
+            ErrorCode SaveTrees(std::string sTreeFileName) const
             {
-                std::cout << "Save KDT to " << sTreeFileName << std::endl;
-                std::ofstream output(sTreeFileName, std::ios::binary);
-                if (!output.is_open()) return false;
-                SaveTrees(output);
-                output.close();
-                return true;
+                LOG(Helper::LogLevel::LL_Info, "Save KDT to %s\n", sTreeFileName.c_str());
+                auto ptr = f_createIO();
+                if (ptr == nullptr || !ptr->Initialize(sTreeFileName.c_str(), std::ios::binary | std::ios::out)) return ErrorCode::FailedCreateFile;
+                return SaveTrees(ptr);
             }
 
-            bool LoadTrees(char*  pKDTMemFile)
+            ErrorCode LoadTrees(char*  pKDTMemFile)
             {
                 m_iTreeNumber = *((int*)pKDTMemFile);
                 pKDTMemFile += sizeof(int);
@@ -131,32 +126,31 @@ namespace SPTAG
                 pKDTMemFile += sizeof(SizeType);
                 m_pTreeRoots.resize(treeNodeSize);
                 memcpy(m_pTreeRoots.data(), pKDTMemFile, sizeof(KDTNode) * treeNodeSize);
-                std::cout << "Load KDT (" << m_iTreeNumber << "," << treeNodeSize << ") Finish!" << std::endl;
-                return true;
+                LOG(Helper::LogLevel::LL_Info, "Load KDT (%d,%d) Finish!\n", m_iTreeNumber, treeNodeSize);
+                return ErrorCode::Success;
             }
 
-            bool LoadTrees(std::istream& input)
+            ErrorCode LoadTrees(std::shared_ptr<Helper::DiskPriorityIO> p_input)
             {
-                input.read((char*)&m_iTreeNumber, sizeof(int));
+                IOBINARY(p_input, ReadBinary, sizeof(m_iTreeNumber), (char*)&m_iTreeNumber);
                 m_pTreeStart.resize(m_iTreeNumber);
-                input.read((char*)m_pTreeStart.data(), sizeof(SizeType) * m_iTreeNumber);
+                IOBINARY(p_input, ReadBinary, sizeof(SizeType) * m_iTreeNumber, (char*)m_pTreeStart.data());
 
                 SizeType treeNodeSize;
-                input.read((char*)&treeNodeSize, sizeof(SizeType));
+                IOBINARY(p_input, ReadBinary, sizeof(treeNodeSize), (char*)&treeNodeSize);
                 m_pTreeRoots.resize(treeNodeSize);
-                input.read((char*)m_pTreeRoots.data(), sizeof(KDTNode) * treeNodeSize);
-                std::cout << "Load KDT (" << m_iTreeNumber << "," << treeNodeSize << ") Finish!" << std::endl;
-                return true;
+                IOBINARY(p_input, ReadBinary, sizeof(KDTNode) * treeNodeSize, (char*)m_pTreeRoots.data());
+
+                LOG(Helper::LogLevel::LL_Info, "Load KDT (%d,%d) Finish!\n", m_iTreeNumber, treeNodeSize);
+                return ErrorCode::Success;
             }
 
-            bool LoadTrees(std::string sTreeFileName)
+            ErrorCode LoadTrees(std::string sTreeFileName)
             {
-                std::cout << "Load KDT From " << sTreeFileName << std::endl;
-                std::ifstream input(sTreeFileName, std::ios::binary);
-                if (!input.is_open()) return false;
-                LoadTrees(input);
-                input.close();
-                return true;
+                LOG(Helper::LogLevel::LL_Info, "Load KDT From %s\n", sTreeFileName.c_str());
+                auto ptr = f_createIO();
+                if (ptr == nullptr || !ptr->Initialize(sTreeFileName.c_str(), std::ios::binary | std::ios::in)) return ErrorCode::FailedOpenFile;
+                return LoadTrees(ptr);
             }
 
             template <typename T>

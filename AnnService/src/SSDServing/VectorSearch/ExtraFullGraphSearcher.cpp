@@ -18,7 +18,7 @@ void SPTAG::SSDServing::VectorSearch::ErrorExit() {
 
 	// Display the error message and exit the process
 
-	std::fprintf(stderr, "Failed with: %s\n", (char*)lpMsgBuf);
+	LOG(Helper::LogLevel::LL_Error, "Failed with: %s\n", (char*)lpMsgBuf);
 
 	LocalFree(lpMsgBuf);
 	ExitProcess(dw);

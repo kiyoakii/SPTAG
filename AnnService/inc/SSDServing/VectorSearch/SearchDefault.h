@@ -44,10 +44,10 @@ namespace SPTAG {
 				}
 
 				void LoadHeadIndex(Options& p_opts) {
-					fprintf(stdout, "Start loading head index. \n");
+					LOG(Helper::LogLevel::LL_Info, "Start loading head index. \n");
 
 					if (VectorIndex::LoadIndex(COMMON_OPTS.m_headIndexFolder, m_index) != ErrorCode::Success) {
-						fprintf(stderr, "ERROR: Cannot Load index files!\n");
+						LOG(Helper::LogLevel::LL_Error, "ERROR: Cannot Load index files!\n");
 						exit(1);
 					}
 
@@ -58,7 +58,7 @@ namespace SPTAG {
 					{
 						Helper::IniReader iniReader;
 						if (iniReader.LoadIniFile(p_opts.m_headConfig) != ErrorCode::Success) {
-							std::cerr << "ERROR of loading head index config: " << p_opts.m_headConfig << std::endl;
+							LOG(Helper::LogLevel::LL_Error, "ERROR of loading head index config: %s\n", p_opts.m_headConfig.c_str());
 							exit(1);
 						}
 
@@ -68,35 +68,33 @@ namespace SPTAG {
 						}
 					}
 
-					fprintf(stdout, "End loading head index. \n");
+					LOG(Helper::LogLevel::LL_Info, "End loading head index. \n");
 				}
 
 				void LoadVectorIdsSSDIndex(std::string vectorTranslateMap, std::string extraFullGraphFile)
 				{
 					if (vectorTranslateMap.empty()) {
-						fprintf(stderr, "Config error: VectorTranlateMap Empty for Searching SSD vectors.\n");
+						LOG(Helper::LogLevel::LL_Error, "Config error: VectorTranlateMap Empty for Searching SSD vectors.\n");
 						exit(1);
 					}
 
 					if (extraFullGraphFile.empty()) {
-						fprintf(stderr, "Config error: SsdIndex empty for Searching SSD vectors.\n");
+						LOG(Helper::LogLevel::LL_Error, "Config error: SsdIndex empty for Searching SSD vectors.\n");
 						exit(1);
 					}
 
 					m_vectorTranslateMap.reset(new long long[m_index->GetNumSamples()]);
 
-					std::ifstream input(vectorTranslateMap, std::ios::binary);
-					if (!input.is_open())
-					{
-						fprintf(stderr, "failed open %s\n", vectorTranslateMap.c_str());
+					auto ptr = f_createIO();
+					if (ptr == nullptr || !ptr->Initialize(vectorTranslateMap.c_str(), std::ios::binary | std::ios::in)) {
+						LOG(Helper::LogLevel::LL_Error, "Failed open %s\n", vectorTranslateMap.c_str());
 						exit(1);
 					}
-
-					input.read(reinterpret_cast<char*>(m_vectorTranslateMap.get()), sizeof(long long) * m_index->GetNumSamples());
-					input.close();
-
-					fprintf(stderr, "Loaded %zu Vector IDs\n", input.gcount() / sizeof(long long));
-					fprintf(stderr, "Using FullGraph without cache.\n");
+					if (ptr->ReadBinary(sizeof(long long) * m_index->GetNumSamples(), reinterpret_cast<char*>(m_vectorTranslateMap.get())) != sizeof(long long) * m_index->GetNumSamples()) {
+						LOG(Helper::LogLevel::LL_Error, "Failed to read vectorTanslateMap!\n");
+						exit(1);
+					}
+					LOG(Helper::LogLevel::LL_Info, "Using FullGraph without cache.\n");
 
 					m_extraSearcher.reset(new ExtraFullGraphSearcher<ValueType>(extraFullGraphFile));
 				}
@@ -104,7 +102,7 @@ namespace SPTAG {
 				void CheckHeadIndexType() {
 					SPTAG::VectorValueType v1 = m_index->GetVectorValueType(), v2 = GetEnumValueType<ValueType>();
 					if (v1 != v2) {
-						fprintf(stderr, "Head index and vectors don't have the same value types, which are %s %s\n",
+						LOG(Helper::LogLevel::LL_Error, "Head index and vectors don't have the same value types, which are %s %s\n",
 							SPTAG::Helper::Convert::ConvertToString(v1).c_str(),
 							SPTAG::Helper::Convert::ConvertToString(v2).c_str()
 						);
@@ -118,7 +116,7 @@ namespace SPTAG {
 					std::string& extraFullGraphFile)
 				{
 					if (VectorIndex::LoadIndex(p_config, p_indexBlobs, m_index) != SPTAG::ErrorCode::Success) {
-						fprintf(stderr, "LoadIndex error in LoadIndex4ANNIndexTestTool.\n");
+						LOG(Helper::LogLevel::LL_Error, "LoadIndex error in LoadIndex4ANNIndexTestTool.\n");
 						exit(1);
 					}
 					CheckHeadIndexType();
@@ -251,7 +249,7 @@ namespace SPTAG {
 
 				void SetHint(int p_threadNum, int p_resultNum, bool p_asyncCall, const Options& p_opts)
 				{
-					fprintf(stderr, "ThreadNum: %d, ResultNum: %d, AsyncCall: %d\n", p_threadNum, p_resultNum, p_asyncCall ? 1 : 0);
+					LOG(Helper::LogLevel::LL_Info, "ThreadNum: %d, ResultNum: %d, AsyncCall: %d\n", p_threadNum, p_resultNum, p_asyncCall ? 1 : 0);
 
 					if (p_asyncCall)
 					{

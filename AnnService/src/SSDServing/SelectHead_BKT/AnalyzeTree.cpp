@@ -26,7 +26,7 @@ namespace SPTAG {
 
             void DfsAnalyze(int p_nodeID,
                 const std::shared_ptr<COMMON::BKTree> p_tree,
-                const BasicVectorSet& p_vectorSet,
+                std::shared_ptr<VectorSet> p_vectorSet,
                 const Options& p_opts,
                 int p_height,
                 std::vector<BKTNodeInfo>& p_nodeInfos) {
@@ -78,7 +78,7 @@ namespace SPTAG {
                     return;
                 }
 
-                fprintf(stdout,
+                LOG(Helper::LogLevel::LL_Info,
                     "CheckNode: %8d, Height: %3d, MinDepth: %3d, MaxDepth: %3d, Children: %3d, Single: %3d\n",
                     p_nodeID,
                     p_height,
@@ -89,7 +89,7 @@ namespace SPTAG {
 
                 for (int nodeId = node.childStart; nodeId < node.childEnd; ++nodeId)
                 {
-                    fprintf(stdout,
+                    LOG(Helper::LogLevel::LL_Info,
                         "    ChildNode: %8d, MinDepth: %3d, MaxDepth: %3d, ChildrenCount: %3d, LeafCount: %3d\n",
                         nodeId,
                         p_nodeInfos[nodeId].minDepth,

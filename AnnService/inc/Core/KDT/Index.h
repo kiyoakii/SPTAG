@@ -81,6 +81,8 @@ namespace SPTAG
             int m_iThresholdOfNumberOfContinuousNoBetterPropagation;
             int m_iNumberOfInitialDynamicPivots;
             int m_iNumberOfOtherDynamicPivots;
+            int m_iHashTableExp;
+
         public:
             Index()
             {
@@ -139,25 +141,26 @@ namespace SPTAG
                 return std::move(files);
             }
 
-            ErrorCode SaveConfig(std::ostream& p_configout) const;
-            ErrorCode SaveIndexData(const std::vector<std::ostream*>& p_indexStreams);
+            ErrorCode SaveConfig(std::shared_ptr<Helper::DiskPriorityIO> p_configout) const;
+            ErrorCode SaveIndexData(const std::vector<std::shared_ptr<Helper::DiskPriorityIO>>& p_indexStreams);
 
             ErrorCode LoadConfig(Helper::IniReader& p_reader);
-            ErrorCode LoadIndexData(const std::vector<std::istream*>& p_indexStreams);
-            ErrorCode LoadIndexData(const std::string& p_folderPath);
+            ErrorCode LoadIndexData(const std::vector<std::shared_ptr<Helper::DiskPriorityIO>>& p_indexStreams);
             ErrorCode LoadIndexDataFromMemory(const std::vector<ByteArray>& p_indexBlobs);
 
             ErrorCode BuildIndex(const void* p_data, SizeType p_vectorNum, DimensionType p_dimension);
             ErrorCode SearchIndex(QueryResult &p_query, bool p_searchDeleted = false) const;
             ErrorCode RefineSearchIndex(QueryResult &p_query, bool p_searchDeleted = false) const;
+            ErrorCode SearchTree(QueryResult &p_query) const;
             ErrorCode AddIndex(const void* p_data, SizeType p_vectorNum, DimensionType p_dimension, std::shared_ptr<MetadataSet> p_metadataSet, bool p_withMetaIndex = false);
             ErrorCode DeleteIndex(const void* p_vectors, SizeType p_vectorNum);
             ErrorCode DeleteIndex(const SizeType& p_id);
 
             ErrorCode SetParameter(const char* p_param, const char* p_value);
             std::string GetParameter(const char* p_param) const;
+            ErrorCode UpdateIndex();
 
-            ErrorCode RefineIndex(const std::vector<std::ostream*>& p_indexStreams, IAbortOperation* p_abort);
+            ErrorCode RefineIndex(const std::vector<std::shared_ptr<Helper::DiskPriorityIO>>& p_indexStreams, IAbortOperation* p_abort);
             ErrorCode RefineIndex(std::shared_ptr<VectorIndex>& p_newIndex);
 
         private:

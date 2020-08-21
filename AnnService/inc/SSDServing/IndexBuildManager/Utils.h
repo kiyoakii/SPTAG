@@ -1,7 +1,6 @@
 #pragma once
 #include <string>
 #include <vector>
-#include <fstream>
 #include "inc/Core/Common.h"
 #include <algorithm>
 #include "inc/Core/Common/DistanceUtils.h"
@@ -47,25 +46,25 @@ namespace SPTAG {
 		void writeTruthFile(const std::string truthFile, size_t queryNumber, const int K, std::vector<std::vector<SPTAG::SizeType>>& truthset, SPTAG::TruthFileType TFT);
 
 		template<typename T>
-		void GenerateTruth(const BasicVectorSet& querySet, const BasicVectorSet& vectorSet, const std::string truthFile,
+		void GenerateTruth(std::shared_ptr<VectorSet> querySet, std::shared_ptr<VectorSet> vectorSet, const std::string truthFile,
 			const SPTAG::DistCalcMethod distMethod, const int K, const SPTAG::TruthFileType p_truthFileType) {
 			
-			std::vector< std::vector< SPTAG::SizeType> > truthset(querySet.Count(), std::vector<SPTAG::SizeType>(K, 0));
+			std::vector< std::vector< SPTAG::SizeType> > truthset(querySet->Count(), std::vector<SPTAG::SizeType>(K, 0));
 
 #pragma omp parallel for
-			for (int i = 0; i < querySet.Count(); ++i)
+			for (int i = 0; i < querySet->Count(); ++i)
 			{
-				if (querySet.Dimension() != vectorSet.Dimension())
+				if (querySet->Dimension() != vectorSet->Dimension())
 				{
-					fprintf(stderr, "query and vector have different dimensions.");
+					LOG(Helper::LogLevel::LL_Error, "query and vector have different dimensions.");
 					exit(-1);
 				}
 
 				std::vector<Neighbor> neighbours;
 				bool isFirst = true;
-				for (SPTAG::SizeType j = 0; j < vectorSet.Count(); j++)
+				for (SPTAG::SizeType j = 0; j < vectorSet->Count(); j++)
 				{
-					float dist = SPTAG::COMMON::DistanceUtils::ComputeDistance<T>(reinterpret_cast<T *>(querySet.GetVector(i)), reinterpret_cast<T*>(vectorSet.GetVector(j)), querySet.Dimension(), distMethod);
+					float dist = SPTAG::COMMON::DistanceUtils::ComputeDistance<T>(reinterpret_cast<T *>(querySet->GetVector(i)), reinterpret_cast<T*>(vectorSet->GetVector(j)), querySet->Dimension(), distMethod);
 
 					Neighbor nei(j, dist);
 					neighbours.push_back(nei);
@@ -84,7 +83,7 @@ namespace SPTAG {
 
 				if (K != neighbours.size())
 				{
-					fprintf(stderr, "K is too big.\n");
+					LOG(Helper::LogLevel::LL_Error, "K is too big.\n");
 					exit(-1);
 				}
 
@@ -97,7 +96,7 @@ namespace SPTAG {
 
 			}
 
-			writeTruthFile(truthFile, querySet.Count(), K, truthset, p_truthFileType);
+			writeTruthFile(truthFile, querySet->Count(), K, truthset, p_truthFileType);
 		}
 
 		bool readSearchSSDSec(const char* iniFile, VectorSearch::Options& opts);

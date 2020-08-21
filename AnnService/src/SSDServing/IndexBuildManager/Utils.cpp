@@ -10,34 +10,45 @@ bool SPTAG::SSDServing::Neighbor::operator < (const SPTAG::SSDServing::Neighbor&
 }
 
 void SPTAG::SSDServing::writeTruthFile(const std::string truthFile, size_t queryNumber, const int K, std::vector<std::vector<SPTAG::SizeType>>& truthset, SPTAG::TruthFileType TFT) {
-
+	auto ptr = SPTAG::f_createIO();
 	if (TFT == SPTAG::TruthFileType::TXT)
 	{
-		std::ofstream of(truthFile);
+		if (ptr == nullptr || !ptr->Initialize(truthFile.c_str(), std::ios::out)) {
+			LOG(Helper::LogLevel::LL_Error, "Fail to create the file:%s\n", truthFile.c_str());
+			exit(1);
+		}
 		for (size_t i = 0; i < queryNumber; i++)
 		{
 			for (size_t k = 0; k < K; k++)
 			{
-				of << truthset[i][k];
-				if (k != K - 1)
-				{
-					of << " ";
+				if (ptr->WriteString((std::to_string(truthset[i][k]) + " ").c_str()) == 0) {
+					LOG(Helper::LogLevel::LL_Error, "Fail to write the truth file!\n");
+					exit(1);
 				}
 			}
-			of << std::endl;
+			if (ptr->WriteString("\n") == 0) {
+				LOG(Helper::LogLevel::LL_Error, "Fail to write the truth file!\n");
+				exit(1);
+			}
 		}
 	}
 	else if (TFT == SPTAG::TruthFileType::XVEC)
 	{
-		std::ofstream of(truthFile, std::ios_base::binary);
+		if (ptr == nullptr || !ptr->Initialize(truthFile.c_str(), std::ios::out | std::ios::binary)) {
+			LOG(Helper::LogLevel::LL_Error, "Fail to create the file:%s\n", truthFile.c_str());
+			exit(1);
+		}
+
 		for (size_t i = 0; i < queryNumber; i++)
 		{
-			of.write(reinterpret_cast<const char*>(&K), 4);
-			of.write(reinterpret_cast<char*>(truthset[i].data()), K * 4);
+			if (ptr->WriteBinary(sizeof(K), (char*)&K) != sizeof(K) || ptr->WriteBinary(K * 4, (char*)(truthset[i].data())) != K * 4) {
+				LOG(Helper::LogLevel::LL_Error, "Fail to write the truth file!\n");
+				exit(1);
+			}
 		}
 	}
 	else {
-		fprintf(stderr, "Found unsupported file type for generating truth. ");
+		LOG(Helper::LogLevel::LL_Error, "Found unsupported file type for generating truth.");
 		exit(-1);
 	}
 }

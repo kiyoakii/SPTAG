@@ -1,3 +1,4 @@
+#include "inc/Helper/VectorSetReader.h"
 #include "inc/SSDServing/SelectHead_BKT/BootSelectHead.h"
 #include "inc/SSDServing/SelectHead_BKT/BuildBKT.h"
 #include "inc/SSDServing/SelectHead_BKT/AnalyzeTree.h"
@@ -12,18 +13,19 @@ namespace SPTAG {
 
 				VectorSearch::TimeUtils::StopW sw;
 
-				fprintf(stdout, "Start loading vector file.\n");
-				BasicVectorSet vectorSet(
-					COMMON_OPTS.m_vectorPath, 
-					COMMON_OPTS.m_valueType, 
-					COMMON_OPTS.m_dim, 
-					COMMON_OPTS.m_vectorSize,
-					COMMON_OPTS.m_vectorType,
-					COMMON_OPTS.m_vectorDelimiter,
-					COMMON_OPTS.m_distCalcMethod);
-				fprintf(stdout, "Finish loading vector file.\n");
+				LOG(Helper::LogLevel::LL_Info, "Start loading vector file.\n");
+				std::shared_ptr<Helper::ReaderOptions> options(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_vectorType, COMMON_OPTS.m_vectorDelimiter));
+				auto vectorReader = Helper::VectorSetReader::CreateInstance(options);
+				if (ErrorCode::Success != vectorReader->LoadFile(COMMON_OPTS.m_vectorPath))
+				{
+					LOG(Helper::LogLevel::LL_Error, "Failed to read vector file.\n");
+					exit(1);
+				}
+				auto vectorSet = vectorReader->GetVectorSet();
+				if (COMMON_OPTS.m_distCalcMethod == DistCalcMethod::Cosine) vectorSet->Normalize(opts.m_iNumberOfThreads);
+				LOG(Helper::LogLevel::LL_Info, "Finish loading vector file.\n");
 
-				fprintf(stdout, "Start generating BKT.\n");
+				LOG(Helper::LogLevel::LL_Info, "Start generating BKT.\n");
 				std::shared_ptr<COMMON::BKTree> bkt;
 				switch (COMMON_OPTS.m_valueType)
 				{
@@ -37,7 +39,7 @@ namespace SPTAG {
 
 				default: break;
 				}
-				fprintf(stdout, "Finish generating BKT.\n");
+				LOG(Helper::LogLevel::LL_Info, "Finish generating BKT.\n");
 
 				std::unordered_map<int, int> counter;
 
@@ -48,14 +50,14 @@ namespace SPTAG {
 
 				if (opts.m_analyzeOnly)
 				{
-					fprintf(stdout, "Analyze Only.\n");
+					LOG(Helper::LogLevel::LL_Info, "Analyze Only.\n");
 
 					std::vector<BKTNodeInfo> bktNodeInfos(bkt->size());
 
 					// Always use the first tree
 					DfsAnalyze(0, bkt, vectorSet, opts, 0, bktNodeInfos);
 
-					fprintf(stdout, "Analyze Finish.\n");
+					LOG(Helper::LogLevel::LL_Info, "Analyze Finish.\n");
 				}
 				else {
 					if (SelectHead(vectorSet, bkt, opts, counter) != ErrorCode::Success)
@@ -65,7 +67,7 @@ namespace SPTAG {
 				}
 
 				double elapsedMinutes = sw.getElapsedMin();
-				fprintf(stderr, "Total used time: %.2lf minutes (about %.2lf hours).\n", elapsedMinutes, elapsedMinutes / 60.0);
+				LOG(Helper::LogLevel::LL_Info, "Total used time: %.2lf minutes (about %.2lf hours).\n", elapsedMinutes, elapsedMinutes / 60.0);
 
 				return ErrorCode::Success;
 			}

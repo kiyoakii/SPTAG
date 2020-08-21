@@ -2,7 +2,6 @@
 #include "inc/SSDServing/VectorSearch/BuildSsdIndex.h"
 #include "inc/SSDServing/VectorSearch/SearchSsdIndex.h"
 #include "inc/Helper/SimpleIniReader.h"
-#include <iostream>
 
 namespace SPTAG {
 	namespace SSDServing {
@@ -11,7 +10,7 @@ namespace SPTAG {
 			ErrorCode Bootstrap(Options& opts) {
                 if (opts.m_buildSsdIndex)
                 {
-					std::cerr << "Start building SSD Index." << std::endl;
+					LOG(Helper::LogLevel::LL_Info, "Start building SSD Index.\n");
 					if (false) {}
 #define DefineVectorValueType(Name, Type) \
 else if (COMMON_OPTS.m_valueType == VectorValueType::Name) { \
@@ -22,7 +21,7 @@ BuildSsdIndex<Type>(opts); \
 #undef DefineVectorValueType
 				}
 				else {
-					std::cerr << "Start searching SSD Index." << std::endl;
+					LOG(Helper::LogLevel::LL_Info, "Start searching SSD Index.\n");
 					if (false) {}
 #define DefineVectorValueType(Name, Type) \
 else if (COMMON_OPTS.m_valueType == VectorValueType::Name) { \

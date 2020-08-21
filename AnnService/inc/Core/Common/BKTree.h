@@ -4,7 +4,6 @@
 #ifndef _SPTAG_COMMON_BKTREE_H_
 #define _SPTAG_COMMON_BKTREE_H_
 
-#include <iostream>
 #include <stack>
 #include <string>
 #include <vector>
@@ -17,8 +16,6 @@
 #include "WorkSpace.h"
 #include "Dataset.h"
 #include "DistanceUtils.h"
-
-#pragma warning(disable:4996)  // 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
 
 namespace SPTAG
 {
@@ -49,8 +46,8 @@ namespace SPTAG
             int* label;
             SizeType* clusterIdx;
             float* clusterDist;
-			float* weightedCounts;
-			float* newWeightedCounts;
+            float* weightedCounts;
+            float* newWeightedCounts;
             float(*fComputeDistance)(const T* pX, const T* pY, DimensionType length);
 
             KmeansArgs(int k, DimensionType dim, SizeType datasize, int threadnum, DistCalcMethod distMethod) : _K(k), _DK(k), _D(dim), _T(threadnum), _M(distMethod) {
@@ -62,8 +59,8 @@ namespace SPTAG
                 label = new int[datasize];
                 clusterIdx = new SizeType[threadnum * k];
                 clusterDist = new float[threadnum * k];
-				weightedCounts = new float[k];
-				newWeightedCounts = new float[threadnum * k];
+                weightedCounts = new float[k];
+                newWeightedCounts = new float[threadnum * k];
                 fComputeDistance = COMMON::DistanceCalcSelector<T>(distMethod);
             }
 
@@ -76,13 +73,13 @@ namespace SPTAG
                 delete[] label;
                 delete[] clusterIdx;
                 delete[] clusterDist;
-				delete[] weightedCounts;
-				delete[] newWeightedCounts;
+                delete[] weightedCounts;
+                delete[] newWeightedCounts;
             }
 
             inline void ClearCounts() {
                 memset(newCounts, 0, sizeof(SizeType) * _T * _K);
-				memset(newWeightedCounts, 0, sizeof(float) * _T * _K);
+                memset(newWeightedCounts, 0, sizeof(float) * _T * _K);
             }
 
             inline void ClearCenters() {
@@ -123,7 +120,7 @@ namespace SPTAG
             int maxcluster = -1;
             SizeType maxCount = 0;
             for (int k = 0; k < args._DK; k++) {
-                if (args.counts[k] > maxCount && args.newCounts[k] > 0 && DistanceUtils::ComputeL2Distance((T*)data[args.clusterIdx[k]], args.centers + k * args._D, args._D) > 1e-6)
+                if (args.counts[k] > maxCount && args.newCounts[k] > 0 && DistanceUtils::ComputeDistance((T*)data[args.clusterIdx[k]], args.centers + k * args._D, args._D, DistCalcMethod::L2) > 1e-6)
                 {
                     maxcluster = k;
                     maxCount = args.counts[k];
@@ -131,7 +128,7 @@ namespace SPTAG
             }
 
             if (maxcluster != -1 && (args.clusterIdx[maxcluster] < 0 || args.clusterIdx[maxcluster] >= data.R()))
-                std::cout << "maxcluster:" << maxcluster << "(" << args.newCounts[maxcluster] << ") Error dist:" << args.clusterDist[maxcluster] << std::endl;
+                LOG(Helper::LogLevel::LL_Debug, "maxcluster:%d(%d) Error dist:%f\n", maxcluster, args.newCounts[maxcluster], args.clusterDist[maxcluster]);
 
             float diff = 0;
             for (int k = 0; k < args._DK; k++) {
@@ -304,7 +301,6 @@ namespace SPTAG
             for (int i = 0; i < args._K; i++) if (args.counts[i] > 0) numClusters++;
 
             if (numClusters <= 1) {
-                //if (last - first > 1) std::cout << "large cluster:" << last - first << " dist:" << currDist << std::endl;
                 return numClusters;
             }
             args.Shuffle(indices, first, last);
@@ -373,7 +369,7 @@ namespace SPTAG
 
                     m_pTreeStart.push_back((SizeType)m_pTreeRoots.size());
                     m_pTreeRoots.emplace_back((SizeType)localindices.size());
-                    std::cout << "Start to build BKTree " << i + 1 << std::endl;
+                    LOG(Helper::LogLevel::LL_Info, "Start to build BKTree %d\n", i + 1);
 
                     ss.push(BKTStackItem(m_pTreeStart[i], 0, (SizeType)localindices.size()));
                     while (!ss.empty()) {
@@ -418,7 +414,7 @@ namespace SPTAG
                         m_pTreeRoots[item.index].childEnd = (SizeType)m_pTreeRoots.size();
                     }
                     m_pTreeRoots.emplace_back(-1);
-                    std::cout << i + 1 << " BKTree built, " << m_pTreeRoots.size() - m_pTreeStart[i] << " " << localindices.size() << std::endl;
+                    LOG(Helper::LogLevel::LL_Info, "%d BKTree built, %zu %zu\n", i + 1, m_pTreeRoots.size() - m_pTreeStart[i], localindices.size());
                 }
             }
 
@@ -428,29 +424,27 @@ namespace SPTAG
                     sizeof(SizeType) + sizeof(BKTNode) * m_pTreeRoots.size();
             }
 
-            bool SaveTrees(std::ostream& p_outstream) const
+            ErrorCode SaveTrees(std::shared_ptr<Helper::DiskPriorityIO> p_out) const
             {
                 std::shared_lock<std::shared_timed_mutex> lock(*m_lock);
-                p_outstream.write((char*)&m_iTreeNumber, sizeof(int));
-                p_outstream.write((char*)m_pTreeStart.data(), sizeof(SizeType) * m_iTreeNumber);
+                IOBINARY(p_out, WriteBinary, sizeof(m_iTreeNumber), (char*)&m_iTreeNumber);
+                IOBINARY(p_out, WriteBinary, sizeof(SizeType) * m_iTreeNumber, (char*)m_pTreeStart.data());
                 SizeType treeNodeSize = (SizeType)m_pTreeRoots.size();
-                p_outstream.write((char*)&treeNodeSize, sizeof(SizeType));
-                p_outstream.write((char*)m_pTreeRoots.data(), sizeof(BKTNode) * treeNodeSize);
-                std::cout << "Save BKT (" << m_iTreeNumber << "," << treeNodeSize << ") Finish!" << std::endl;
-                return true;
+                IOBINARY(p_out, WriteBinary, sizeof(treeNodeSize), (char*)&treeNodeSize);
+                IOBINARY(p_out, WriteBinary, sizeof(BKTNode) * treeNodeSize, (char*)m_pTreeRoots.data());
+                LOG(Helper::LogLevel::LL_Info, "Save BKT (%d,%d) Finish!\n", m_iTreeNumber, treeNodeSize);
+                return ErrorCode::Success;
             }
 
-            bool SaveTrees(std::string sTreeFileName) const
+            ErrorCode SaveTrees(std::string sTreeFileName) const
             {
-                std::cout << "Save BKT to " << sTreeFileName << std::endl;
-                std::ofstream output(sTreeFileName, std::ios::binary);
-                if (!output.is_open()) return false;
-                SaveTrees(output);
-                output.close();
-                return true;
+                LOG(Helper::LogLevel::LL_Info, "Save BKT to %s\n", sTreeFileName);
+                auto ptr = f_createIO();
+                if (ptr == nullptr || !ptr->Initialize(sTreeFileName.c_str(), std::ios::binary | std::ios::out)) return ErrorCode::FailedCreateFile;
+                return SaveTrees(ptr);
             }
 
-            bool LoadTrees(char* pBKTMemFile)
+            ErrorCode LoadTrees(char* pBKTMemFile)
             {
                 m_iTreeNumber = *((int*)pBKTMemFile);
                 pBKTMemFile += sizeof(int);
@@ -463,34 +457,32 @@ namespace SPTAG
                 m_pTreeRoots.resize(treeNodeSize);
                 memcpy(m_pTreeRoots.data(), pBKTMemFile, sizeof(BKTNode) * treeNodeSize);
                 if (m_pTreeRoots.size() > 0 && m_pTreeRoots.back().centerid != -1) m_pTreeRoots.emplace_back(-1);
-                std::cout << "Load BKT (" << m_iTreeNumber << "," << treeNodeSize << ") Finish!" << std::endl;
-                return true;
+                LOG(Helper::LogLevel::LL_Info, "Load BKT (%d,%d) Finish!\n", m_iTreeNumber, treeNodeSize);
+                return ErrorCode::Success;
             }
 
-            bool LoadTrees(std::istream& input)
+            ErrorCode LoadTrees(std::shared_ptr<Helper::DiskPriorityIO> p_input)
             {
-                input.read((char*)&m_iTreeNumber, sizeof(int));
+                IOBINARY(p_input, ReadBinary, sizeof(m_iTreeNumber), (char*)&m_iTreeNumber);
                 m_pTreeStart.resize(m_iTreeNumber);
-                input.read((char*)m_pTreeStart.data(), sizeof(SizeType) * m_iTreeNumber);
+                IOBINARY(p_input, ReadBinary, sizeof(SizeType) * m_iTreeNumber, (char*)m_pTreeStart.data());
 
                 SizeType treeNodeSize;
-                input.read((char*)&treeNodeSize, sizeof(SizeType));
+                IOBINARY(p_input, ReadBinary, sizeof(treeNodeSize), (char*)&treeNodeSize);
                 m_pTreeRoots.resize(treeNodeSize);
-                input.read((char*)m_pTreeRoots.data(), sizeof(BKTNode) * treeNodeSize);
+                IOBINARY(p_input, ReadBinary, sizeof(BKTNode) * treeNodeSize, (char*)m_pTreeRoots.data());
 
                 if (m_pTreeRoots.size() > 0 && m_pTreeRoots.back().centerid != -1) m_pTreeRoots.emplace_back(-1);
-                std::cout << "Load BKT (" << m_iTreeNumber << "," << treeNodeSize << ") Finish!" << std::endl;
-                return true;
+                LOG(Helper::LogLevel::LL_Info, "Load BKT (%d,%d) Finish!\n", m_iTreeNumber, treeNodeSize);
+                return ErrorCode::Success;
             }
 
-            bool LoadTrees(std::string sTreeFileName)
+            ErrorCode LoadTrees(std::string sTreeFileName)
             {
-                std::cout << "Load BKT From " << sTreeFileName << std::endl;
-                std::ifstream input(sTreeFileName, std::ios::binary);
-                if (!input.is_open()) return false;
-                LoadTrees(input);
-                input.close();
-                return true;
+                LOG(Helper::LogLevel::LL_Info, "Load BKT From %s\n", sTreeFileName.c_str());
+                auto ptr = f_createIO();
+                if (ptr == nullptr || !ptr->Initialize(sTreeFileName.c_str(), std::ios::binary | std::ios::in)) return ErrorCode::FailedOpenFile;
+                return LoadTrees(ptr);
             }
 
             template <typename T>

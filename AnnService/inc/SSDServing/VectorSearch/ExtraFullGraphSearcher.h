@@ -4,7 +4,6 @@
 #include "inc/SSDServing/VectorSearch/DiskListCommonUtils.h"
 #include "inc/SSDServing/VectorSearch/PrioritizedDiskFileReader.h"
 
-#include <fstream>
 #include <map>
 #include <memory>
 #include <vector>
@@ -318,17 +317,28 @@ namespace SPTAG {
             private:
                 void LoadingHeadInfo(const std::string& p_file)
                 {
-                    std::ifstream input(p_file, std::ios::binary);
-                    if (!input.is_open())
-                    {
-                        fprintf(stderr, "Failed to open file: %s\n", p_file.c_str());
+                    auto ptr = SPTAG::f_createIO();
+                    if (ptr == nullptr || !ptr->Initialize(p_file.c_str(), std::ios::binary | std::ios::in)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed to open file: %s\n", p_file.c_str());
                         exit(1);
                     }
 
-                    input.read(reinterpret_cast<char*>(&m_listCount), sizeof(m_listCount));
-                    input.read(reinterpret_cast<char*>(&m_totalDocumentCount), sizeof(m_totalDocumentCount));
-                    input.read(reinterpret_cast<char*>(&m_iDataDimension), sizeof(m_iDataDimension));
-                    input.read(reinterpret_cast<char*>(&m_listPageOffset), sizeof(m_listPageOffset));
+                    if (ptr->ReadBinary(sizeof(m_listCount), reinterpret_cast<char*>(&m_listCount)) != sizeof(m_listCount)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed to read head info file!\n");
+                        exit(1);
+                    }
+                    if (ptr->ReadBinary(sizeof(m_totalDocumentCount), reinterpret_cast<char*>(&m_totalDocumentCount)) != sizeof(m_totalDocumentCount)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed to read head info file!\n");
+                        exit(1);
+                    }
+                    if (ptr->ReadBinary(sizeof(m_iDataDimension), reinterpret_cast<char*>(&m_iDataDimension)) != sizeof(m_iDataDimension)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed to read head info file!\n");
+                        exit(1);
+                    }
+                    if (ptr->ReadBinary(sizeof(m_listPageOffset), reinterpret_cast<char*>(&m_listPageOffset)) != sizeof(m_listPageOffset)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed to read head info file!\n");
+                        exit(1);
+                    }
 
                     m_listInfos.reset(new ListInfo[m_listCount]);
 
@@ -340,10 +350,22 @@ namespace SPTAG {
                     int biglistElementCount = 0;
                     for (int i = 0; i < m_listCount; ++i)
                     {
-                        input.read(reinterpret_cast<char*>(&(m_listInfos[i].pageNum)), sizeof(m_listInfos[i].pageNum));
-                        input.read(reinterpret_cast<char*>(&(m_listInfos[i].pageOffset)), sizeof(m_listInfos[i].pageOffset));
-                        input.read(reinterpret_cast<char*>(&(m_listInfos[i].listEleCount)), sizeof(m_listInfos[i].listEleCount));
-                        input.read(reinterpret_cast<char*>(&(m_listInfos[i].listPageCount)), sizeof(m_listInfos[i].listPageCount));
+                        if (ptr->ReadBinary(sizeof(m_listInfos[i].pageNum), reinterpret_cast<char*>(&(m_listInfos[i].pageNum))) != sizeof(m_listInfos[i].pageNum)) {
+                            LOG(Helper::LogLevel::LL_Error, "Failed to read head info file!\n");
+                            exit(1);
+                        }
+                        if (ptr->ReadBinary(sizeof(m_listInfos[i].pageOffset), reinterpret_cast<char*>(&(m_listInfos[i].pageOffset))) != sizeof(m_listInfos[i].pageOffset)) {
+                            LOG(Helper::LogLevel::LL_Error, "Failed to read head info file!\n");
+                            exit(1);
+                        }
+                        if (ptr->ReadBinary(sizeof(m_listInfos[i].listEleCount), reinterpret_cast<char*>(&(m_listInfos[i].listEleCount))) != sizeof(m_listInfos[i].listEleCount)) {
+                            LOG(Helper::LogLevel::LL_Error, "Failed to read head info file!\n");
+                            exit(1);
+                        }
+                        if (ptr->ReadBinary(sizeof(m_listInfos[i].listPageCount), reinterpret_cast<char*>(&(m_listInfos[i].listPageCount))) != sizeof(m_listInfos[i].listPageCount)) {
+                            LOG(Helper::LogLevel::LL_Error, "Failed to read head info file!\n");
+                            exit(1);
+                        }
 
                         totalListElementCount += m_listInfos[i].listEleCount;
                         int pageCount = m_listInfos[i].listPageCount;
@@ -364,9 +386,7 @@ namespace SPTAG {
                         }
                     }
 
-                    input.close();
-
-                    fprintf(stderr,
+                    LOG(Helper::LogLevel::LL_Info,
                         "Finish reading header info, list count %d, total doc count %d, dimension %d, list page offset %d.\n",
                         m_listCount,
                         m_totalDocumentCount,
@@ -374,16 +394,16 @@ namespace SPTAG {
                         m_listPageOffset);
 
 
-                    fprintf(stderr,
+                    LOG(Helper::LogLevel::LL_Info,
                         "Big page (>4K): list count %d, total element count %d.\n",
                         biglistCount,
                         biglistElementCount);
 
-                    fprintf(stderr, "Total Element Count: %llu\n", totalListElementCount);
+                    LOG(Helper::LogLevel::LL_Info, "Total Element Count: %llu\n", totalListElementCount);
 
                     for (auto& ele : pageCountDist)
                     {
-                        fprintf(stderr, "Page Count Dist: %d %d\n", ele.first, ele.second);
+                        LOG(Helper::LogLevel::LL_Info, "Page Count Dist: %d %d\n", ele.first, ele.second);
                     }
 
                     m_vectorInfoSize = m_iDataDimension * sizeof(ValueType) + sizeof(int);

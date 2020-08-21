@@ -11,7 +11,7 @@ using namespace SPTAG;
 class PartitionOptions : public Helper::ReaderOptions
 {
 public:
-    PartitionOptions():Helper::ReaderOptions(VectorValueType::Float, 0, "|", 32)
+    PartitionOptions():Helper::ReaderOptions(VectorValueType::Float, 0, VectorFileType::TXT, "|", 32)
     {
         AddRequiredOption(m_inputFiles, "-i", "--input", "Input raw data.");
         AddRequiredOption(m_clusterNum, "-c", "--numclusters", "Number of clusters.");
@@ -72,7 +72,7 @@ bool LoadCenters(T* centers, SizeType row, DimensionType col) {
         
         inputStream.read((char*)centers, sizeof(T)*row*col);
         inputStream.close();
-        std::cout << "load centers(" << row << "," << col << ") from file " << options.m_centers << std::endl << std::flush;
+        LOG(Helper::LogLevel::LL_Info, "load centers(%d,%d) from file %s\n", row, col, options.m_centers.c_str());
         return true;
     }
     return false;
@@ -82,14 +82,14 @@ template <typename T>
 bool SaveCenters(T* centers, SizeType row, DimensionType col) {
     std::ofstream outputStream(options.m_centers, std::ofstream::binary);
     if (!outputStream.is_open()) {
-        fprintf(stderr, "Failed to open center file %s to write.\n", options.m_centers.c_str());
+        LOG(Helper::LogLevel::LL_Error, "Failed to open center file %s to write.\n", options.m_centers.c_str());
         return false;
     }
     outputStream.write((char*)&row, sizeof(SizeType));
     outputStream.write((char*)&col, sizeof(DimensionType));
     outputStream.write((char*)centers, sizeof(T)*row*col);
     outputStream.close();
-    std::cout << "save centers(" << row << "," << col << ") to file " << options.m_centers << std::endl << std::flush;
+    LOG(Helper::LogLevel::LL_Info, "save centers(%d,%d) to file %s\n", row, col, options.m_centers.c_str());
     return true;
 }
 
@@ -257,35 +257,28 @@ void Process(MPI_Datatype type) {
 
     auto vectorReader = Helper::VectorSetReader::CreateInstance(std::make_shared<Helper::ReaderOptions>(options));
     options.m_inputFiles = Helper::StrUtils::ReplaceAll(options.m_inputFiles, "*", std::to_string(rank));
-    if (options.m_inputFiles.find("BIN:") == 0) {
-        if (ErrorCode::Success != vectorReader->LoadBinaryFile(options.m_inputFiles.substr(4)))
-        {
-            fprintf(stderr, "Failed to read input file.\n");
-            exit(1);
-        }
-    }
-    else {
-        if (ErrorCode::Success != vectorReader->LoadFile(options.m_inputFiles))
-        {
-            fprintf(stderr, "Failed to read input file.\n");
-            exit(1);
-        }
+    if (ErrorCode::Success != vectorReader->LoadFile(options.m_inputFiles))
+    {
+        LOG(Helper::LogLevel::LL_Error, "Failed to read input file.\n");
+        exit(1);
     }
     std::shared_ptr<VectorSet> vectors = vectorReader->GetVectorSet();
     std::shared_ptr<MetadataSet> metas = vectorReader->GetMetadataSet();
+    if (options.m_distMethod == DistCalcMethod::Cosine) vectors->Normalize(options.m_threadNum);
+
 	std::vector<float> weights(vectors->Count(), 0.0f);
 	if (options.m_weightfile.compare("-") != 0) {
 		options.m_weightfile = Helper::StrUtils::ReplaceAll(options.m_weightfile, "*", std::to_string(rank));
 		std::ifstream win(options.m_weightfile, std::ifstream::binary);
 		if (!win.is_open()) {
-			fprintf(stderr, "Rank %d failed to read weight file %s.\n", rank, options.m_weightfile.c_str());
+            LOG(Helper::LogLevel::LL_Error, "Rank %d failed to read weight file %s.\n", rank, options.m_weightfile.c_str());
 			exit(1);
 		}
 		SizeType rows;
 		win.read((char*)&rows, sizeof(SizeType));
 		if (rows != vectors->Count()) {
 			win.close();
-			fprintf(stderr, "Number of weights (%d) is not equal to number of vectors (%d).\n", rows, vectors->Count());
+            LOG(Helper::LogLevel::LL_Error, "Number of weights (%d) is not equal to number of vectors (%d).\n", rows, vectors->Count());
 			exit(1);
 		}
 		win.read((char*)weights.data(), sizeof(float)*rows);
@@ -299,13 +292,11 @@ void Process(MPI_Datatype type) {
 	MPI_Allreduce(&localCount, &totalCount, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
 	totalCount = static_cast<unsigned long long>(totalCount * 1.0 / args._K * options.m_vectorfactor);
 
-    std::cout << "rank " << rank << " data:(" << data.R() << "," << data.C() << ") machines:" << size << 
-        " clusters:" << options.m_clusterNum << " type:" << ((int)options.m_inputValueType) << 
-        " threads:" << options.m_threadNum << " lambda:" << options.m_lambda << 
-        " samples:" << options.m_localSamples << " maxcountperpartition:" << totalCount << std::endl << std::flush;
+    LOG(Helper::LogLevel::LL_Info, "rank %d  data:(%d,%d) machines:%d clusters:%d type:%d threads:%d lambda:%f samples:%d maxcountperpartition:%d\n", 
+        rank, data.R(), data.C(), size, options.m_clusterNum, ((int)options.m_inputValueType), options.m_threadNum, options.m_lambda, options.m_localSamples, totalCount);
     
     if (rank == 0) {
-        std::cout << "rank 0 init centers" << std::endl << std::flush;
+        LOG(Helper::LogLevel::LL_Info, "rank 0 init centers\n");
         if (!LoadCenters(args.newTCenters, args._K, args._D)) {
             if (options.m_seed >= 0) std::srand(options.m_seed);
             COMMON::InitCenters<T>(data, localindices, 0, data.R(), args, options.m_localSamples, options.m_initIter);
@@ -341,7 +332,7 @@ void Process(MPI_Datatype type) {
         if (rank == 0) {
             MPI_Reduce(MPI_IN_PLACE, args.newCenters, args._K * args._D, MPI_FLOAT, MPI_SUM, 0, MPI_COMM_WORLD);
             currDiff = COMMON::RefineCenters<T>(data, args);
-            std::cout << "iter " << iteration << " dist:" << currDist << " diff:" << currDiff << std::endl << std::flush;
+            LOG(Helper::LogLevel::LL_Info, "iter %d dist:%f diff:%f\n", iteration, currDist, currDiff);
         } else
             MPI_Reduce(args.newCenters, args.newCenters, args._K * args._D, MPI_FLOAT, MPI_SUM, 0, MPI_COMM_WORLD);
         
@@ -357,7 +348,7 @@ void Process(MPI_Datatype type) {
     else {
         if (rank == 0) {
             for (int i = 0; i < args._K; i++)
-                std::cout << "cluster " << i << " contains vectors:" << args.counts[i] << " weights:" << args.weightedCounts[i] << std::endl << std::flush;
+                LOG(Helper::LogLevel::LL_Info, "cluster %d contains vectors:%d weights:%f\n", i, args.counts[i], args.weightedCounts[i]);
         }
     }
 	d = 0;
@@ -371,9 +362,9 @@ void Process(MPI_Datatype type) {
 		MPI_Allreduce(MPI_IN_PLACE, args.counts, args._K, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 		MPI_Allreduce(MPI_IN_PLACE, args.weightedCounts, args._K, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
 		if (rank == 0) {
-			std::cout << "assign " << i << "....................d:" << d << std::endl << std::flush;
-			for (int i = 0; i < args._K; i++)
-				std::cout << "cluster " << i << " contains vectors:" << args.counts[i] << " weights:" << args.weightedCounts[i] << std::endl << std::flush;
+			LOG(Helper::LogLevel::LL_Info, "assign %d....................d:%f\n", i, d);
+            for (int i = 0; i < args._K; i++)
+                LOG(Helper::LogLevel::LL_Info, "cluster %d contains vectors:%d weights:%f\n", i, args.counts[i], args.weightedCounts[i]);
 		}
 		for (int k = 0; k < args._K; k++)
 			myLimit[k] += (static_cast<SizeType>(totalCount) - args.counts[k]) / size;
@@ -386,16 +377,16 @@ void Process(MPI_Datatype type) {
     
     if (rank == 0) {
         SaveCenters(args.centers, args._K, args._D);
-        std::cout << "final dist:" << currDist << std::endl;
+        LOG(Helper::LogLevel::LL_Info, "final dist:%f\n", currDist);
         for (int i = 0; i < args._K; i++)
-            std::cout << "cluster " << i << " contains vectors:" << args.counts[i] << " weights:" << args.weightedCounts[i]  << std::endl << std::flush;
+            LOG(Helper::LogLevel::LL_Info, "cluster %d contains vectors:%d weights:%f\n", i, args.counts[i], args.weightedCounts[i]);
     }
     MPI_Barrier(MPI_COMM_WORLD);
 
     if (options.m_outdir.compare("-") != 0) {
         for (int i = 0; i < args._K; i++) {
             if (i % size == rank) {
-                std::cout << "Cluster " << i << " start ......" << std::endl << std::flush;
+                LOG(Helper::LogLevel::LL_Info, "Cluster %d start ......\n", i);
             }
             noImprovement = 0;
             std::string vecfile = options.m_outdir + "/" + options.m_outfile + "." + std::to_string(i + 1);
@@ -408,7 +399,7 @@ void Process(MPI_Datatype type) {
                 std::ofstream metaout(options.m_outdir + "/" + options.m_outmetafile + "." + std::to_string(i), std::ios::binary);
                 std::ofstream metaindexout(options.m_outdir + "/" + options.m_outmetaindexfile + "." + std::to_string(i), std::ios::binary);
                 if (!out.is_open() || !metaout.is_open() || !metaindexout.is_open()) {
-                    std::cout << "Error open write file " << options.m_outfile << " " << options.m_outmetafile << " " << options.m_outmetaindexfile << std::endl << std::flush;
+                    LOG(Helper::LogLevel::LL_Error, "Error open write file %s %s %s\n", options.m_outfile.c_str(), options.m_outmetafile.c_str(), options.m_outmetaindexfile.c_str());
                     exit(1);
                 }
                 out.write((char *)(&args.counts[i]), sizeof(int));
@@ -431,7 +422,7 @@ void Process(MPI_Datatype type) {
                                 int len;
                                 MPI_Recv(&len, 1, MPI_INT, j, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                                 if (len > recvmetabuflen) {
-                                    std::cout << "enlarge recv meta buf to " << len << std::endl << std::flush;
+                                    LOG(Helper::LogLevel::LL_Info, "enlarge recv meta buf to %d\n", len);
                                     delete[] recvmetabuf;
                                     recvmetabuflen = len;
                                     recvmetabuf = new char[recvmetabuflen];
@@ -442,7 +433,7 @@ void Process(MPI_Datatype type) {
                                 offset += len;
                             }
                         }
-                        std::cout << "rank " << rank << " <- rank " << j << ":" << recv << " vectors, " << (offset - offset_before) << " bytes meta" << std::endl << std::flush;
+                        LOG(Helper::LogLevel::LL_Info, "rank %d <- rank %d: %d vectors, %llu bytes meta\n", rank, j, recv, (offset - offset_before));
                     }
                     else {
                         size_t total_rec = 0;
@@ -460,7 +451,7 @@ void Process(MPI_Datatype type) {
                                 }
                             }
                         }
-                        std::cout << "rank " << rank << " <- rank " << j << ":" << args.newCounts[i] << "(" << total_rec << ") vectors, " << (offset - offset_before) << " bytes meta" << std::endl << std::flush;
+                        LOG(Helper::LogLevel::LL_Info, "rank %d <- rank %d: %d(%d) vectors, %llu bytes meta\n", rank, j, args.newCounts[i], total_rec, (offset - offset_before));
                     }
                 }
                 delete[] recvmetabuf;
@@ -489,7 +480,7 @@ void Process(MPI_Datatype type) {
                         }
                     }
                 }
-                std::cout << "rank " << rank << " -> rank " << dest << ":" << args.newCounts[i] << "(" << total_rec << ") vectors, " << total_len << " bytes meta" << std::endl << std::flush;
+                LOG(Helper::LogLevel::LL_Info, "rank %d -> rank %d: %d(%d) vectors, %llu bytes meta\n", rank, dest, args.newCounts[i], total_rec, total_len);
             }
             MPI_Barrier(MPI_COMM_WORLD);
         }
@@ -517,7 +508,7 @@ int main(int argc, char* argv[]) {
         Process<std::uint8_t>(MPI_CHAR);
         break;
     default:
-        std::cout << "Error data type!" << std::endl;
+        LOG(Helper::LogLevel::LL_Error, "Error data type!\n");
     }
     return 0;
 }
