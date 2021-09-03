@@ -12,6 +12,26 @@ namespace SPTAG
 {
     namespace Helper
     {
+
+        template <typename T>
+        std::string Serialize(void* data, std::size_t len)
+        {
+            std::string d(sizeof(T) * len, L'\0');
+            memcpy(&d[0], data, d.length());
+            return d;
+        }
+
+        template <typename T>
+        std::unique_ptr<T> Unserialize(const std::string& data)
+        {
+            if (data.size() != sizeof(T))
+                return nullptr;
+
+            auto d = std::make_unique<T>();
+            memcpy(d.get(), data.data(), data.size());
+            return d;
+        }
+
         enum class DiskIOScenario
         {
             DIS_BulkRead = 0,
