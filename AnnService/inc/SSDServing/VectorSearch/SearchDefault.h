@@ -13,15 +13,28 @@
 #include "inc/SSDServing/VectorSearch/TimeUtils.h"
 #include "inc/Helper/ThreadPool.h"
 #include "inc/Core/VectorIndex.h"
+#include "inc/Core/Common/Labelset.h"
 
 #include <boost/lockfree/stack.hpp>
 
 #include <atomic>
+#include <shared_mutex>
 
 namespace SPTAG {
 	namespace SSDServing {
 		namespace VectorSearch {
 			// LARGE_INTEGER g_systemPerfFreq;
+			struct Edge
+            {
+                Edge() : headID(INT_MAX), fullID(INT_MAX), distance(FLT_MAX), order(0)
+                {
+                }
+
+                int headID;
+                int fullID;
+                float distance;
+				char order;
+            };
 
 			template <typename ValueType>
 			class SearchDefault
@@ -31,6 +44,7 @@ namespace SPTAG {
 					:m_workspaces(128)
 				{
 					m_tids = 0;
+					m_replicaCount = 4;
 					//QueryPerformanceFrequency(&g_systemPerfFreq);
 				}
 
@@ -123,6 +137,11 @@ namespace SPTAG {
 					LoadVectorIdsSSDIndex(vectorTranslateMap, extraFullGraphFile);
 				}
 
+				void LoadDeleteID(str::string m_deleteID)
+				{
+					m_deletedID.Load(m_deletedID);
+				}
+
 				void Setup(Options& p_config)
 				{
 					LoadHeadIndex(p_config);
@@ -131,7 +150,86 @@ namespace SPTAG {
 					{
 						LoadVectorIdsSSDIndex(COMMON_OPTS.m_headIDFile, COMMON_OPTS.m_ssdIndex);
 					}
+					LoadDeleteID(COMMON_OPTS.m_deleteID);
 				}
+
+				ErrorCode InsertPostingList(OMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, SizeType VID) 
+				{
+					//fetch postingList & update
+
+					//check the size of postingList
+					//if there are oversize postingList
+					//clustering, update headvector postingList
+					//add new vecror
+					if (COMMON_OPTS.m_indexAlgoType == IndexAlgoType::BKT) {
+						int replicaCount = 0;
+						BasicResult* queryResults = p_queryResults.GetResults();
+						std::vector<Edge> selections(static_cast<size_t>(m_replicaCount);
+						for (int i = 0; i <m_internalResultNum && replicaCount < m_replicaCount; ++i)
+                        {
+                            if (queryResults[i].VID == -1)
+                            {
+                                break;
+                            }
+
+                            // RNG Check.
+                            bool rngAccpeted = true;
+                            for (int j = 0; j < replicaCount; ++j)
+                            {
+								float nnDist = searcher.HeadIndex()->ComputeDistance(
+                                m_index->GetSample(queryResults[i].VID),
+                                m_index->GetSample(selections[j].headID));
+
+                                // LOG(Helper::LogLevel::LL_Info,  "NNDist: %f Original: %f\n", nnDist, queryResults[i].Score);
+                                if (nnDist <= queryResults[i].Dist)
+                                {
+                                    rngAccpeted = false;
+                                    break;
+                                }
+                            }
+
+                            if (!rngAccpeted)
+                            {
+                                continue;
+                            }
+
+                            selections[replicaCount].headID = queryResults[i].VID;
+                            selections[replicaCount].fullID = VID;
+                            selections[replicaCount].distance = queryResults[i].Dist;
+							selections[replicaCount].order = (char)replicaCount;
+                            ++replicaCount;
+						}
+					} else {
+						LOG(Helper::LogLevel::LL_Error, "Only Support BKT Update");
+						return ErrorCode::Undefined;
+					}
+					return ErrorCode::Success;
+				}
+
+				ErrorCode Insert(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, SizeType VID)
+				{
+					m_index->SearchIndex(p_queryResults);
+					return InsertPostingList(p_queryResults, p_stats, VID);
+				}
+
+				ErrorCode Delete(const SizeType& p_id) {
+            		std::shared_lock<std::shared_timed_mutex> sharedlock(m_dataDeleteLock);
+            		if (m_deletedID.Insert(p_id)) return ErrorCode::Success;
+            		return ErrorCode::VectorNotFound;
+        		}
+
+        		ErrorCode Delete(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats) 
+				{
+					p_queryResults.GetTarget()
+					Search(p_queryResults, p_stats);
+#pragma omp parallel for schedule(dynamic)
+            		for (SizeType i = 0; i < p_queryResults.GetResultNum(); i++) {
+                    	if (p_queryResults.GetResult(i)->Dist < 1e-6) {
+                        	Delete(p_queryResults.GetResult(i)->VID);
+                    	}
+            		}
+            		return ErrorCode::Success;
+        		}
 
 				void Search(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats)
 				{
@@ -179,7 +277,7 @@ namespace SPTAG {
 					{
 						p_queryResults.Reverse();
 
-						m_extraSearcher->Search(auto_ws, p_queryResults, m_index, p_stats);
+						m_extraSearcher->Search(auto_ws, p_queryResults, m_index, p_stats, m_deletedID);
 						RetWs(auto_ws);
 					}
 
@@ -251,6 +349,10 @@ namespace SPTAG {
 				{
 					LOG(Helper::LogLevel::LL_Info, "ThreadNum: %d, ResultNum: %d, AsyncCall: %d\n", p_threadNum, p_resultNum, p_asyncCall ? 1 : 0);
 
+					m_internalResultNum = p_resultNum;
+
+					m_replicaCount = p_opts.m_replicaCount;
+
 					if (p_asyncCall)
 					{
 						m_threadPool.reset(new Helper::ThreadPool());
@@ -309,6 +411,16 @@ namespace SPTAG {
 				std::unique_ptr<Helper::ThreadPool> m_threadPool;
 
 				std::atomic<std::int32_t> m_tids;
+
+				//for real-time service and release
+				COMMON::Labelset m_deletedID;
+
+				//delete mutex lock
+				std::shared_timed_mutex m_dataDeleteLock;
+
+				int m_internalResultNum;
+
+				int m_replicaCount;
 
 				boost::lockfree::stack<ExtraWorkSpace*> m_workspaces;
 			};

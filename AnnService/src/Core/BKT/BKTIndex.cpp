@@ -107,8 +107,8 @@ namespace SPTAG
             if (gnode.distance <= p_query.worstDist()) { \
                 SizeType checkNode = node[checkPos]; \
                 if (checkNode < -1) { \
-                    const COMMON::BKTNode& tnode = m_pTrees[-2 - checkNode]; \
-                    SizeType i = -tnode.childStart; \
+                    const COMMON::BKTNodeUpdate& tnode = m_pTrees[-2 - checkNode]; \
+                    SizeType i = -tnode.firstChild; \
                     do { \
                         CheckDeleted \
                         { \
@@ -117,7 +117,8 @@ namespace SPTAG
                             break; \
                         } \
                         tmpNode = m_pTrees[i].centerid; \
-                    } while (i++ < tnode.childEnd); \
+                        i = m_pTrees[i].sibling; \
+                    } while (i>0); \
                 } else { \
                     CheckDeleted \
                     { \
@@ -162,7 +163,7 @@ namespace SPTAG
                 SizeType checkNode = node[checkPos]; \
                 if (checkNode < -1) { \
                     const COMMON::BKTNode& tnode = m_pTrees[-2 - checkNode]; \
-                    SizeType i = -tnode.childStart; \
+                    SizeType i = -firstChild; \
                     do { \
                         CheckDeleted \
                         { \
@@ -170,7 +171,8 @@ namespace SPTAG
                             break; \
                         } \
                         tmpNode = m_pTrees[i].centerid; \
-                    } while (i++ < tnode.childEnd); \
+                        i = m_pTrees[i].sibling; \
+                    } while (i > 0); \
                } else { \
                    CheckDeleted \
                    { \
@@ -505,6 +507,56 @@ namespace SPTAG
 
             if (end - m_pTrees.sizePerTree() >= m_addCountForRebuild && m_threadPool.jobsize() == 0) {
                 m_threadPool.add(new RebuildJob(&m_pSamples, &m_pTrees, &m_pGraph, m_iDistCalcMethod));
+            }
+
+            for (SizeType node = begin; node < end; node++)
+            {
+                m_pGraph.RefineNode<T>(this, node, true, true, m_pGraph.m_iAddCEF);
+            }
+            return ErrorCode::Success;
+        }
+
+        template <typename T>
+        ErrorCode Index<T>::AddHeadIndex(const void* p_data, SizeType p_vectorNum, DimensionType p_dimension, std::vector<SizeType>& fatherNodes)
+        {
+            if (p_data == nullptr || p_vectorNum == 0 || p_dimension == 0) return ErrorCode::EmptyData;
+
+            SizeType begin, end;
+            ErrorCode ret;
+            {
+                std::lock_guard<std::mutex> lock(m_dataAddLock);
+
+                begin = GetNumSamples();
+                end = begin + p_vectorNum;
+
+                if (begin == 0) {
+                    LOG(Helper::LogLevel::LL_Error, "Index Error: No vector in Index!\n");
+                    return ErrorCode::EmptyIndex;
+                }
+
+                if (p_dimension != GetFeatureDim()) return ErrorCode::DimensionSizeMismatch;
+
+                if (m_pSamples.AddBatch((const T*)p_data, p_vectorNum) != ErrorCode::Success || 
+                    m_pGraph.AddBatch(p_vectorNum) != ErrorCode::Success || 
+                    m_deletedID.AddBatch(p_vectorNum) != ErrorCode::Success) {
+                    LOG(Helper::LogLevel::LL_Error, "Memory Error: Cannot alloc space for vectors!\n");
+                    m_pSamples.SetR(begin);
+                    m_pGraph.SetR(begin);
+                    m_deletedID.SetR(begin);
+                    return ErrorCode::MemoryOverFlow;
+                }
+                if (DistCalcMethod::Cosine == m_iDistCalcMethod)
+                {
+                    int base = COMMON::Utils::GetBase<T>();
+                    for (SizeType i = begin; i < end; i++) {
+                        COMMON::Utils::Normalize((T*)m_pSamples[i], GetFeatureDim(), base);
+                    }
+                }
+            }
+            
+            for (SizeType node = begin, int num = 0; node < end; node++, num++)
+            {
+                m_pTrees.InsertNode(m_pTrees[fatherNodes[num]], begin);
             }
 
             for (SizeType node = begin; node < end; node++)

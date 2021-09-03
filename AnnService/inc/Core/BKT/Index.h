@@ -14,7 +14,7 @@
 #include "../Common/WorkSpace.h"
 #include "../Common/WorkSpacePool.h"
 #include "../Common/RelativeNeighborhoodGraph.h"
-#include "../Common/BKTree.h"
+#include "../Common/BKTreeUpdate.h"
 #include "../Common/Labelset.h"
 #include "inc/Helper/SimpleIniReader.h"
 #include "inc/Helper/StringConvert.h"
@@ -155,6 +155,7 @@ namespace SPTAG
             ErrorCode RefineSearchIndex(QueryResult &p_query, bool p_searchDeleted = false) const;
             ErrorCode SearchTree(QueryResult &p_query) const;
             ErrorCode AddIndex(const void* p_data, SizeType p_vectorNum, DimensionType p_dimension, std::shared_ptr<MetadataSet> p_metadataSet, bool p_withMetaIndex = false);
+            ErrorCode AddHeadIndex(const void* p_data, SizeType p_vectorNum, DimensionType p_dimension, std::vector<SizeType>& fatherNodes);
             ErrorCode DeleteIndex(const void* p_vectors, SizeType p_vectorNum);
             ErrorCode DeleteIndex(const SizeType& p_id);
 

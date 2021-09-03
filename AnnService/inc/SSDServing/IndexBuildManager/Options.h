@@ -32,6 +32,7 @@ namespace SPTAG {
                 std::string m_headVectorFile;
                 std::string m_headIndexFolder;
                 std::string m_ssdIndex;
+                std::string m_deleteID;
 
                 BaseOptions() {
 #define DefineBasicParameter(VarName, VarType, DefaultValue, RepresentStr) \

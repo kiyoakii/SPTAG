@@ -1,7 +1,8 @@
 #include <unordered_set>
 #include <queue>
 
-#include "inc/Core/Common/BKTree.h"
+//#include "inc/Core/Common/BKTree.h"
+#include "inc/Core/Common/BKTreeUpdate.h"
 
 #include "inc/SSDServing/SelectHead_BKT/SelectHead.h"
 #include "inc/SSDServing/SelectHead_BKT/BKTNodeInfo.h"
@@ -34,7 +35,7 @@ namespace SPTAG {
                 const auto& node = (*p_tree)[p_nodeID];
 
                 // Leaf.
-                if (node.childStart == -1)
+                if (node.firstChild == -1)
                 {
                     p_nodeInfos[p_nodeID].leafSize = 1;
                     p_nodeInfos[p_nodeID].minDepth = 0;
@@ -48,7 +49,7 @@ namespace SPTAG {
                 int& minDepth = p_nodeInfos[p_nodeID].minDepth;
                 int& maxDepth = p_nodeInfos[p_nodeID].maxDepth;
 
-                for (int nodeId = node.childStart; nodeId < node.childEnd; ++nodeId)
+                for (int nodeId = node.firstChild; nodeId > 0; nodeId = (*p_tree)[nodeId].sibling)
                 {
                     p_nodeInfos[nodeId].parent = p_nodeID;
                     DfsSelect(nodeId, p_tree, p_candidates, p_nodeInfos);
@@ -86,13 +87,13 @@ namespace SPTAG {
                 }
 
                 // Leaf.
-                if (node.childStart == -1)
+                if (node.firstChild == -1)
                 {
                     return p_covered ? 1 : 0;
                 }
 
                 int ret = 0;
-                for (int nodeId = node.childStart; nodeId < node.childEnd; ++nodeId)
+                for (int nodeId = node.firstChild; nodeId > 0; nodeId = (*p_tree)[nodeId].sibling)
                 {
                     ret += DfsCovered(nodeId, p_tree, p_candidates, p_covered);
                 }
@@ -204,11 +205,12 @@ namespace SPTAG {
                         if (c.childrenSize > p_opts.m_splitThreshold)
                         {
                             int selectCount = static_cast<int>(std::ceil(c.childrenSize * 1.0 / p_opts.m_splitFactor) + 0.5);
+                            int nodeId = (*p_tree)[c.nodeID].firstChild;
                             for (int i = 1; i < selectCount; ++i)
                             {
-                                int nodeId = (*p_tree)[c.nodeID].childStart + i;
                                 overallSelected.insert((*p_tree)[nodeId].centerid);
                                 ++bigClusterCount;
+                                nodeId = (*p_tree)[nodeId].sibling;
                             }
                         }
 
@@ -291,10 +293,15 @@ namespace SPTAG {
                 std::vector<CSPair> children;
                 int childrenSize = 1;
                 const auto& node = (*p_tree)[p_nodeID];
-                if (node.childStart >= 0)
+                if (node.firstChild >= 0)
                 {
-                    children.reserve(node.childEnd - node.childStart);
-                    for (int i = node.childStart; i < node.childEnd; ++i)
+                    int childSize = 0;
+                    for (int i = node.firstChild; i >0; i = (*p_tree)[i].sibling)
+                    {
+                        childSize++;
+                    }
+                    children.reserve(childSize);
+                    for (int i = node.firstChild; i >0; i = (*p_tree)[i].sibling)
                     {
                         int cs = SelectHeadDynamicallyInternal(p_tree, i, p_opts, p_selected);
                         if (cs > 0)

@@ -1,6 +1,7 @@
 #pragma once
 #include "inc/SSDServing/VectorSearch/IExtraSearcherLinux.h"
 #include "inc/SSDServing/VectorSearch/SearchStats.h"
+#include "inc/Core/Common/Labelset.h"
 
 #include <fstream>
 #include <map>
@@ -63,7 +64,7 @@ namespace SPTAG {
                 virtual void Search(ExtraWorkSpace* p_exWorkSpace,
                     SPTAG::COMMON::QueryResultSet<ValueType>& p_queryResults,
                     std::shared_ptr<VectorIndex> p_index,
-                    SearchStats& p_stats)
+                    SearchStats& p_stats, COMMON::Labelset& m_deleteID)
                 {
                     const uint32_t postingListCount = static_cast<uint32_t>(p_exWorkSpace->m_postingIDs.size());
 
@@ -113,7 +114,7 @@ namespace SPTAG {
                             int vectorID = *(reinterpret_cast<int*>(vectorInfo));
                             vectorInfo += sizeof(int);
 
-                            if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID))
+                            if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID)||m_deleteID.Contains(vectorID))
                             {
                                 continue;
                             }

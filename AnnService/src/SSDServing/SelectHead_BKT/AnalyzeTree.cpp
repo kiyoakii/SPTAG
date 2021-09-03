@@ -8,16 +8,16 @@ namespace SPTAG {
                 const std::shared_ptr<COMMON::BKTree> p_tree,
                 std::unordered_map<int, int>& p_counter) {
 
-                SPTAG::COMMON::BKTNode& node = (*p_tree)[p_nodeID];
+                SPTAG::COMMON::BKTNodeUpdate& node = (*p_tree)[p_nodeID];
 
                 p_counter[node.centerid] = 1;
 
-                if (node.childStart < 0)
+                if (node.firstChild < 0)
                 {
                     return;
                 }
 
-                for (SPTAG::SizeType i = node.childStart; i < node.childEnd; i++)
+                for (SPTAG::SizeType i = node.firstChild; i > 0; i = (*p_tree)[i].sibling)
                 {
                     CalcLeafSize(i, p_tree, p_counter);
                     p_counter[node.centerid] += p_counter[(*p_tree)[i].centerid];
@@ -34,7 +34,7 @@ namespace SPTAG {
                 const auto& node = (*p_tree)[p_nodeID];
 
                 // Leaf.
-                if (node.childStart < 0)
+                if (node.firstChild < 0)
                 {
                     p_nodeInfos[p_nodeID].leafSize = 1;
                     p_nodeInfos[p_nodeID].minDepth = 0;
@@ -49,8 +49,10 @@ namespace SPTAG {
                 int& maxDepth = p_nodeInfos[p_nodeID].maxDepth;
 
                 int sinlgeCount = 0;
-                for (int nodeId = node.childStart; nodeId < node.childEnd; ++nodeId)
+                int childrenCount = 0;
+                for (int nodeId = node.firstChild; nodeId > 0; nodeId = (*p_tree)[nodeId].sibling)
                 {
+                    childrenCount++;
                     DfsAnalyze(nodeId, p_tree, p_vectorSet, p_opts, p_height + 1, p_nodeInfos);
                     if (minDepth > p_nodeInfos[nodeId].minDepth)
                     {
@@ -84,17 +86,22 @@ namespace SPTAG {
                     p_height,
                     minDepth,
                     maxDepth,
-                    node.childEnd - node.childStart,
+                    childrenCount,
                     sinlgeCount);
 
-                for (int nodeId = node.childStart; nodeId < node.childEnd; ++nodeId)
+                for (int nodeId = node.firstChild; nodeId > 0; nodeId = (*p_tree)[nodeId].sibling)
                 {
+                    int ChildrenCount = 0;
+                    for (SizeType i = (*p_tree)[i].firstChild; i > 0; i = (*p_tree)[i].sibling)
+                    {
+                        ChildrenCount++;
+                    }
                     LOG(Helper::LogLevel::LL_Info,
                         "    ChildNode: %8d, MinDepth: %3d, MaxDepth: %3d, ChildrenCount: %3d, LeafCount: %3d\n",
                         nodeId,
                         p_nodeInfos[nodeId].minDepth,
                         p_nodeInfos[nodeId].maxDepth,
-                        (*p_tree)[nodeId].childEnd - (*p_tree)[nodeId].childStart,
+                        ChildrenCount,
                         p_nodeInfos[nodeId].leafSize);
                 }
             }
