@@ -57,6 +57,14 @@ namespace SPTAG {
 				mkdir(folderPath.c_str());
 			}
 
+			dbOptions.IncreaseParallelism();
+			dbOptions.OptimizeLevelStyleCompaction();
+			dbOptions.create_if_missing = true;
+
+			// open DB
+			Status s = DB::Open(dbOptions, kDBPath, &db);
+			assert(s.op());
+
 			VectorSearch::TimeUtils::StopW sw;
 
 			SSDServing::SelectHead_BKT::Options slOpts;
@@ -151,6 +159,9 @@ namespace SPTAG {
 				buildSSDTime,
 				searchSSDTime
 			);
+
+			delete db;
+			
 			return 0;
 		}
 
