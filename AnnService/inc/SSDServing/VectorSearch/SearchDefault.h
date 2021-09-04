@@ -14,6 +14,8 @@
 #include "inc/Helper/ThreadPool.h"
 #include "inc/Core/VectorIndex.h"
 #include "inc/Core/Common/Labelset.h"
+#include "inc/Core/Common/QueryResultSet.h"
+#include "inc/SSDServing/IndexBuildManager/CommonDefines.h"
 
 #include <boost/lockfree/stack.hpp>
 
@@ -24,6 +26,8 @@ namespace SPTAG {
 	namespace SSDServing {
 		namespace VectorSearch {
 			// LARGE_INTEGER g_systemPerfFreq;
+			const std::uint16_t c_pageSize = 4096;
+
 			struct Edge
             {
                 Edge() : headID(INT_MAX), fullID(INT_MAX), distance(FLT_MAX), order(0)
@@ -150,10 +154,10 @@ namespace SPTAG {
 					{
 						LoadVectorIdsSSDIndex(COMMON_OPTS.m_headIDFile, COMMON_OPTS.m_ssdIndex);
 					}
-					LoadDeleteID(COMMON_OPTS.m_deleteID);
+					//LoadDeleteID(COMMON_OPTS.m_deleteID);
 				}
 
-				ErrorCode InsertPostingList(OMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, SizeType VID) 
+				ErrorCode InsertPostingList(SPTAG::COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, SizeType VID) 
 				{
 					//fetch postingList & update
 
@@ -165,7 +169,7 @@ namespace SPTAG {
 						int replicaCount = 0;
 						BasicResult* queryResults = p_queryResults.GetResults();
 						std::vector<Edge> selections(static_cast<size_t>(m_replicaCount);
-						for (int i = 0; i <m_internalResultNum && replicaCount < m_replicaCount; ++i)
+						for (int i = 0; i < m_internalResultNum && replicaCount < m_replicaCount; ++i)
                         {
                             if (queryResults[i].VID == -1)
                             {
@@ -198,6 +202,27 @@ namespace SPTAG {
                             selections[replicaCount].distance = queryResults[i].Dist;
 							selections[replicaCount].order = (char)replicaCount;
                             ++replicaCount;
+						}
+						std::string postingList;
+						for (int i = 0; i < replicaCount; ++i)
+						{
+							postingList.resize(0);
+							postingList.clear();
+							db->Get(ReadOptions(), Helper::Serialize<int>(&selections[replicaCount].headID, 1), &postingList);
+							if (postingList.size() + sizeof(int) + m_vectorSize > m_postingPageLimit * c_pageSize)
+							{
+								//need to split and insert into headinedex
+								LOG(Helper::LogLevel::LL_Info, "PostingList Oversize, Need to Split");
+								postingList += Helper::Serialize<int>(&VID, 1);
+								postingList += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
+								db->Put(WriteOption(), Helper::Serialize<int>(&selections[replicaCount].headID, 1), postingList);
+
+							} else
+							{
+								postingList += Helper::Serialize<int>(&VID, 1);
+								postingList += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
+								db->Put(WriteOption(), Helper::Serialize<int>(&selections[replicaCount].headID, 1), postingList);
+							}
 						}
 					} else {
 						LOG(Helper::LogLevel::LL_Error, "Only Support BKT Update");
@@ -353,6 +378,8 @@ namespace SPTAG {
 
 					m_replicaCount = p_opts.m_replicaCount;
 
+					m_postingPageLimit = p_opts.m_postingPageLimit * 2
+
 					if (p_asyncCall)
 					{
 						m_threadPool.reset(new Helper::ThreadPool());
@@ -421,6 +448,10 @@ namespace SPTAG {
 				int m_internalResultNum;
 
 				int m_replicaCount;
+
+				int m_postingPageLimit;
+
+				int m_vectorSize;
 
 				boost::lockfree::stack<ExtraWorkSpace*> m_workspaces;
 			};

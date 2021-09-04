@@ -15,6 +15,7 @@
 #include "../Common/WorkSpacePool.h"
 #include "../Common/RelativeNeighborhoodGraph.h"
 #include "../Common/BKTreeUpdate.h"
+//#include "../Common/BKTree.h"
 #include "../Common/Labelset.h"
 #include "inc/Helper/SimpleIniReader.h"
 #include "inc/Helper/StringConvert.h"

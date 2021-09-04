@@ -2,6 +2,7 @@
 #include "inc/SSDServing/VectorSearch/IExtraSearcherLinux.h"
 #include "inc/SSDServing/VectorSearch/SearchStats.h"
 #include "inc/Core/Common/Labelset.h"
+#include "inc/SSDServing/IndexBuildManager/CommonDefines.h"
 
 #include <fstream>
 #include <map>
@@ -32,7 +33,7 @@ namespace SPTAG {
                 ExtraFullGraphSearcher(const std::string& p_extraFullGraphFile)
                 {
                     m_extraFullGraphFile = p_extraFullGraphFile;
-                    LoadingHeadInfo(p_extraFullGraphFile);
+                    //LoadingHeadInfo(p_extraFullGraphFile);
                     m_fd = open(p_extraFullGraphFile.c_str(), O_RDONLY);
                     if (m_fd == -1) {
                         // function between perror may change errno.
@@ -61,6 +62,7 @@ namespace SPTAG {
                 {
                 }
 
+                /*
                 virtual void Search(ExtraWorkSpace* p_exWorkSpace,
                     SPTAG::COMMON::QueryResultSet<ValueType>& p_queryResults,
                     std::shared_ptr<VectorIndex> p_index,
@@ -115,6 +117,61 @@ namespace SPTAG {
                             vectorInfo += sizeof(int);
 
                             if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID)||m_deleteID.Contains(vectorID))
+                            {
+                                continue;
+                            }
+
+                            auto distance2leaf = p_index->ComputeDistance(p_queryResults.GetTarget(),
+                                vectorInfo);
+
+                            p_queryResults.AddPoint(vectorID, distance2leaf);
+
+                        }
+                    }
+
+                    p_stats.m_exCheck = curCheck;
+                    p_stats.m_diskAccessCount = diskRead;
+
+                    p_queryResults.SortResult();
+                }
+                */
+                virtual void Search(ExtraWorkSpace* p_exWorkSpace,
+                    SPTAG::COMMON::QueryResultSet<ValueType>& p_queryResults,
+                    std::shared_ptr<VectorIndex> p_index,
+                    SearchStats& p_stats, COMMON::Labelset& m_deleteID)
+                {
+                    const uint32_t postingListCount = static_cast<uint32_t>(p_exWorkSpace->m_postingIDs.size());
+
+                    //InitWorkSpace(p_exWorkSpace, postingListCount);
+
+                    std::atomic<std::int32_t> diskRead(0);
+                    int curCheck = 0;
+                    std::string postingList;
+
+                    for (uint32_t pi = 0; pi < postingListCount; ++pi)
+                    {
+                        postingList.resize(0);
+                        postingList.clear();
+
+                        db->Get(ReadOptions(), Helper::Serialize<int>(&p_exWorkSpace->m_postingIDs[pi], 1), &postingList);
+
+                        int vectorNum = postingList.size() * sizeof(char) / (COMMON_OPTS.m_dim * sizeof(ValueType) + sizeof(int));
+
+                        std::uin8_t* postingListInfo = Helper::Unserialize<ValueType>(&postingList);
+
+                        for (int i = 0; i < vectorNum; ++i)
+                        {
+                            std::uint8_t* vectorInfo = postingListInfo + i * ((COMMON_OPTS.m_dim * sizeof(ValueType) + sizeof(int));
+                            int vectorID = *(reinterpret_cast<int*>(vectorInfo));
+                            vectorInfo += sizeof(int);
+
+                            /*
+                            if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID)||m_deleteID.Contains(vectorID))
+                            {
+                                continue;
+                            }
+                            */
+                           if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID))
                             {
                                 continue;
                             }
