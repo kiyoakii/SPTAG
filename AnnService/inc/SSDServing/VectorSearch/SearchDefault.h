@@ -8,13 +8,14 @@
 #include "inc/SSDServing/VectorSearch/ExtraFullGraphSearcherLinux.h"
 #endif
 
+#include "inc/Core/Common/BKTreeUpdate.h"
+#include "inc/Core/Common/Dataset.h"
+#include "inc/Core/Common/QueryResultSet.h"
+#include "inc/Core/VectorIndex.h"
+#include "inc/Helper/ThreadPool.h"
+#include "inc/SSDServing/IndexBuildManager/CommonDefines.h"
 #include "inc/SSDServing/IndexBuildManager/Utils.h"
 #include "inc/SSDServing/VectorSearch/TimeUtils.h"
-#include "inc/Helper/ThreadPool.h"
-#include "inc/Core/VectorIndex.h"
-#include "inc/Core/Common/Labelset.h"
-#include "inc/Core/Common/QueryResultSet.h"
-#include "inc/SSDServing/IndexBuildManager/CommonDefines.h"
 
 #include <boost/lockfree/stack.hpp>
 
@@ -212,6 +213,46 @@ namespace SPTAG {
 							{
 								//need to split and insert into headinedex
 								LOG(Helper::LogLevel::LL_Info, "PostingList Oversize, Need to Split");
+								//extract out vector and id from postingList
+								COMMON::Dataset<ValueType> smallSample;
+								std::shared_ptr<uint8_t> vectorBuffer;
+								//smallSample[i] -> VID
+								std::vector<int> localindicesInsert;
+								//localindices for kmeans smallSample[i] -> localindices[j] = i
+								std::vector<int> localindices;
+								int vectorNum = postingList.size()/ (sizeof(int) + m_vectorSize);
+								localindicesInsert.resize(vectorNum);
+								localindices.resize(vectorNum);
+								vectorBuffer.reset(new uint8_t[vectorNum * m_vectorSize], std::default_delete<uint8_t[]>());
+								void* bufferVoidPtr = reinterpret_cast<void*>(vectorBuffer.get());
+								for (int j = 0; j < vectorNum; j++)
+								{
+									localindicesInsert[i] = (int)postingList.data()[j * (m_vectorSize + sizeof(int))];
+									localindices[i] = i;
+									memcpy(bufferVoidPtr, postingList.data()[j * (m_vectorSize + sizeof(int)) + sizeof(int)], m_vectorSize);
+									bufferVoidPtr += m_vectorSize;
+								}
+								bufferVoidPtr = reinterpret_cast<void*>(vectorBuffer.get());
+								smallSample.Initialize(vectorNum, COMMON_OPTS.m_dim, (ValueType*)bufferVoidPtr, false);
+								//k = 2, maybe we can change the split number
+								SPTAG::COMMON::KmeansArgs<ValueType> args(m_k, smallSample.C(), (SizeType)localindicesInsert.size(), 1, m_index->GetDistCalcMethod());
+								
+								int numClusters = SPTAG::COMMON::KmeansClustering(smallSample, localindices, 0, localindices, args);
+
+								if(numClusters <= 1)
+								{
+									LOG(Helper::LogLevel::LL_Error, "Insert Error");
+									return ErrorCode::Undefined;
+								}
+
+								postingList.resize(0);
+								postingList.clear();
+
+								for (int k = 0; k < m_k; k++) 
+								{
+									
+								}
+								
 								postingList += Helper::Serialize<int>(&VID, 1);
 								postingList += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
 								db->Put(WriteOptions(), Helper::Serialize<int>(&selections[replicaCount].headID, 1), postingList);
@@ -379,6 +420,8 @@ namespace SPTAG {
 
 					m_postingPageLimit = p_opts.m_postingPageLimit * 2;
 
+					m_vectorSize = COMMON_OPTS.m_dim * sizeof(ValueType);
+
 					if (p_asyncCall)
 					{
 						m_threadPool.reset(new Helper::ThreadPool());
@@ -451,6 +494,8 @@ namespace SPTAG {
 				int m_postingPageLimit;
 
 				int m_vectorSize;
+
+				int m_k = 2;
 
 				boost::lockfree::stack<ExtraWorkSpace*> m_workspaces;
 			};

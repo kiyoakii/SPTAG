@@ -11,9 +11,9 @@
 #include "inc/SSDServing/VectorSearch/Options.h"
 #include "inc/SSDServing/VectorSearch/TimeUtils.h"
 #include "inc/SSDServing/VectorSearch/BootVectorSearch.h"
-#include <rocksdb/db.h>
-#include <rocksdb/slice.h>
-#include <rocksdb/options.h>
+#include "rocksdb/db.h"
+#include "rocksdb/slice.h"
+#include "rocksdb/options.h"
 
 using namespace SPTAG;
 

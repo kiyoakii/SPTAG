@@ -89,13 +89,20 @@ elseif(WIN32)
             )
 endif()
 
+find_path(ROCKSDB_INCLUDE_DIR rocksdb/db.h
+    PATHS "")
+include_directories(${ROCKSDB_INCLUDE_DIR})
+
+find_library(ROCKSDB_LIB rocksdb)
+message(STATUS "finding ${ROCKSDB_LIB}")
+
 add_executable(ssdserving ${SSD_SERVING_HDR_FILES} ${SSD_SERVING_FILES})
-target_link_libraries(ssdserving SPTAGLibStatic ${Boost_LIBRARIES} rocksdb dl)
+target_link_libraries(ssdserving SPTAGLibStatic ${Boost_LIBRARIES} ${ROCKSDB_LIB})
 target_compile_definitions(ssdserving PRIVATE _exe)
 
 # for Test
 add_library(ssdservingLib ${SSD_SERVING_HDR_FILES} ${SSD_SERVING_FILES})
-target_link_libraries(ssdservingLib SPTAGLibStatic ${Boost_LIBRARIES})
+target_link_libraries(ssdservingLib SPTAGLibStatic ${Boost_LIBRARIES} ${ROCKSDB_LIB})
 
 find_package(MPI)
 if (MPI_FOUND)
