@@ -380,7 +380,8 @@ namespace SPTAG
                         if (item.last - item.first <= m_iBKTLeafSize) {
                             for (SizeType j = item.first; j < item.last; j++) {
                                 SizeType cid = (reverseIndices == nullptr)? localindices[j]: reverseIndices->at(localindices[j]);
-                                m_pTreeRoots.emplace_back(cid, -1, ++newBKTid);
+                                m_pTreeRoots.emplace_back(cid);
+                                m_pTreeRoots[newBKTid].sibling = ++newBKTid;
                             }
                             m_pTreeRoots[newBKTid-1].sibling = -1;
                         }
@@ -398,7 +399,8 @@ namespace SPTAG
                                 m_pTreeRoots[item.index].firstChild = -m_pTreeRoots[item.index].firstChild;
                                 for (SizeType j = item.first + 1; j < end; j++) {
                                     SizeType cid = (reverseIndices == nullptr) ? localindices[j] : reverseIndices->at(localindices[j]);
-                                    m_pTreeRoots.emplace_back(cid, -1, ++newBKTid);
+                                    m_pTreeRoots.emplace_back(cid);
+                                    m_pTreeRoots[newBKTid].sibling = ++newBKTid;
                                     m_pSampleCenterMap[cid] = m_pTreeRoots[item.index].centerid;
                                 }
                                 m_pTreeRoots[newBKTid-1].sibling = -1;
@@ -408,7 +410,8 @@ namespace SPTAG
                                 for (int k = 0; k < m_iBKTKmeansK; k++) {
                                     if (args.counts[k] == 0) continue;
                                     SizeType cid = (reverseIndices == nullptr) ? localindices[item.first + args.counts[k] - 1] : reverseIndices->at(localindices[item.first + args.counts[k] - 1]);
-                                    m_pTreeRoots.emplace_back(cid, -1, ++newBKTid);
+                                    m_pTreeRoots.emplace_back(cid);
+                                    m_pTreeRoots[newBKTid].sibling = ++newBKTid;
                                     if (args.counts[k] > 1) ss.push(BKTStackItem(newBKTid-1, item.first, item.first + args.counts[k] - 1));
                                     item.first += args.counts[k];
                                 }
@@ -545,7 +548,7 @@ namespace SPTAG
                         if (!p_space.CheckAndSet(tnode.centerid)) {
                             p_space.m_NGQueue.insert(COMMON::HeapCell(tnode.centerid, bcell.distance));
                         }
-                        for (SizeType begin = node.firstChild; begin > 0; begin = m_pTreeRoots[begin].sibling) {
+                        for (SizeType begin = tnode.firstChild; begin > 0; begin = m_pTreeRoots[begin].sibling) {
                             SizeType index = m_pTreeRoots[begin].centerid;
                             p_space.m_SPTQueue.insert(COMMON::HeapCell(begin, fComputeDistance(p_query.GetTarget(), data[index], data.C())));
                         } 

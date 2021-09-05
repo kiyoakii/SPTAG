@@ -11,6 +11,9 @@
 #include "inc/SSDServing/VectorSearch/Options.h"
 #include "inc/SSDServing/VectorSearch/TimeUtils.h"
 #include "inc/SSDServing/VectorSearch/BootVectorSearch.h"
+#include <rocksdb/db.h>
+#include <rocksdb/slice.h>
+#include <rocksdb/options.h>
 
 using namespace SPTAG;
 
@@ -18,6 +21,9 @@ namespace SPTAG {
 	namespace SSDServing {
 
 		BaseOptions COMMON_OPTS;
+		std::string kDBPath = "/tmp/rocksdb_simple_example";
+        ROCKSDB_NAMESPACE::DB* db;
+        ROCKSDB_NAMESPACE::Options dbOptions;
 
 		int BootProgram(const char* configurationPath, bool forANNIndexTestTool,
 			SPTAG::IndexAlgoType p_algoType,

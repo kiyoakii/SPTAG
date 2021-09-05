@@ -2,7 +2,6 @@
 #include "inc/SSDServing/VectorSearch/IExtraSearcherLinux.h"
 #include "inc/SSDServing/VectorSearch/SearchStats.h"
 #include "inc/Core/Common/Labelset.h"
-#include "inc/SSDServing/IndexBuildManager/CommonDefines.h"
 
 #include <fstream>
 #include <map>
@@ -138,11 +137,11 @@ namespace SPTAG {
                 virtual void Search(ExtraWorkSpace* p_exWorkSpace,
                     SPTAG::COMMON::QueryResultSet<ValueType>& p_queryResults,
                     std::shared_ptr<VectorIndex> p_index,
-                    SearchStats& p_stats, COMMON::Labelset& m_deleteID)
+                    SearchStats& p_stats)
                 {
                     const uint32_t postingListCount = static_cast<uint32_t>(p_exWorkSpace->m_postingIDs.size());
 
-                    //InitWorkSpace(p_exWorkSpace, postingListCount);
+                    InitWorkSpace(p_exWorkSpace, postingListCount);
 
                     std::atomic<std::int32_t> diskRead(0);
                     int curCheck = 0;
@@ -150,18 +149,23 @@ namespace SPTAG {
 
                     for (uint32_t pi = 0; pi < postingListCount; ++pi)
                     {
+
                         postingList.resize(0);
                         postingList.clear();
 
                         db->Get(ReadOptions(), Helper::Serialize<int>(&p_exWorkSpace->m_postingIDs[pi], 1), &postingList);
 
+                        size_t totalBytes = postingList.size();
+                        auto buffer = p_exWorkSpace->m_pageBuffers[pi];
+                        buffer.ReservePageBuffer(totalBytes);
+                        void* bufferVoidPtr = reinterpret_cast<void*>(buffer.GetBuffer());
                         int vectorNum = postingList.size() * sizeof(char) / (COMMON_OPTS.m_dim * sizeof(ValueType) + sizeof(int));
 
-                        std::uin8_t* postingListInfo = Helper::Unserialize<ValueType>(&postingList);
+                        memcpy(bufferVoidPtr, postingList.data(), totalBytes);
 
                         for (int i = 0; i < vectorNum; ++i)
                         {
-                            std::uint8_t* vectorInfo = postingListInfo + i * ((COMMON_OPTS.m_dim * sizeof(ValueType) + sizeof(int));
+                            std::uint8_t* vectorInfo = buffer.GetBuffer() + i * ((COMMON_OPTS.m_dim * sizeof(ValueType) + sizeof(int)));
                             int vectorID = *(reinterpret_cast<int*>(vectorInfo));
                             vectorInfo += sizeof(int);
 

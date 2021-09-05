@@ -9,7 +9,6 @@
 #endif
 
 #include "inc/SSDServing/IndexBuildManager/Utils.h"
-#include "inc/SSDServing/IndexBuildManager/CommonDefines.h"
 #include "inc/SSDServing/VectorSearch/TimeUtils.h"
 #include "inc/Helper/ThreadPool.h"
 #include "inc/Core/VectorIndex.h"
@@ -28,9 +27,9 @@ namespace SPTAG {
 			// LARGE_INTEGER g_systemPerfFreq;
 			const std::uint16_t c_pageSize = 4096;
 
-			struct Edge
+			struct EdgeInsert
             {
-                Edge() : headID(INT_MAX), fullID(INT_MAX), distance(FLT_MAX), order(0)
+                EdgeInsert() : headID(INT_MAX), fullID(INT_MAX), distance(FLT_MAX), order(0)
                 {
                 }
 
@@ -141,9 +140,9 @@ namespace SPTAG {
 					LoadVectorIdsSSDIndex(vectorTranslateMap, extraFullGraphFile);
 				}
 
-				void LoadDeleteID(str::string m_deleteID)
+				void LoadDeleteID(std::string m_deleteIDFilename)
 				{
-					m_deletedID.Load(m_deletedID);
+					m_deletedID.Load(m_deleteIDFilename);
 				}
 
 				void Setup(Options& p_config)
@@ -168,7 +167,7 @@ namespace SPTAG {
 					if (COMMON_OPTS.m_indexAlgoType == IndexAlgoType::BKT) {
 						int replicaCount = 0;
 						BasicResult* queryResults = p_queryResults.GetResults();
-						std::vector<Edge> selections(static_cast<size_t>(m_replicaCount);
+						std::vector<EdgeInsert> selections(static_cast<size_t>(m_replicaCount));
 						for (int i = 0; i < m_internalResultNum && replicaCount < m_replicaCount; ++i)
                         {
                             if (queryResults[i].VID == -1)
@@ -180,7 +179,7 @@ namespace SPTAG {
                             bool rngAccpeted = true;
                             for (int j = 0; j < replicaCount; ++j)
                             {
-								float nnDist = searcher.HeadIndex()->ComputeDistance(
+								float nnDist = m_index->ComputeDistance(
                                 m_index->GetSample(queryResults[i].VID),
                                 m_index->GetSample(selections[j].headID));
 
@@ -215,13 +214,13 @@ namespace SPTAG {
 								LOG(Helper::LogLevel::LL_Info, "PostingList Oversize, Need to Split");
 								postingList += Helper::Serialize<int>(&VID, 1);
 								postingList += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
-								db->Put(WriteOption(), Helper::Serialize<int>(&selections[replicaCount].headID, 1), postingList);
+								db->Put(WriteOptions(), Helper::Serialize<int>(&selections[replicaCount].headID, 1), postingList);
 
 							} else
 							{
 								postingList += Helper::Serialize<int>(&VID, 1);
 								postingList += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
-								db->Put(WriteOption(), Helper::Serialize<int>(&selections[replicaCount].headID, 1), postingList);
+								db->Put(WriteOptions(), Helper::Serialize<int>(&selections[replicaCount].headID, 1), postingList);
 							}
 						}
 					} else {
@@ -245,7 +244,7 @@ namespace SPTAG {
 
         		ErrorCode Delete(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats) 
 				{
-					p_queryResults.GetTarget()
+					p_queryResults.GetTarget();
 					Search(p_queryResults, p_stats);
 #pragma omp parallel for schedule(dynamic)
             		for (SizeType i = 0; i < p_queryResults.GetResultNum(); i++) {
@@ -302,7 +301,7 @@ namespace SPTAG {
 					{
 						p_queryResults.Reverse();
 
-						m_extraSearcher->Search(auto_ws, p_queryResults, m_index, p_stats, m_deletedID);
+						m_extraSearcher->Search(auto_ws, p_queryResults, m_index, p_stats);
 						RetWs(auto_ws);
 					}
 
@@ -378,7 +377,7 @@ namespace SPTAG {
 
 					m_replicaCount = p_opts.m_replicaCount;
 
-					m_postingPageLimit = p_opts.m_postingPageLimit * 2
+					m_postingPageLimit = p_opts.m_postingPageLimit * 2;
 
 					if (p_asyncCall)
 					{

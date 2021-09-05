@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include "Dataset.h"
+#include "CommonUtils.h"
 
 namespace SPTAG
 {

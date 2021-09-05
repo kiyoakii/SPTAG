@@ -90,7 +90,7 @@ elseif(WIN32)
 endif()
 
 add_executable(ssdserving ${SSD_SERVING_HDR_FILES} ${SSD_SERVING_FILES})
-target_link_libraries(ssdserving SPTAGLibStatic ${Boost_LIBRARIES})
+target_link_libraries(ssdserving SPTAGLibStatic ${Boost_LIBRARIES} rocksdb dl)
 target_compile_definitions(ssdserving PRIVATE _exe)
 
 # for Test
