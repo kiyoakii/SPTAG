@@ -381,7 +381,8 @@ namespace SPTAG
                             for (SizeType j = item.first; j < item.last; j++) {
                                 SizeType cid = (reverseIndices == nullptr)? localindices[j]: reverseIndices->at(localindices[j]);
                                 m_pTreeRoots.emplace_back(cid);
-                                m_pTreeRoots[newBKTid].sibling = ++newBKTid;
+                                m_pTreeRoots[newBKTid].sibling = newBKTid+1;
+                                newBKTid++;
                             }
                             m_pTreeRoots[newBKTid-1].sibling = -1;
                         }
@@ -400,8 +401,9 @@ namespace SPTAG
                                 for (SizeType j = item.first + 1; j < end; j++) {
                                     SizeType cid = (reverseIndices == nullptr) ? localindices[j] : reverseIndices->at(localindices[j]);
                                     m_pTreeRoots.emplace_back(cid);
-                                    m_pTreeRoots[newBKTid].sibling = ++newBKTid;
+                                    m_pTreeRoots[newBKTid].sibling = newBKTid+1;
                                     m_pSampleCenterMap[cid] = m_pTreeRoots[item.index].centerid;
+                                    newBKTid++;
                                 }
                                 m_pTreeRoots[newBKTid-1].sibling = -1;
                                 m_pSampleCenterMap[-1 - m_pTreeRoots[item.index].centerid] = item.index;
@@ -411,8 +413,9 @@ namespace SPTAG
                                     if (args.counts[k] == 0) continue;
                                     SizeType cid = (reverseIndices == nullptr) ? localindices[item.first + args.counts[k] - 1] : reverseIndices->at(localindices[item.first + args.counts[k] - 1]);
                                     m_pTreeRoots.emplace_back(cid);
-                                    m_pTreeRoots[newBKTid].sibling = ++newBKTid;
-                                    if (args.counts[k] > 1) ss.push(BKTStackItem(newBKTid-1, item.first, item.first + args.counts[k] - 1));
+                                    m_pTreeRoots[newBKTid].sibling = newBKTid+1;
+                                    if (args.counts[k] > 1) ss.push(BKTStackItem(newBKTid, item.first, item.first + args.counts[k] - 1));
+                                    newBKTid++;
                                     item.first += args.counts[k];
                                 }
                                 m_pTreeRoots[newBKTid-1].sibling = -1;

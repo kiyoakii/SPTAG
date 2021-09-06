@@ -500,7 +500,7 @@ namespace SPTAG {
 
                 LOG(Helper::LogLevel::LL_Info, "Searching replicas ended. RNG failed count: %llu\n", static_cast<uint64_t>(rngFailedCountTotal.load()));
 
-//                std::sort(selections.begin(), selections.end(), g_edgeComparer);
+                std::sort(selections.begin(), selections.end(), g_edgeComparer);
 
 //                int postingSizeLimit = INT_MAX;
 //                if (p_opts.m_postingPageLimit > 0)
