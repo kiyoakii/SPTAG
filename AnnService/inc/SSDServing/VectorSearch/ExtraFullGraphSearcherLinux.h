@@ -33,6 +33,7 @@ namespace SPTAG {
                 {
                     m_extraFullGraphFile = p_extraFullGraphFile;
                     //LoadingHeadInfo(p_extraFullGraphFile);
+                    /*
                     m_fd = open(p_extraFullGraphFile.c_str(), O_RDONLY);
                     if (m_fd == -1) {
                         // function between perror may change errno.
@@ -41,6 +42,7 @@ namespace SPTAG {
                         snprintf(input, 4096, "File %s can't be opened", p_extraFullGraphFile.c_str());
                         ErrorExit(input, errsv);
                     }
+                    */
                 }
 
                 virtual ~ExtraFullGraphSearcher()

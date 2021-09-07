@@ -96,10 +96,12 @@ namespace SPTAG {
 						exit(1);
 					}
 
+					/*
 					if (extraFullGraphFile.empty()) {
 						LOG(Helper::LogLevel::LL_Error, "Config error: SsdIndex empty for Searching SSD vectors.\n");
 						exit(1);
 					}
+					*/
 
 					m_vectorTranslateMap.reset(new long long[m_index->GetNumSamples()]);
 

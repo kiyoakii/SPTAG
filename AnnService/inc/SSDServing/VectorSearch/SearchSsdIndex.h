@@ -390,11 +390,13 @@ namespace SPTAG {
                 LOG(Helper::LogLevel::LL_Info, "Start loading QuerySet...\n");
                 std::shared_ptr<Helper::ReaderOptions> queryOptions(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_queryType, COMMON_OPTS.m_queryDelimiter));
                 auto queryReader = Helper::VectorSetReader::CreateInstance(queryOptions);
+                LOG(Helper::LogLevel::LL_Info, "Start Reading QuerySet...\n");
                 if (ErrorCode::Success != queryReader->LoadFile(COMMON_OPTS.m_queryPath))
                 {
                     LOG(Helper::LogLevel::LL_Error, "Failed to read query file.\n");
                     exit(1);
                 }
+                LOG(Helper::LogLevel::LL_Info, "Start Getting QuerySet...\n");
                 auto querySet = queryReader->GetVectorSet();
                 int numQueries = querySet->Count();
 

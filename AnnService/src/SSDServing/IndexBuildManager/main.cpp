@@ -21,7 +21,7 @@ namespace SPTAG {
 	namespace SSDServing {
 
 		BaseOptions COMMON_OPTS;
-		std::string kDBPath = "/tmp/rocksdb_simple_example";
+		std::string kDBPath;
         ROCKSDB_NAMESPACE::DB* db;
         ROCKSDB_NAMESPACE::Options dbOptions;
 
@@ -66,6 +66,7 @@ namespace SPTAG {
 			dbOptions.IncreaseParallelism();
 			dbOptions.OptimizeLevelStyleCompaction();
 			dbOptions.create_if_missing = true;
+			kDBPath = COMMON_OPTS.m_ssdIndex;
 
 			// open DB
 			Status s = DB::Open(dbOptions, kDBPath, &db);
