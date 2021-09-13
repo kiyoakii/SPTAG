@@ -502,13 +502,13 @@ namespace SPTAG {
 
                 std::sort(selections.begin(), selections.end(), g_edgeComparer);
 
-//                int postingSizeLimit = INT_MAX;
-//                if (p_opts.m_postingPageLimit > 0)
-//                {
-//                    postingSizeLimit = static_cast<int>(p_opts.m_postingPageLimit * c_pageSize / (fullVectors->PerVectorDataSize() + sizeof(int)));
-//                }
-//
-//                LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", postingSizeLimit);
+               int postingSizeLimit = INT_MAX;
+               if (p_opts.m_postingPageLimit > 0)
+               {
+                   postingSizeLimit = static_cast<int>(p_opts.m_postingPageLimit * c_pageSize / (fullVectors->PerVectorDataSize() + sizeof(int)));
+               }
+
+               LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", postingSizeLimit);
 
                 {
                     std::vector<int> replicaCountDist(p_opts.m_replicaCount + 1, 0);
@@ -529,48 +529,48 @@ namespace SPTAG {
                     }
                 }
 
-//                for (int i = 0; i < postingListSize.size(); ++i)
-//                {
-//                    if (postingListSize[i] <= postingSizeLimit)
-//                    {
-//                        continue;
-//                    }
-//
-//                    std::size_t selectIdx = std::lower_bound(selections.begin(), selections.end(), i, g_edgeComparer) - selections.begin();
-//					/*
-//					int deletenum = postingListSize[i] - postingSizeLimit;
-//					for (char remove = p_opts.m_replicaCount - 1; deletenum > 0 && remove > 0; remove--)
-//					{
-//						for (int dropID = postingListSize[i] - 1; deletenum > 0 && dropID >= 0; --dropID)
-//						{
-//							if (selections[selectIdx + dropID].order == remove) {
-//								selections[selectIdx + dropID].order = -1;
-//								--replicaCount[selections[selectIdx + dropID].fullID];
-//								deletenum--;
-//							}
-//						}
-//					}
-//
-//					for (int iid = 0; iid < postingSizeLimit + deletenum; iid++) {
-//						if (selections[selectIdx + iid].order < 0) {
-//							for (int ij = iid + 1; ij < postingListSize[i]; ij++) {
-//								if (selections[selectIdx + ij].order >= 0) {
-//									std::swap(selections[selectIdx + iid], selections[selectIdx + ij]);
-//									break;
-//								}
-//							}
-//						}
-//					}
-//					*/
-//
-//                    for (size_t dropID = postingSizeLimit; dropID < postingListSize[i]; ++dropID)
-//                    {
-//                        int fullID = selections[selectIdx + dropID].fullID;
-//                        --replicaCount[fullID];
-//                    }
-//
-//                    postingListSize[i] = postingSizeLimit;
-//                }
+               for (int i = 0; i < postingListSize.size(); ++i)
+               {
+                   if (postingListSize[i] <= postingSizeLimit)
+                   {
+                       continue;
+                   }
+
+                   std::size_t selectIdx = std::lower_bound(selections.begin(), selections.end(), i, g_edgeComparer) - selections.begin();
+					/*
+					int deletenum = postingListSize[i] - postingSizeLimit;
+					for (char remove = p_opts.m_replicaCount - 1; deletenum > 0 && remove > 0; remove--)
+					{
+						for (int dropID = postingListSize[i] - 1; deletenum > 0 && dropID >= 0; --dropID)
+						{
+							if (selections[selectIdx + dropID].order == remove) {
+								selections[selectIdx + dropID].order = -1;
+								--replicaCount[selections[selectIdx + dropID].fullID];
+								deletenum--;
+							}
+						}
+					}
+
+					for (int iid = 0; iid < postingSizeLimit + deletenum; iid++) {
+						if (selections[selectIdx + iid].order < 0) {
+							for (int ij = iid + 1; ij < postingListSize[i]; ij++) {
+								if (selections[selectIdx + ij].order >= 0) {
+									std::swap(selections[selectIdx + iid], selections[selectIdx + ij]);
+									break;
+								}
+							}
+						}
+					}
+					*/
+
+                   for (size_t dropID = postingSizeLimit; dropID < postingListSize[i]; ++dropID)
+                   {
+                       int fullID = selections[selectIdx + dropID].fullID;
+                       --replicaCount[fullID];
+                   }
+
+                   postingListSize[i] = postingSizeLimit;
+               }
 
                 if (p_opts.m_outputEmptyReplicaID)
                 {
