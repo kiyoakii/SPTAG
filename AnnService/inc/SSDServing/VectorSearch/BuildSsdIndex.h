@@ -434,7 +434,7 @@ namespace SPTAG {
                                     break;
                                 }
 
-                                if (headVectorIDS.count(fullID) > 0)
+                                if (!COMMON_OPTS.m_addHeadToPost && headVectorIDS.count(fullID) > 0)
                                 {
                                     continue;
                                 }
@@ -514,7 +514,7 @@ namespace SPTAG {
                     std::vector<int> replicaCountDist(p_opts.m_replicaCount + 1, 0);
                     for (int i = 0; i < replicaCount.size(); ++i)
                     {
-                        if (headVectorIDS.count(i) > 0)
+                        if (COMMON_OPTS.m_addHeadToPost && headVectorIDS.count(i) > 0)
                         {
                             continue;
                         }
@@ -582,7 +582,7 @@ namespace SPTAG {
                     }
                     for (int i = 0; i < replicaCount.size(); ++i)
                     {
-                        if (headVectorIDS.count(i) > 0)
+                        if (!COMMON_OPTS.m_addHeadToPost && headVectorIDS.count(i) > 0)
                         {
                             continue;
                         }
@@ -610,7 +610,8 @@ namespace SPTAG {
 //                size_t vectorInfoSize = sizeof(ValueType) * fullVectors->Dimension() + sizeof(int);
 
                 std::string postinglist;
-                for (int id = 0; id < postingListSize.size(); id++) {
+                for (int id = 0; id < postingListSize.size(); id++) 
+                {
                     postinglist.resize(0);
                     postinglist.clear();
                     std::size_t selectIdx = std::lower_bound(selections.begin(), selections.end(), id, g_edgeComparer)
@@ -630,6 +631,23 @@ namespace SPTAG {
                     }
                     db->Put(WriteOptions(), Helper::Serialize<int>(&id, 1), postinglist);
                 }
+                auto ptr = SPTAG::f_createIO();
+                if (ptr == nullptr || !ptr->Initialize(COMMON_OPTS.m_ssdIndexInfo.c_str(), std::ios::binary | std::ios::out))
+                {
+                    LOG(Helper::LogLevel::LL_Error, "Failed open file %s\n", COMMON_OPTS.m_ssdIndexInfo.c_str());
+                    exit(1);
+                }
+                //Number of all documents.
+                int i32Val = static_cast<int>(fullVectors->Count());
+                if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
+                    LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndexInfo File!");
+                    exit(1);
+                }
+
+                COMMON::Labelset m_deletedID;
+                m_deletedID.Initialize(i32Val);
+                m_deletedID.Save(COMMON_OPTS.m_deleteID);
+                
 //                std::unique_ptr<int[]> postPageNum;
 //                std::unique_ptr<std::uint16_t[]> postPageOffset;
 //                std::vector<int> postingOrderInIndex;

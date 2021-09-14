@@ -27,5 +27,10 @@ DefineBasicParameter(m_headIDFile, std::string, std::string("SPTAGHeadVectorIDs.
 DefineBasicParameter(m_headVectorFile, std::string, std::string("SPTAGHeadVectors.bin"), "HeadVectors")
 DefineBasicParameter(m_headIndexFolder, std::string, std::string("SPTAGHeadIndex"), "HeadIndexFolder")
 DefineBasicParameter(m_ssdIndex, std::string, std::string("SPTAGFullList.bin"), "SSDIndex")
+DefineBasicParameter(m_addHeadToPost, bool, false, "AddHeadToPost")
+DefineBasicParameter(m_testUpdateAcc, bool, false, "TestUpdateAcc")
+DefineBasicParameter(m_testUpdateSta, bool, false, "TestUpdateSta")
+DefineBasicParameter(m_ssdIndexInfo, std::string, std::string(""), "SSDIndexInfo")
+DefineBasicParameter(m_deleteID, std::string, std::string(""), "DeleteID")
 
 #endif

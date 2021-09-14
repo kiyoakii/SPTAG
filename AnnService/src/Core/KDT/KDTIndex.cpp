@@ -443,6 +443,13 @@ namespace SPTAG
         }
 
         template <typename T>
+        ErrorCode Index<T>::AddHeadIndex(const void* p_data, SizeType p_vectorNum, DimensionType p_dimension, std::vector<SizeType>& fatherNodes)
+        {
+            LOG(Helper::LogLevel::LL_Info, "No support\n");
+            return ErrorCode::Undefined;
+        }
+
+        template <typename T>
         ErrorCode
             Index<T>::UpdateIndex()
         {

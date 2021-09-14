@@ -14,7 +14,7 @@ namespace SPTAG
     {
 
         template <typename T>
-        std::string Serialize(void* data, std::size_t len)
+        std::string Serialize(const void* data, std::size_t len)
         {
             std::string d(sizeof(T) * len, L'\0');
             memcpy(&d[0], data, d.length());

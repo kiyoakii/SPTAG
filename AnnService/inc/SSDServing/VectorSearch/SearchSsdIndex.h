@@ -108,7 +108,10 @@ namespace SPTAG {
                         LOG(Helper::LogLevel::LL_Error, "Fail to read truth file!\n");
                         exit(1);
                     }
+                    LOG(Helper::LogLevel::LL_Info, "read truth size %d: %d\n", i, vec.size());
+                    LOG(Helper::LogLevel::LL_Info, "need to insert %d truth\n", K);
                     truth[i].insert(vec.begin(), vec.begin() + K);
+                    LOG(Helper::LogLevel::LL_Info, "inserted truth size %d: %d\n", i, truth[i].size());
                 }
             }
 
@@ -330,8 +333,183 @@ namespace SPTAG {
             }
 
             template <typename ValueType>
+            void TestUpdateAcc(Options& p_opts)
+            {
+                std::string outputFile = p_opts.m_searchResult;
+
+                if (!p_opts.m_logFile.empty())
+                {
+                    SPTAG::g_pLogger.reset(new Helper::FileLogger(Helper::LogLevel::LL_Info, p_opts.m_logFile.c_str()));
+                }
+                int numThreads = p_opts.m_iNumberOfThreads;
+                int asyncCallQPS = p_opts.m_qpsLimit;
+
+                int internalResultNum = std::max<int>(p_opts.m_internalResultNum, p_opts.m_resultNum);
+                int K = std::min<int>(p_opts.m_resultNum, internalResultNum);
+
+                SearchDefault<ValueType> searcher;
+                LOG(Helper::LogLevel::LL_Info, "Start setup index...\n");
+                searcher.Setup(p_opts);
+
+                LOG(Helper::LogLevel::LL_Info, "Setup index finish, start setup hint...\n");
+                searcher.SetHint(numThreads, internalResultNum, asyncCallQPS > 0, p_opts);
+
+                LOG(Helper::LogLevel::LL_Info, "Start loading QuerySet...\n");
+                std::shared_ptr<Helper::ReaderOptions> queryOptions(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_queryType, COMMON_OPTS.m_queryDelimiter));
+                auto queryReader = Helper::VectorSetReader::CreateInstance(queryOptions);
+                LOG(Helper::LogLevel::LL_Info, "Start Reading QuerySet...\n");
+                if (ErrorCode::Success != queryReader->LoadFile(COMMON_OPTS.m_queryPath))
+                {
+                    LOG(Helper::LogLevel::LL_Error, "Failed to read query file.\n");
+                    exit(1);
+                }
+                LOG(Helper::LogLevel::LL_Info, "Start Getting QuerySet...\n");
+                auto querySet = queryReader->GetVectorSet();
+                int numQueries = querySet->Count();
+
+                std::vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
+                std::vector<SearchStats> stats(numQueries);
+                for (int i = 0; i < numQueries; ++i)
+                {
+                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                    results[i].Reset();
+                }
+
+
+                LOG(Helper::LogLevel::LL_Info, "Start First ANN Search...\n");
+
+                if (asyncCallQPS == 0)
+                {
+                    SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
+                }
+                else
+                {
+                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "\nFinish First ANN Search...\n");
+                
+                LOG(Helper::LogLevel::LL_Info, "Start Checking Update\n");
+
+                LOG(Helper::LogLevel::LL_Info, "Testing Delete\n");
+
+                int deletenum = std::min<int>(K, 5);
+                std::set<int>deletedPoints;
+
+                for (int i = 0; i < results.size(); i++)
+                {
+                    for (int j = 0; j < deletenum; j++)
+                    {
+                        deletedPoints.insert(results[i].GetResult(j)->VID);
+                        searcher.Delete(results[i].GetResult(j)->VID);
+                    }
+                }
+
+                for (int i = 0; i < numQueries; ++i)
+                {
+                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                    results[i].Reset();
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "Start Second ANN Search...\n");
+
+                if (asyncCallQPS == 0)
+                {
+                    SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
+                }
+                else
+                {
+                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "\nFinish Second ANN Search...\n");
+
+                LOG(Helper::LogLevel::LL_Info, "\nTesting Delete Result...\n");
+
+                for (int i = 0; i < results.size(); i++)
+                {
+                    for (int j = 0; j < results[i].GetResultNum(); j++)
+                    {
+                        if (deletedPoints.count(results[i].GetResult(j)->VID))
+                        {
+                            LOG(Helper::LogLevel::LL_Error, "Error! Find deleted point %d\n", results[i].GetResult(j)->VID);
+                            exit(1);
+                        }
+                    }
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "\nTesting Insert...\n");
+
+                int insertnum = std::min<int>(numQueries, 1000);
+                for (int i = 0; i < insertnum; ++i)
+                {
+                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                    results[i].Reset();
+                }
+                for (int i = 0; i < insertnum; i++)
+                {
+                    searcher.Insert(results[i], stats[i]);
+                }
+
+                for (int i = 0; i < insertnum; ++i)
+                {
+                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                    results[i].Reset();
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "Start Thrid ANN Search...\n");
+
+                if (asyncCallQPS == 0)
+                {
+                    SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
+                }
+                else
+                {
+                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "Finish Thrid ANN Search...\n");
+                
+                LOG(Helper::LogLevel::LL_Info, "Testing Insert Result...\n");
+                bool findOne = false;
+                for (int i = 0; i < results.size(); i++)
+                {
+                    for (int j = 0; j < results[i].GetResultNum(); j++)
+                    {
+                        if (results[i].GetResult(j)->Dist < 1e-6)
+                        {
+                            findOne = true;
+                        }
+                    }
+                }
+                if (findOne)
+                {
+                    LOG(Helper::LogLevel::LL_Info, "Insert Successfully!\n");
+                }
+                else
+                {
+                    LOG(Helper::LogLevel::LL_Error, "Insert Error!\n");
+                    exit(1);
+                }
+            }
+            
+            template <typename ValueType>
+            void TestUpdateSta(Options& p_opts)
+            {
+
+            }
+
+            template <typename ValueType>
             void Search(Options& p_opts)
             {
+                if (COMMON_OPTS.m_testUpdateAcc)
+                {
+                    TestUpdateAcc<ValueType>(p_opts);
+                    return;
+                } else if (COMMON_OPTS.m_testUpdateSta)
+                {
+                    TestUpdateSta<ValueType>(p_opts);
+                }
                 std::string outputFile = p_opts.m_searchResult;
                 std::string truthFile = COMMON_OPTS.m_truthPath;
                 std::string warmupFile = COMMON_OPTS.m_warmupPath;
@@ -407,6 +585,12 @@ namespace SPTAG {
                     LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
                     LoadTruth(truthFile, truth, numQueries, K);
                 }
+                /*
+                for (int i = 0; i < numQueries; i++)
+                {
+                    LOG(Helper::LogLevel::LL_Info, "query size %d: %d\n", i, truth[i].size());
+                }
+                */
 
                 std::vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
                 std::vector<SearchStats> stats(numQueries);
