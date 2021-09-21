@@ -507,6 +507,10 @@ namespace SPTAG {
                {
                    postingSizeLimit = static_cast<int>(p_opts.m_postingPageLimit * c_pageSize / (fullVectors->PerVectorDataSize() + sizeof(int)));
                }
+               if (COMMON_OPTS.m_addHeadToPost)
+               {
+                   postingSizeLimit += 1;
+               }
 
                LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", postingSizeLimit);
 
@@ -514,7 +518,7 @@ namespace SPTAG {
                     std::vector<int> replicaCountDist(p_opts.m_replicaCount + 1, 0);
                     for (int i = 0; i < replicaCount.size(); ++i)
                     {
-                        if (COMMON_OPTS.m_addHeadToPost && headVectorIDS.count(i) > 0)
+                        if (!COMMON_OPTS.m_addHeadToPost && headVectorIDS.count(i) > 0)
                         {
                             continue;
                         }
@@ -624,7 +628,7 @@ namespace SPTAG {
                         int fullID = selections[selectIdx++].fullID;
                         size_t dim = fullVectors->Dimension();
                         postinglist += Helper::Serialize<int>(&fullID, 1);
-                        postinglist += Helper::Serialize<VectorValueType>(fullVectors->GetVector(fullID), dim);
+                        postinglist += Helper::Serialize<ValueType>(fullVectors->GetVector(fullID), dim);
 //                        memcpy(&postinglist[j * vectorInfoSize], &fullID, sizeof(int));
 //                        memcpy(&postinglist[j * vectorInfoSize + sizeof(int)], fullVectors->GetVector(fullID),
 //                               sizeof(VectorValueType) * fullVectors->Dimension());

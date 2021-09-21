@@ -139,7 +139,7 @@ namespace SPTAG {
                 virtual void Search(ExtraWorkSpace* p_exWorkSpace,
                     SPTAG::COMMON::QueryResultSet<ValueType>& p_queryResults,
                     std::shared_ptr<VectorIndex> p_index,
-                    SearchStats& p_stats)
+                    SearchStats& p_stats, SPTAG::COMMON::Labelset& m_deletedID)
                 {
                     const uint32_t postingListCount = static_cast<uint32_t>(p_exWorkSpace->m_postingIDs.size());
 
@@ -167,20 +167,21 @@ namespace SPTAG {
 
                         for (int i = 0; i < vectorNum; ++i)
                         {
+                            //LOG(Helper::LogLevel::LL_Info, "Check PostingList %d, vector %d\n", pi, i);
                             std::uint8_t* vectorInfo = buffer.GetBuffer() + i * ((COMMON_OPTS.m_dim * sizeof(ValueType) + sizeof(int)));
                             int vectorID = *(reinterpret_cast<int*>(vectorInfo));
                             vectorInfo += sizeof(int);
-
+                            //LOG(Helper::LogLevel::LL_Info, "VectorID %d\n", vectorID);
+                            if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID) || m_deletedID.Contains(vectorID))
+                            {
+                                continue;
+                            }
                             /*
-                            if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID)||m_deleteID.Contains(vectorID))
+                            if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID))
                             {
                                 continue;
                             }
                             */
-                           if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID))
-                            {
-                                continue;
-                            }
 
                             auto distance2leaf = p_index->ComputeDistance(p_queryResults.GetTarget(),
                                 vectorInfo);

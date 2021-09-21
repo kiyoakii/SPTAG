@@ -557,7 +557,7 @@ namespace SPTAG
             int num = 0;
             for (SizeType node = begin; node < end; node++, num++)
             {
-                m_pTrees.InsertNode(m_pTrees[fatherNodes[num]], begin);
+                m_pTrees.InsertNode(m_pTrees[fatherNodes[num]], node);
             }
 
             for (SizeType node = begin; node < end; node++)

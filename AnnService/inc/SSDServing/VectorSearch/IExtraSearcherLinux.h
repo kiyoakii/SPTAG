@@ -4,6 +4,7 @@
 
 #include "inc/SSDServing/VectorSearch/SearchStats.h"
 #include "inc/SSDServing/VectorSearch/VectorSearchUtils.h"
+#include "inc/Core/Common/Labelset.h"
 #include "inc/Core/Common/QueryResultSet.h"
 #include "inc/Core/VectorIndex.h"
 
@@ -82,7 +83,7 @@ namespace SPTAG {
                 virtual void Search(ExtraWorkSpace* p_exWorkSpace,
                     SPTAG::COMMON::QueryResultSet<ValueType>& p_queryResults,
                     std::shared_ptr<VectorIndex> p_index,
-                    SearchStats& p_stats) = 0;
+                    SearchStats& p_stats, SPTAG::COMMON::Labelset& m_deletedID) = 0;
             };
         }
     }

@@ -27,7 +27,7 @@ namespace SPTAG {
 	namespace SSDServing {
 		namespace VectorSearch {
 			// LARGE_INTEGER g_systemPerfFreq;
-			const std::uint16_t c_pageSize = 4096;
+			const std::uint16_t p_pageSize = 4096;
 
 			struct EdgeInsert
             {
@@ -103,19 +103,24 @@ namespace SPTAG {
 						exit(1);
 					}
 					*/
-					m_vectorTranslateMap.reserve(m_index->GetNumSamples() * 2);
+					//m_vectorTranslateMap.reserve(m_index->GetNumSamples() * 2);
 
-					//m_vectorTranslateMap.reset(new long long[m_index->GetNumSamples()]);
+					std::unique_ptr<long long[]> tempMap;
+					tempMap.reset(new long long[m_index->GetNumSamples()]);
 
 					auto ptr = f_createIO();
 					if (ptr == nullptr || !ptr->Initialize(vectorTranslateMap.c_str(), std::ios::binary | std::ios::in)) {
 						LOG(Helper::LogLevel::LL_Error, "Failed open %s\n", vectorTranslateMap.c_str());
 						exit(1);
 					}
-					if (ptr->ReadBinary(sizeof(long long) * m_index->GetNumSamples(), reinterpret_cast<char*>(m_vectorTranslateMap.data())) != sizeof(long long) * m_index->GetNumSamples()) {
+					if (ptr->ReadBinary(sizeof(long long) * m_index->GetNumSamples(), reinterpret_cast<char*>(tempMap.get())) != sizeof(long long) * m_index->GetNumSamples()) {
 						LOG(Helper::LogLevel::LL_Error, "Failed to read vectorTanslateMap!\n");
 						exit(1);
 					}
+
+					m_vectorTranslateMap.Initialize(m_index->GetNumSamples(), 1, tempMap.get(), false);
+					m_vectorTranslateMap.SetName("Head");
+
 					LOG(Helper::LogLevel::LL_Info, "Using FullGraph without cache.\n");
 					std::ifstream input(COMMON_OPTS.m_ssdIndexInfo, std::ios::binary);
                     if (!input.is_open())
@@ -125,6 +130,8 @@ namespace SPTAG {
                     }
 
                     input.read(reinterpret_cast<char*>(&m_vectornum), sizeof(m_vectornum));
+
+					LOG(Helper::LogLevel::LL_Info, "Current vector num: %d.\n", m_vectornum);
 
 					input.close();
 
@@ -169,8 +176,9 @@ namespace SPTAG {
 					{
 						LoadVectorIdsSSDIndex(COMMON_OPTS.m_headIDFile, COMMON_OPTS.m_ssdIndex);
 					}
-					LoadDeleteID(COMMON_OPTS.m_deleteID);
+					m_clearHead = !p_config.m_buildSsdIndex;
 				}
+
 
 				ErrorCode InsertPostingList(SPTAG::COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, SizeType VID) 
 				{
@@ -190,6 +198,7 @@ namespace SPTAG {
                             {
                                 break;
                             }
+							//LOG(Helper::LogLevel::LL_Info, "Head Vector: %d\n", queryResults[i].VID);
 
                             // RNG Check.
                             bool rngAccpeted = true;
@@ -218,20 +227,29 @@ namespace SPTAG {
 							selections[replicaCount].order = (char)replicaCount;
                             ++replicaCount;
 						}
+						/*
+						for (int i = 0; i < replicaCount; ++i)
+						{
+							LOG(Helper::LogLevel::LL_Info, "Insert headID: %d : Insert VID: %d\n", selections[i].headID, selections[i].fullID);
+						}
+						*/
 						std::string postingList;
 						for (int i = 0; i < replicaCount; ++i)
 						{
 							postingList.resize(0);
 							postingList.clear();
-							db->Get(ReadOptions(), Helper::Serialize<int>(&selections[replicaCount].headID, 1), &postingList);
+							//LOG(Helper::LogLevel::LL_Info, "Insert VID: %d : Head Vector: %d\n", VID, selections[i].headID);
+							db->Get(ReadOptions(), Helper::Serialize<int>(&selections[i].headID, 1), &postingList);
+							
 							postingList += Helper::Serialize<int>(&VID, 1);
 							postingList += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
-							if (postingList.size() > m_postingPageLimit * c_pageSize)
+							if (postingList.size() > m_postingPageLimit * p_pageSize)
 							{
 								//need to split and insert into headinedex
-								LOG(Helper::LogLevel::LL_Info, "PostingList Oversize, Need to Split");
+								//LOG(Helper::LogLevel::LL_Info, "PostingList Oversize, Need to Split\n");
 								//extract out vector and id from postingList
 								COMMON::Dataset<ValueType> smallSample;
+								std::shared_ptr<uint8_t> postingBuffer;
 								std::shared_ptr<uint8_t> vectorBuffer;
 								//smallSample[i] -> VID
 								std::vector<int> localindicesInsert;
@@ -240,33 +258,40 @@ namespace SPTAG {
 								int vectorNum = postingList.size()/ (sizeof(int) + m_vectorSize);
 								localindicesInsert.resize(vectorNum);
 								localindices.resize(vectorNum);
-								localindices.clear();
-								localindicesInsert.clear();
-								vectorBuffer.reset(new uint8_t[vectorNum * m_vectorSize], std::default_delete<uint8_t[]>());
-								uint8_t* bufferVoidPtr = reinterpret_cast<uint8_t*>(vectorBuffer.get());
+								postingBuffer.reset(new uint8_t[postingList.size()], std::default_delete<uint8_t[]>());
+								vectorBuffer.reset(new uint8_t[m_vectorSize * vectorNum], std::default_delete<uint8_t[]>());
+								uint8_t* bufferVoidPtr = reinterpret_cast<uint8_t*>(postingBuffer.get());
+								memcpy(bufferVoidPtr, postingList.data(), postingList.size());
+								bufferVoidPtr = reinterpret_cast<uint8_t*>(vectorBuffer.get());
 								for (int j = 0; j < vectorNum; j++)
 								{
-									localindicesInsert[j] = (int)postingList.data()[j * (m_vectorSize + sizeof(int))];
+									uint8_t* vectorInfo = postingBuffer.get() + j * (m_vectorSize + sizeof(int));
+									localindicesInsert[j] = *(reinterpret_cast<int*>(vectorInfo));
 									localindices[j] = j;
-									memcpy(bufferVoidPtr, postingList.data() + (j * (m_vectorSize + sizeof(int)) + sizeof(int)), m_vectorSize);
+									memcpy(bufferVoidPtr, vectorInfo + sizeof(int), m_vectorSize);
 									bufferVoidPtr += m_vectorSize;
 								}
-								bufferVoidPtr = reinterpret_cast<uint8_t*>(vectorBuffer.get());
-								smallSample.Initialize(vectorNum, COMMON_OPTS.m_dim, (ValueType*)bufferVoidPtr, false);
+								smallSample.Initialize(vectorNum, COMMON_OPTS.m_dim, reinterpret_cast<ValueType*>(vectorBuffer.get()), false);
+								//LOG(Helper::LogLevel::LL_Info, "Headid: %d Sample Vector Num: %d, Real Vector Num: %d\n", selections[i].headID, smallSample.R(), vectorNum);
 								//k = 2, maybe we can change the split number
 								SPTAG::COMMON::KmeansArgs<ValueType> args(m_k, smallSample.C(), (SizeType)localindicesInsert.size(), 1, m_index->GetDistCalcMethod());
 								
-								int numClusters = SPTAG::COMMON::KmeansClustering(smallSample, localindices, 0, localindices.size(), args);
+								//int fBalanceFactor = SPTAG::COMMON::DynamicFactorSelect(smallSample, localindices, 0, (SizeType)localindices.size(), args);
+
+								std::random_shuffle(localindices.begin(), localindices.end());
+
+								int numClusters = SPTAG::COMMON::KmeansClustering(smallSample, localindices, 0, (SizeType)localindices.size(), args);
 
 								if(numClusters <= 1)
 								{
-									LOG(Helper::LogLevel::LL_Error, "Insert Stage:Split Error");
-									return ErrorCode::Undefined;
+									//LOG(Helper::LogLevel::LL_Error, "Insert Stage:Very Close, First We Ignore spliting\n");
+									db->Put(WriteOptions(), Helper::Serialize<int>(&selections[i].headID, 1), postingList);
+									return ErrorCode::Success;
 								}
 
 								postingList.resize(0);
 								postingList.clear();
-								int newHeadVID = -1;
+								long long newHeadVID = -1;
 								int first = 0;
 								bool isHeadUpdate = false;
 								std::vector<SizeType> fatherNodes;
@@ -278,7 +303,7 @@ namespace SPTAG {
 									newHeadVID = -1;
 									for (int j = 0; j < args.counts[k]; j++)
 									{
-										if (!isHeadUpdate && localindicesInsert[localindices[first + j]] == m_vectorTranslateMap[selections[replicaCount].headID])
+										if (!isHeadUpdate && localindicesInsert[localindices[first + j]] == *m_vectorTranslateMap[selections[i].headID])
 										{
 											newHeadVID = selections[i].headID;
 											isHeadUpdate = true;
@@ -296,9 +321,12 @@ namespace SPTAG {
 										}
 										else
 										{
+											//LOG(Helper::LogLevel::LL_Info, "Insert new head vector\n");
 											newHeadVID = localindicesInsert[localindices[first + args.counts[k] - 1]];
+											//BUG: newHeadVID maybe a exist head vector
+											m_vectorTranslateMap.AddBatch(&newHeadVID, 1);
+											m_split_num++;
 											m_index->AddHeadIndex(smallSample[localindices[first + args.counts[k] - 1]], 1, COMMON_OPTS.m_dim, fatherNodes);
-											m_vectorTranslateMap.emplace_back(newHeadVID);
 										}
 									}
 									db->Put(WriteOptions(), Helper::Serialize<int>(&newHeadVID, 1), postingList);
@@ -308,7 +336,7 @@ namespace SPTAG {
 								}
 							} else
 							{
-								db->Put(WriteOptions(), Helper::Serialize<int>(&selections[replicaCount].headID, 1), postingList);
+								db->Put(WriteOptions(), Helper::Serialize<int>(&selections[i].headID, 1), postingList);
 							}
 						}
 					} else {
@@ -372,7 +400,7 @@ namespace SPTAG {
 					{
 						auto_ws = GetWs();
 						auto_ws->m_postingIDs.clear();
-
+						//LOG(Helper::LogLevel::LL_Info, "Adding PostingList\n");
 						for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
 						{
 							auto res = p_queryResults.GetResult(i);
@@ -383,17 +411,28 @@ namespace SPTAG {
 						}
 					}
 
-					if (!COMMON_OPTS.m_addHeadToPost && m_vectorTranslateMap.size() != 0)
+					if (!COMMON_OPTS.m_addHeadToPost && m_vectorTranslateMap.Name() == "Head")
 					{
+						//LOG(Helper::LogLevel::LL_Info, "Translate headvector\n");
 						for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
 						{
 							auto res = p_queryResults.GetResult(i);
 							if (res->VID != -1)
 							{
-								res->VID = static_cast<int>(m_vectorTranslateMap[res->VID]);
+								//LOG(Helper::LogLevel::LL_Info, "head vector previous id: %d\n", res->VID);
+								res->VID = static_cast<int>(*m_vectorTranslateMap[res->VID]);
+								//LOG(Helper::LogLevel::LL_Info, "head vector normal id: %d\n", res->VID);
+								if (m_deletedID.Contains(res->VID))
+								{
+									//LOG(Helper::LogLevel::LL_Info, "contain\n");
+									res->VID = -1;
+									res->Dist = SPTAG::MaxDist;
+									res->Meta.Clear();
+								}
+								//LOG(Helper::LogLevel::LL_Info, "get next head vector\n");
 							}
 						}
-					} else if (COMMON_OPTS.m_addHeadToPost)
+					} else if (COMMON_OPTS.m_addHeadToPost && m_clearHead)
 					{
 						//the head vector will be count at extraSearcher
 						p_queryResults.Reset();
@@ -402,8 +441,8 @@ namespace SPTAG {
 					if (nullptr != m_extraSearcher)
 					{
 						p_queryResults.Reverse();
-
-						m_extraSearcher->Search(auto_ws, p_queryResults, m_index, p_stats);
+						//LOG(Helper::LogLevel::LL_Info, "Into PostingList Search\n");
+						m_extraSearcher->Search(auto_ws, p_queryResults, m_index, p_stats, m_deletedID);
 						RetWs(auto_ws);
 					}
 
@@ -431,7 +470,7 @@ namespace SPTAG {
 						if (res->VID != -1)
 						{
 							auto_ws->m_postingIDs.emplace_back(res->VID);
-							res->VID = static_cast<int>(m_vectorTranslateMap[res->VID]);
+							res->VID = static_cast<int>(*m_vectorTranslateMap[res->VID]);
 						}
 					}
 
@@ -479,15 +518,27 @@ namespace SPTAG {
 
 					m_replicaCount = p_opts.m_replicaCount;
 
-					m_postingPageLimit = p_opts.m_postingPageLimit * 2;
+					m_postingPageLimit = p_opts.m_postingPageLimit;
 
 					m_vectorSize = COMMON_OPTS.m_dim * sizeof(ValueType);
+
+					m_split_num = 0;
 
 					if (p_asyncCall)
 					{
 						m_threadPool.reset(new Helper::ThreadPool());
 						m_threadPool->init(p_threadNum);
 					}
+				}
+
+				void setSplitZero()
+				{
+					m_split_num = 0;
+				}
+
+				int getSplitNum()
+				{
+					return m_split_num;
 				}
 
 				std::shared_ptr<VectorIndex> HeadIndex() {
@@ -534,8 +585,9 @@ namespace SPTAG {
 
 				std::shared_ptr<VectorIndex> m_index;
 
+				SPTAG::COMMON::Dataset<long long> m_vectorTranslateMap;
 				//std::unique_ptr<long long[]> m_vectorTranslateMap;
-				std::vector<long long> m_vectorTranslateMap;
+				//std::vector<long long> m_vectorTranslateMap;
 
 				std::unique_ptr<IExtraSearcher<ValueType>> m_extraSearcher;
 
@@ -560,6 +612,10 @@ namespace SPTAG {
 				int m_k = 2;
 
 				int m_vectornum;
+
+				bool m_clearHead = true;
+
+				int m_split_num;
 
 				boost::lockfree::stack<ExtraWorkSpace*> m_workspaces;
 			};

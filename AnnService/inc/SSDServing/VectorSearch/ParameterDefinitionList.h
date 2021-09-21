@@ -19,5 +19,6 @@ DefineSSDParameter(m_qpsLimit, int, 0, "QpsLimit")
 DefineSSDParameter(m_resultNum, int, 5, "ResultNum")
 DefineSSDParameter(m_maxCheck, int, 4096, "MaxCheck")
 DefineSSDParameter(m_queryCountLimit, int, (std::numeric_limits<int>::max)(), "QueryCountLimit")
+DefineSSDParameter(m_indexSize, double, 0.05, "IndexSize")
 
 #endif
