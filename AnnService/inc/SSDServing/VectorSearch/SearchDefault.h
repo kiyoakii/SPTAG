@@ -234,34 +234,82 @@ namespace SPTAG {
 						}
 						*/
 						std::string postingList;
+						//LOG(Helper::LogLevel::LL_Info, "Insert ID: %d, replica Num: %d\n", VID, replicaCount);
 						for (int i = 0; i < replicaCount; ++i)
 						{
 							postingList.resize(0);
 							postingList.clear();
 							//LOG(Helper::LogLevel::LL_Info, "Insert VID: %d : Head Vector: %d\n", VID, selections[i].headID);
 							db->Get(ReadOptions(), Helper::Serialize<int>(&selections[i].headID, 1), &postingList);
-							
+							int vectorNum = postingList.size()/ (sizeof(int) + m_vectorSize);
+							std::shared_ptr<uint8_t> postingBuffer;
+							postingBuffer.reset(new uint8_t[postingList.size() + m_vectorSize + sizeof(int)], std::default_delete<uint8_t[]>());
+							uint8_t* bufferVoidPtr = reinterpret_cast<uint8_t*>(postingBuffer.get());
+							memcpy(bufferVoidPtr, postingList.data(), postingList.size());
+							bool covered = false;
+							/*
+							LOG(Helper::LogLevel::LL_Info, "Before Scan:\n");
+							for (int j = 0; j < vectorNum; j++)
+							{
+								uint8_t* vectorInfo = postingBuffer.get() + j * (m_vectorSize + sizeof(int));
+								int vectorID = *(reinterpret_cast<int*>(vectorInfo));
+								LOG(Helper::LogLevel::LL_Info, " %d", vectorID);
+							}
+							LOG(Helper::LogLevel::LL_Info, "\n");
+							*/
+							for (int j = 0; j < vectorNum; j++)
+							{
+								uint8_t* vectorInfo = postingBuffer.get() + j * (m_vectorSize + sizeof(int));
+								int vectorID = *(reinterpret_cast<int*>(vectorInfo));
+								if (m_deletedID.Contains(vectorID)) 
+								{
+									//LOG(Helper::LogLevel::LL_Info, "Found Deleted ID: %d, replaced with ID: %d\n", vectorID, VID);
+									covered = true;
+									memcpy(vectorInfo, &VID, sizeof(int));
+									memcpy(vectorInfo+sizeof(int), (uint8_t*)p_queryResults.GetTarget(), m_vectorSize);
+									break;
+								}
+							}
+							if (covered)
+							{
+								/*
+								LOG(Helper::LogLevel::LL_Info, "After Insert:\n");
+								for (int j = 0; j < vectorNum; j++)
+								{
+									uint8_t* vectorInfo = postingBuffer.get() + j * (m_vectorSize + sizeof(int));
+									int vectorID = *(reinterpret_cast<int*>(vectorInfo));
+									LOG(Helper::LogLevel::LL_Info, " %d", vectorID);
+								}
+								LOG(Helper::LogLevel::LL_Info, "\n");
+								*/
+								int datasize = postingList.size();
+								bufferVoidPtr = reinterpret_cast<uint8_t*>(postingBuffer.get());
+								postingList.resize(0);
+								postingList.clear();
+								postingList += Helper::Serialize<uint8_t>(bufferVoidPtr, datasize);
+								db->Put(WriteOptions(), Helper::Serialize<int>(&selections[i].headID, 1), postingList);
+								continue;
+							}
+							//LOG(Helper::LogLevel::LL_Info, "No Found Deleted ID, Insert ID: %d\n", VID);
 							postingList += Helper::Serialize<int>(&VID, 1);
 							postingList += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
+							vectorNum += 1;
 							if (postingList.size() > m_postingPageLimit * p_pageSize)
 							{
 								//need to split and insert into headinedex
 								//LOG(Helper::LogLevel::LL_Info, "PostingList Oversize, Need to Split\n");
 								//extract out vector and id from postingList
 								COMMON::Dataset<ValueType> smallSample;
-								std::shared_ptr<uint8_t> postingBuffer;
 								std::shared_ptr<uint8_t> vectorBuffer;
 								//smallSample[i] -> VID
 								std::vector<int> localindicesInsert;
 								//localindices for kmeans smallSample[i] -> localindices[j] = i
 								std::vector<int> localindices;
-								int vectorNum = postingList.size()/ (sizeof(int) + m_vectorSize);
 								localindicesInsert.resize(vectorNum);
 								localindices.resize(vectorNum);
-								postingBuffer.reset(new uint8_t[postingList.size()], std::default_delete<uint8_t[]>());
-								vectorBuffer.reset(new uint8_t[m_vectorSize * vectorNum], std::default_delete<uint8_t[]>());
-								uint8_t* bufferVoidPtr = reinterpret_cast<uint8_t*>(postingBuffer.get());
+								bufferVoidPtr = reinterpret_cast<uint8_t*>(postingBuffer.get());
 								memcpy(bufferVoidPtr, postingList.data(), postingList.size());
+								vectorBuffer.reset(new uint8_t[m_vectorSize * vectorNum], std::default_delete<uint8_t[]>());
 								bufferVoidPtr = reinterpret_cast<uint8_t*>(vectorBuffer.get());
 								for (int j = 0; j < vectorNum; j++)
 								{
@@ -325,6 +373,7 @@ namespace SPTAG {
 											newHeadVID = localindicesInsert[localindices[first + args.counts[k] - 1]];
 											//BUG: newHeadVID maybe a exist head vector
 											m_vectorTranslateMap.AddBatch(&newHeadVID, 1);
+											newHeadVID = m_vectorTranslateMap.R() - 1;
 											m_split_num++;
 											m_index->AddHeadIndex(smallSample[localindices[first + args.counts[k] - 1]], 1, COMMON_OPTS.m_dim, fatherNodes);
 										}
@@ -409,6 +458,8 @@ namespace SPTAG {
 								auto_ws->m_postingIDs.emplace_back(res->VID);
 							}
 						}
+						const uint32_t postingListCount = static_cast<uint32_t>(auto_ws->m_postingIDs.size());
+                   		m_extraSearcher->InitWorkSpace(auto_ws, postingListCount);
 					}
 
 					if (!COMMON_OPTS.m_addHeadToPost && m_vectorTranslateMap.Name() == "Head")
@@ -422,7 +473,7 @@ namespace SPTAG {
 								//LOG(Helper::LogLevel::LL_Info, "head vector previous id: %d\n", res->VID);
 								res->VID = static_cast<int>(*m_vectorTranslateMap[res->VID]);
 								//LOG(Helper::LogLevel::LL_Info, "head vector normal id: %d\n", res->VID);
-								if (m_deletedID.Contains(res->VID))
+								if (auto_ws->m_deduper.CheckAndSet(res->VID) || m_deletedID.Contains(res->VID))
 								{
 									//LOG(Helper::LogLevel::LL_Info, "contain\n");
 									res->VID = -1;

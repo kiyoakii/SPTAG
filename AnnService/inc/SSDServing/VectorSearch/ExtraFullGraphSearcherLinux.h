@@ -143,7 +143,7 @@ namespace SPTAG {
                 {
                     const uint32_t postingListCount = static_cast<uint32_t>(p_exWorkSpace->m_postingIDs.size());
 
-                    InitWorkSpace(p_exWorkSpace, postingListCount);
+                    //InitWorkSpace(p_exWorkSpace, postingListCount);
 
                     std::atomic<std::int32_t> diskRead(0);
                     int curCheck = 0;
@@ -182,7 +182,6 @@ namespace SPTAG {
                                 continue;
                             }
                             */
-
                             auto distance2leaf = p_index->ComputeDistance(p_queryResults.GetTarget(),
                                 vectorInfo);
 

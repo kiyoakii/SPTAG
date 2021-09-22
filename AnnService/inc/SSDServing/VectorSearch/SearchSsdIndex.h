@@ -614,11 +614,36 @@ namespace SPTAG {
 
 
                 int vectorNum = fullVectors->Count();
+                int totalNum = fullVectors->Count();
+                int section = totalNum / numThreads;
+                int selectionNum = updateVectorNum / numThreads;
                 for (int i = 0; i < cycle; i++)
                 {
                     updateIndice.clear();
                     updateIndice.resize(updateVectorNum);
                     LOG(Helper::LogLevel::LL_Info, "cycle %d: selecting update vector\n", i);
+                    omp_set_num_threads(numThreads);
+                    #pragma omp parallel
+                        {
+                            int tid = omp_get_thread_num();
+                            int lowerBound = tid * section;
+                            int upperBound = (tid == numThreads-1) ? totalNum : (tid + 1) * section;
+                            int selectBegin = tid * selectionNum;
+                            int select = (tid == numThreads-1) ? (updateVectorNum- selectionNum * (numThreads - 1)) : selectionNum;
+                            LOG(Helper::LogLevel::LL_Info, "tid: %d, select range: (%d, %d), select indice range: (%d,%d), select num: %d\n", tid, lowerBound, upperBound, selectBegin, selectBegin+select, select);
+                            std::vector<int> tempIndice;
+                            tempIndice.resize(select);
+                            for (int k = 0; k < select; k++)
+                            {
+                                SizeType randid = COMMON::Utils::rand(upperBound, lowerBound);
+                                while (std::count(tempIndice.begin(), tempIndice.end(), randid)) {
+                                    randid = COMMON::Utils::rand(upperBound, lowerBound);
+                                }
+                                updateIndice[k + selectBegin] = randid;
+                                tempIndice[k] = randid;
+                            }
+                        }
+                    /*
                     for (int k = 0; k < updateVectorNum; k++) 
                     {
                         SizeType randid = COMMON::Utils::rand(fullVectors->Count(), 0);
@@ -627,6 +652,7 @@ namespace SPTAG {
                         }
                         updateIndice[k] = randid;
                     }
+                    */
                     LOG(Helper::LogLevel::LL_Info, "cycle %d: update vector\n", i);
                     LOG(Helper::LogLevel::LL_Info, "cycle %d: delete vector\n", i);
                     for (int k = 0; k < updateVectorNum; k++) 
@@ -643,7 +669,7 @@ namespace SPTAG {
                     LOG(Helper::LogLevel::LL_Info, "cycle %d: insert vector\n", i);
                     for (int k = 0; k < updateVectorNum; k++) 
                     {
-                        if ((k+1) % 10000 == 0) LOG(Helper::LogLevel::LL_Info, "cycle %d: inserted %d vectors\n", i, k);
+                        if ((k+1) % 10000 == 0) LOG(Helper::LogLevel::LL_Info, "cycle %d: inserted %d vectors\n", i, k+1);
                         searcher.Insert(insertResult[k], stats[k]);
                         indices[updateIndice[k]] = vectorNum++;
                     }
