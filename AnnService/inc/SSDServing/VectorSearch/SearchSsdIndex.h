@@ -562,6 +562,7 @@ namespace SPTAG {
                 }
 
                 std::vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
+                std::vector<SearchStats> statsPrev(numQueries);
                 std::vector<SearchStats> stats(numQueries);
                 for (int i = 0; i < numQueries; ++i)
                 {
@@ -574,21 +575,52 @@ namespace SPTAG {
 
                 if (asyncCallQPS == 0)
                 {
-                    SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
+                    SearchSequential(searcher, numThreads, results, statsPrev, p_opts.m_queryCountLimit);
                 }
                 else
                 {
-                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
+                    SearchAsync(searcher, asyncCallQPS, results, statsPrev, p_opts.m_queryCountLimit);
                 }
 
                 LOG(Helper::LogLevel::LL_Info, "Finish First ANN Search...\n");
 
                 float recall = 0;
+                std::vector<int> recallPrev;
+                recallPrev.clear();
+                recallPrev.resize(numQueries);
+                for (int i = 0; i < numQueries; i++)
+                {
+                    recallPrev[i] = 0;
+                }
+
+                std::vector<int> recallCur;
+                recallCur.clear();
+                recallCur.resize(numQueries);
+                for (int i = 0; i < numQueries; i++)
+                {
+                    recallCur[i] = 0;
+                }
 
                 if (!truthFile.empty())
                 {
-                    recall = CalcRecall(results, truth, K);
-                    LOG(Helper::LogLevel::LL_Info, "Before cycle: Recall: %f\n", recall);
+                    recall = 0;
+                    for (int k = 0; k < results.size(); k++)
+                    {
+                        for (int id : truth[k])
+                        {
+                            for (int j = 0; j < K; j++)
+                            {
+                                if (results[k].GetResult(j)->VID == indices[id])
+                                {
+                                    recallPrev[k]++;
+                                    recall++;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    recall = static_cast<float>(recall)/static_cast<float>(results.size() * K);
+                    LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
                 }
                 /*
                 if (!outputFile.empty())
@@ -619,6 +651,12 @@ namespace SPTAG {
                 int selectionNum = updateVectorNum / numThreads;
                 for (int i = 0; i < cycle; i++)
                 {
+
+                    for (int i = 0; i < numQueries; i++)
+                    {
+                        recallCur[i] = 0;
+                    }
+
                     updateIndice.clear();
                     updateIndice.resize(updateVectorNum);
                     LOG(Helper::LogLevel::LL_Info, "cycle %d: selecting update vector\n", i);
@@ -692,6 +730,7 @@ namespace SPTAG {
                         SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
                     }
                     LOG(Helper::LogLevel::LL_Info, "cycle %d: begin calclating recall\n", i);
+
                     if (!truthFile.empty())
                     {
                         recall = 0;
@@ -703,14 +742,30 @@ namespace SPTAG {
                                 {
                                     if (results[k].GetResult(j)->VID == indices[id])
                                     {
+                                        recallCur[k]++;
                                         recall++;
                                         break;
                                     }
                                 }
                             }
+                            if (recallCur[k] < recallPrev[k])
+                            {
+                                LOG(Helper::LogLevel::LL_Info, "cycle %d: query %d get prev result:\n", i, k);
+                                for (std::map<int,int>::iterator it=statsPrev[k].m_headAndPostingSize.begin(); it!=statsPrev[k].m_headAndPostingSize.end(); ++it)
+                                {
+                                    std::cout << it->first << ":" << it->second << ' ';
+                                }
+                                LOG(Helper::LogLevel::LL_Info, "\n");
+                                LOG(Helper::LogLevel::LL_Info, "cycle %d: query %d get cur result:\n", i, k);
+                                for (std::map<int,int>::iterator it=stats[k].m_headAndPostingSize.begin(); it!=stats[k].m_headAndPostingSize.end(); ++it)
+                                {
+                                    std::cout << it->first << ":" << it->second << ' ';
+                                }
+                                LOG(Helper::LogLevel::LL_Info, "\n");
+                            }
                         }
                         recall = static_cast<float>(recall)/static_cast<float>(results.size() * K);
-                        LOG(Helper::LogLevel::LL_Info, "Cycle %d: Recall: %f\n", i, recall);
+                        LOG(Helper::LogLevel::LL_Info, "cycle %d: Recall: %f\n", i, recall);
                     }
                     /*
                     if (!outputFile.empty())

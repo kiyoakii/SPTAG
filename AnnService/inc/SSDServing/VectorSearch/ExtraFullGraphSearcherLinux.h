@@ -163,6 +163,8 @@ namespace SPTAG {
                         void* bufferVoidPtr = reinterpret_cast<void*>(buffer.GetBuffer());
                         int vectorNum = postingList.size() * sizeof(char) / (COMMON_OPTS.m_dim * sizeof(ValueType) + sizeof(int));
 
+                        int count = 0;
+
                         memcpy(bufferVoidPtr, postingList.data(), totalBytes);
 
                         for (int i = 0; i < vectorNum; ++i)
@@ -185,9 +187,12 @@ namespace SPTAG {
                             auto distance2leaf = p_index->ComputeDistance(p_queryResults.GetTarget(),
                                 vectorInfo);
 
+                            count++;
+
                             p_queryResults.AddPoint(vectorID, distance2leaf);
 
                         }
+                        p_stats.m_headAndPostingSize[p_exWorkSpace->m_postingIDs[pi]] = count;
                     }
 
                     p_stats.m_exCheck = curCheck;

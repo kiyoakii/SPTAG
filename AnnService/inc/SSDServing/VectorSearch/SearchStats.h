@@ -1,5 +1,6 @@
 #pragma once
 #include <chrono>
+#include <map>
 
 namespace SPTAG {
     namespace SSDServing {
@@ -55,6 +56,8 @@ namespace SPTAG {
                 std::chrono::steady_clock::time_point m_searchRequestTime;
 
                 int m_threadID;
+
+                std::map<int,int> m_headAndPostingSize;
             };
         }
     }
