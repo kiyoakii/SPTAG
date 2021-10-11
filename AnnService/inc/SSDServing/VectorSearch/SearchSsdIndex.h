@@ -610,7 +610,7 @@ namespace SPTAG {
                         {
                             for (int j = 0; j < K; j++)
                             {
-                                if (results[k].GetResult(j)->VID == indices[id])
+                                if (results[k].GetResult(j)->VID == id)
                                 {
                                     recallPrev[k]++;
                                     recall++;
@@ -730,7 +730,11 @@ namespace SPTAG {
                         SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
                     }
                     LOG(Helper::LogLevel::LL_Info, "cycle %d: begin calclating recall\n", i);
+                    
 
+                    int numLow = 0;
+                    int totalCountPrev = 0;
+                    int totalCountCur = 0;
                     if (!truthFile.empty())
                     {
                         recall = 0;
@@ -750,22 +754,64 @@ namespace SPTAG {
                             }
                             if (recallCur[k] < recallPrev[k])
                             {
-                                LOG(Helper::LogLevel::LL_Info, "cycle %d: query %d get prev result:\n", i, k);
+                                //LOG(Helper::LogLevel::LL_Info, "cycle %d: query %d get prev result:\n", i, k);
+                                numLow++;
+                                int countPrev = 0;
                                 for (std::map<int,int>::iterator it=statsPrev[k].m_headAndPostingSize.begin(); it!=statsPrev[k].m_headAndPostingSize.end(); ++it)
                                 {
-                                    std::cout << it->first << ":" << it->second << ' ';
+                                    countPrev += it->second;
+                                    //LOG(Helper::LogLevel::LL_Info, "headid: %d, size: %d ", it->first, it->second);
                                 }
-                                LOG(Helper::LogLevel::LL_Info, "\n");
-                                LOG(Helper::LogLevel::LL_Info, "cycle %d: query %d get cur result:\n", i, k);
+                                //LOG(Helper::LogLevel::LL_Info, "\n");
+                                //LOG(Helper::LogLevel::LL_Info, "cycle %d: query %d get cur result:\n", i, k);
+                                int countCur = 0;
                                 for (std::map<int,int>::iterator it=stats[k].m_headAndPostingSize.begin(); it!=stats[k].m_headAndPostingSize.end(); ++it)
                                 {
-                                    std::cout << it->first << ":" << it->second << ' ';
+                                    countCur += it->second;
+                                    //LOG(Helper::LogLevel::LL_Info, "headid: %d, size: %d ", it->first, it->second);
                                 }
-                                LOG(Helper::LogLevel::LL_Info, "\n");
+                                //LOG(Helper::LogLevel::LL_Info, "cycle %d: query:%d get\n", i, k);
+                                //LOG(Helper::LogLevel::LL_Info, "prev hit: %d checked size: %d\n", recallPrev[k], countPrev);
+                                //LOG(Helper::LogLevel::LL_Info, "curr hit: %d checked size: %d\n", recallCur[k], countCur);
+                                //LOG(Helper::LogLevel::LL_Info, "\n");
+                                totalCountPrev += countPrev;
+                                totalCountCur += countCur;
+                                if (recallCur[k] + 3 < recallPrev[k])
+                                {
+                                    LOG(Helper::LogLevel::LL_Info, "prev hit: %d checked size: %d\n", recallPrev[k], countPrev);
+                                    LOG(Helper::LogLevel::LL_Info, "curr hit: %d checked size: %d\n", recallCur[k], countCur);
+                                    LOG(Helper::LogLevel::LL_Info, "cycle %d: query %d get prev result:\n", i, k);
+                                    for (std::map<int,int>::iterator it=statsPrev[k].m_headAndPostingSize.begin(); it!=statsPrev[k].m_headAndPostingSize.end(); ++it)
+                                    {
+                                        LOG(Helper::LogLevel::LL_Info, "headid: %d, size: %d ", it->first, it->second);
+                                    }
+                                    LOG(Helper::LogLevel::LL_Info, "\n");
+                                    LOG(Helper::LogLevel::LL_Info, "cycle %d: query %d get cur result:\n", i, k);
+                                    for (std::map<int,int>::iterator it=stats[k].m_headAndPostingSize.begin(); it!=stats[k].m_headAndPostingSize.end(); ++it)
+                                    {
+                                        LOG(Helper::LogLevel::LL_Info, "headid: %d, size: %d ", it->first, it->second);
+                                    }
+                                    LOG(Helper::LogLevel::LL_Info, "\n");
+                                }
                             }
                         }
                         recall = static_cast<float>(recall)/static_cast<float>(results.size() * K);
                         LOG(Helper::LogLevel::LL_Info, "cycle %d: Recall: %f\n", i, recall);
+                        LOG(Helper::LogLevel::LL_Info, "Checked Compare(Recall Low): Prev: %d Curr: %d\n", totalCountPrev/numLow, totalCountCur/numLow);
+                        totalCountPrev = 0;
+                        totalCountCur = 0;
+                        for (int k = 0; k < numQueries; k++)
+                        {
+                            for (std::map<int,int>::iterator it=statsPrev[k].m_headAndPostingSize.begin(); it!=statsPrev[k].m_headAndPostingSize.end(); ++it)
+                            {
+                                totalCountPrev += it->second;
+                            }
+                            for (std::map<int,int>::iterator it=stats[k].m_headAndPostingSize.begin(); it!=stats[k].m_headAndPostingSize.end(); ++it)
+                            {
+                                totalCountCur += it->second;
+                            }
+                        }
+                        LOG(Helper::LogLevel::LL_Info, "Checked Compare(Total): Prev: %d Curr: %d\n", totalCountPrev/numQueries, totalCountCur/numQueries);
                     }
                     /*
                     if (!outputFile.empty())
