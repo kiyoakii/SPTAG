@@ -869,6 +869,10 @@ namespace SPTAG {
                 {
                     TestUpdateSta<ValueType>(p_opts);
                     return;
+                } else if (COMMON_OPTS.m_testInc)
+                {
+                    TestIncremental<ValueType>(p_opts);
+                    return;
                 }
                 std::string outputFile = p_opts.m_searchResult;
                 std::string truthFile = COMMON_OPTS.m_truthPath;

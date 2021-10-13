@@ -33,5 +33,6 @@ DefineBasicParameter(m_testUpdateSta, bool, false, "TestUpdateSta")
 DefineBasicParameter(m_ssdIndexInfo, std::string, std::string(""), "SSDIndexInfo")
 DefineBasicParameter(m_deleteID, std::string, std::string(""), "DeleteID")
 DefineBasicParameter(m_extraVectorPath, std::string, std::string(""), "ExtraVectorPath")
+DefineBasicParameter(m_testInc, bool, false, "TestInc")
 
 #endif
