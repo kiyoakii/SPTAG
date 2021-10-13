@@ -37,6 +37,8 @@ namespace SPTAG {
                 bool m_addHeadToPost;
                 bool m_testUpdateAcc;
                 bool m_testUpdateSta;
+                bool m_testInc;
+                std::string m_extraVectorPath;
 
                 BaseOptions() {
 #define DefineBasicParameter(VarName, VarType, DefaultValue, RepresentStr) \
