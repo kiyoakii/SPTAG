@@ -31,13 +31,6 @@ namespace SPTAG
             BKTNodeUpdate(SizeType cid = -1) : centerid(cid), firstChild(-1), sibling(-1) {}
         };
 
-        // struct BKTInternal
-        // {
-        //     Sizetype centerid;
-        //     SizeType firstChild;
-        //     SizeType sibling
-        // }
-
         template <typename T>
         struct KmeansArgs {
             int _K;
@@ -622,9 +615,9 @@ namespace SPTAG
                         if (p_space.m_iNumberOfCheckedLeaves >= p_limits) break;
                     }
                     else {
-                        if (!p_space.CheckAndSet(tnode.centerid)) {
-                            p_space.m_NGQueue.insert(COMMON::HeapCell(tnode.centerid, bcell.distance));
-                        }
+                        // if (!p_space.CheckAndSet(tnode.centerid)) {
+                        //     p_space.m_NGQueue.insert(COMMON::HeapCell(tnode.centerid, bcell.distance));
+                        // }
                         for (SizeType begin = tnode.firstChild; begin > 0; begin = m_pTreeRoots[begin].sibling) {
                             SizeType index = m_pTreeRoots[begin].centerid;
                             p_space.m_SPTQueue.insert(COMMON::HeapCell(begin, fComputeDistance(p_query.GetTarget(), data[index], data.C())));
