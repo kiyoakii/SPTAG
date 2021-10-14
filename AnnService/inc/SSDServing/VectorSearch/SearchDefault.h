@@ -9,7 +9,7 @@
 #endif
 
 #include "inc/Core/BKT/Index.h"
-#include "inc/Core/Common/BKTreeUpdate.h"
+#include "inc/Core/Common/BKTree.h"
 #include "inc/Core/Common/Dataset.h"
 #include "inc/Core/Common/QueryResultSet.h"
 #include "inc/Core/VectorIndex.h"
