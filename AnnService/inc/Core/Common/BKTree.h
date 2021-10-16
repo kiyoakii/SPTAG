@@ -562,20 +562,17 @@ namespace SPTAG
                 return LoadTrees(ptr);
             }
 
-            //Insert Node at fatherNode, on centerid
-            ErrorCode InsertNode(BKTNodeUpdate fatherNode, SizeType childCenterid)
+            // Insert a new node as Node's sibling,
+            // the second arg is new node's centerid
+            ErrorCode InsertNode(BKTNodeUpdate Node, SizeType centerid)
             {
                 SizeType newBKTid = m_pTreeRoots.size();
-                m_pTreeRoots.emplace_back(childCenterid);
-                if (fatherNode.firstChild < 0) {
-                        fatherNode.firstChild = newBKTid;
-                    } 
-                else {
-                    SizeType child = fatherNode.firstChild;
-                    while (m_pTreeRoots[child].sibling > 0) {
-                        child = m_pTreeRoots[child].sibling;
-                    }
-                    m_pTreeRoots[child].sibling = newBKTid;
+                m_pTreeRoots.emplace_back(centerid);
+                if (Node.sibling < 0) {
+                    Node.sibling = newBKTid;
+                } else {
+                    m_pTreeRoots[newBKTid].sibling = Node.sibling;
+                    Node.sibling = newBKTid;
                 } 
                 return ErrorCode::Success;
             } 
