@@ -824,15 +824,10 @@ namespace SPTAG {
                 std::vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
                 std::vector<SearchStats> stats(numQueries);
                 std::vector<COMMON::QueryResultSet<ValueType>> insertResults(insertCount, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
-                for (int i = 0; i < insertCount; i++)
+                for (int i = 0; i < numQueries; ++i)
                 {
-                    insertResults[i].SetTarget(reinterpret_cast<ValueType*>(extraVectors->GetVector(i)));
-                    insertResults[i].Reset();
-                }
-                for (int i = 0; i < insertCount; i++)
-                {
-                    searcher.Insert(insertResults[i], stats[i]);
-                    if ((i+1) % 10000 == 0) LOG(Helper::LogLevel::LL_Info, "inserted %d vectors\n", i+1);
+                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                    results[i].Reset();
                 }
 
                 LOG(Helper::LogLevel::LL_Info, "Start ANN Search...\n");
@@ -849,6 +844,42 @@ namespace SPTAG {
                 LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
 
                 float recall = 0;
+
+                if (!truthFile.empty())
+                {
+                    recall = CalcRecall(results, truth, K);
+                    LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
+                }
+
+                for (int i = 0; i < insertCount; i++)
+                {
+                    insertResults[i].SetTarget(reinterpret_cast<ValueType*>(extraVectors->GetVector(i)));
+                    insertResults[i].Reset();
+                }
+                for (int i = 0; i < insertCount; i++)
+                {
+                    searcher.Insert(insertResults[i], stats[i]);
+                    if ((i+1) % 10000 == 0) LOG(Helper::LogLevel::LL_Info, "inserted %d vectors\n", i+1);
+                }
+
+                for (int i = 0; i < numQueries; ++i)
+                {
+                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                    results[i].Reset();
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "Start ANN Search...\n");
+
+                if (asyncCallQPS == 0)
+                {
+                    SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
+                }
+                else
+                {
+                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
 
                 if (!truthFile.empty())
                 {
