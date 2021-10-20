@@ -764,13 +764,44 @@ namespace SPTAG {
                 }
             }
 
+            std::string GetTruthFileName(std::string& truthFilePrefix, int vectorCount)
+            {
+                std::string fileName(truthFilePrefix);
+                fileName += "-";
+                if (vectorCount < 1000)
+                {
+                    fileName += std::to_string(vectorCount);
+                } 
+                else if (vectorCount < 1000000)
+                {
+                    fileName += std::to_string(vectorCount/1000);
+                    fileName += "k";
+                }
+                else if (vectorCount < 1000000000)
+                {
+                    fileName += std::to_string(vectorCount/1000000);
+                    fileName += "M";
+                }
+                else
+                {
+                    fileName += std::to_string(vectorCount/1000000000);
+                    fileName += "B";
+                }
+                return fileName;
+            }
+
             template <typename ValueType>
             void TestIncremental(Options& p_opts)
             {
                 LOG(Helper::LogLevel::LL_Info, "Start incremental test\n");
 
-                std::string truthFile = COMMON_OPTS.m_truthPath;
-                std::string outputFile = p_opts.m_searchResult;
+                std::string truthFilePrefix = p_opts.m_truthFilePrefix;
+                int step = p_opts.m_step;
+                if (step == 0)
+                {
+                    LOG(Helper::LogLevel::LL_Error, "Incremental Test Error, Need to set step.\n");
+                    exit(1);
+                }
 
                 if (!p_opts.m_logFile.empty())
                 {
@@ -815,12 +846,13 @@ namespace SPTAG {
                 auto querySet = queryReader->GetVectorSet();
                 int numQueries = querySet->Count();
                 int insertCount = extraVectors->Count();
+                int curCount = searcher.getVecNum();
 
-                if (!truthFile.empty())
-                {
-                    LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
-                    LoadTruth(truthFile, truth, numQueries, K);
-                }
+                std::string truthfile;
+
+                LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
+                LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
+
                 std::vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
                 std::vector<SearchStats> stats(numQueries);
                 std::vector<COMMON::QueryResultSet<ValueType>> insertResults(insertCount, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
@@ -845,11 +877,8 @@ namespace SPTAG {
 
                 float recall = 0;
 
-                if (!truthFile.empty())
-                {
-                    recall = CalcRecall(results, truth, K);
-                    LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
-                }
+                recall = CalcRecall(results, truth, K);
+                LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
 
                 for (int i = 0; i < insertCount; i++)
                 {
@@ -860,6 +889,29 @@ namespace SPTAG {
                 {
                     searcher.Insert(insertResults[i], stats[i]);
                     if ((i+1) % 10000 == 0) LOG(Helper::LogLevel::LL_Info, "inserted %d vectors\n", i+1);
+                    if ((i+1) % step == 0)
+                    {
+                        curCount += step;
+                        LOG(Helper::LogLevel::LL_Info, "Total Vector num %d \n", curCount);
+                        LOG(Helper::LogLevel::LL_Info, "Start Searching\n");
+                        for (int i = 0; i < numQueries; ++i)
+                        {
+                            results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                            results[i].Reset();
+                        }
+                        if (asyncCallQPS == 0)
+                        {
+                            SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
+                        }
+                        else
+                        {
+                            SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
+                        }
+                        LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
+                        LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
+                        recall = CalcRecall(results, truth, K);
+                        LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
+                    }
                 }
 
                 for (int i = 0; i < numQueries; ++i)
@@ -881,11 +933,10 @@ namespace SPTAG {
 
                 LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
 
-                if (!truthFile.empty())
-                {
-                    recall = CalcRecall(results, truth, K);
-                    LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
-                }
+                LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
+                LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
+                recall = CalcRecall(results, truth, K);
+                LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
                 
             }
 

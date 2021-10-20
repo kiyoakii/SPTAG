@@ -20,5 +20,6 @@ DefineSSDParameter(m_resultNum, int, 5, "ResultNum")
 DefineSSDParameter(m_maxCheck, int, 4096, "MaxCheck")
 DefineSSDParameter(m_queryCountLimit, int, (std::numeric_limits<int>::max)(), "QueryCountLimit")
 DefineSSDParameter(m_indexSize, double, 0.05, "IndexSize")
-
+DefineSSDParameter(m_truthFilePrefix, std::string, std::string(""), "TruthFilePrefix")
+DefineSSDParameter(m_step, int, 0, "Step")
 #endif

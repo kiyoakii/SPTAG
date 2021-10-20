@@ -586,6 +586,11 @@ namespace SPTAG {
 					return m_split_num;
 				}
 
+				int getVecNum()
+				{
+					return m_vectornum;
+				}
+
 				std::shared_ptr<VectorIndex> HeadIndex() {
 					return m_index;
 				}

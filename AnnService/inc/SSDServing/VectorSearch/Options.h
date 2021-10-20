@@ -32,6 +32,10 @@ namespace SPTAG {
 				// Update Stability
 				double m_indexSize;
 
+				// Incremental Time-line
+				std::string m_truthFilePrefix;
+				int m_step;
+
 				Options() {
 #define DefineSSDParameter(VarName, VarType, DefaultValue, RepresentStr) \
                 VarName = DefaultValue; \
