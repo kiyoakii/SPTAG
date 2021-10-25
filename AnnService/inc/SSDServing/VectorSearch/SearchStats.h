@@ -57,7 +57,8 @@ namespace SPTAG {
 
                 int m_threadID;
 
-                std::map<int,int> m_headAndPostingSize;
+                std::map<int, float> m_headAndDist;
+                std::map<int, int> m_headAndPostingSize;
             };
         }
     }

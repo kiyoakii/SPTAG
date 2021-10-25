@@ -20,5 +20,8 @@ DefineSSDParameter(m_resultNum, int, 5, "ResultNum")
 DefineSSDParameter(m_maxCheck, int, 4096, "MaxCheck")
 DefineSSDParameter(m_queryCountLimit, int, (std::numeric_limits<int>::max)(), "QueryCountLimit")
 DefineSSDParameter(m_indexSize, double, 0.05, "IndexSize")
+DefineSSDParameter(m_insertVectorsPath, std::string, std::string(""), "InsertVectorsPath")
+DefineSSDParameter(m_headDistPostingnum, std::string, std::string(""), "HeadDistPostingnum")
+DefineSSDParameter(m_randomDisabled, bool, false, "RandomDisabled")
 
 #endif

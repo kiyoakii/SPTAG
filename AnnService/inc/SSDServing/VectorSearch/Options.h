@@ -32,6 +32,11 @@ namespace SPTAG {
 				// Update Stability
 				double m_indexSize;
 
+				// for split profiling
+				std::string m_insertVectorsPath;
+				std::string m_headDistPostingnum;
+				bool m_randomDisabled;
+
 				Options() {
 #define DefineSSDParameter(VarName, VarType, DefaultValue, RepresentStr) \
                 VarName = DefaultValue; \

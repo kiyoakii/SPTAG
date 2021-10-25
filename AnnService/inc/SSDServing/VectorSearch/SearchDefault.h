@@ -378,6 +378,7 @@ namespace SPTAG {
 											m_index->AddHeadIndex(smallSample[localindices[first + args.counts[k] - 1]], 1, COMMON_OPTS.m_dim, fatherNodes);
 										}
 									}
+									LOG(Helper::LogLevel::LL_Info, "Headid: %d split into : %d\n", selections[i].headID, newHeadVID);
 									db->Put(WriteOptions(), Helper::Serialize<int>(&newHeadVID, 1), postingList);
 									postingList.resize(0);
 									postingList.clear();
@@ -456,6 +457,7 @@ namespace SPTAG {
 							if (res->VID != -1)
 							{
 								auto_ws->m_postingIDs.emplace_back(res->VID);
+								p_stats.m_headAndDist[res->VID] = res->Dist;
 							}
 						}
 						const uint32_t postingListCount = static_cast<uint32_t>(auto_ws->m_postingIDs.size());
