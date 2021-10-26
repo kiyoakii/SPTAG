@@ -622,6 +622,9 @@ namespace SPTAG {
                     recall = static_cast<float>(recall)/static_cast<float>(results.size() * K);
                     LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
                 }
+                std::string storeFilePrev = p_opts.m_SSDVectorDistPath;
+                storeFilePrev += "_prev";
+                searcher.CalDBDist(storeFilePrev);
                 /*
                 if (!outputFile.empty())
                 {
@@ -832,6 +835,11 @@ namespace SPTAG {
                         }
                         LOG(Helper::LogLevel::LL_Info, "Checked Compare(Total): Prev: %d Curr: %d\n", totalCountPrev/numQueries, totalCountCur/numQueries);
                     }
+
+                    std::string storeFileCurr = p_opts.m_SSDVectorDistPath;
+                    storeFileCurr += "_curr";
+                    searcher.CalDBDist(storeFileCurr);
+
                     if (!p_opts.m_randomDisabled)
                     {
                         //store the inserted vector ID

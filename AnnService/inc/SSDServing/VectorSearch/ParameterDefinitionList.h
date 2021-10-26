@@ -23,5 +23,6 @@ DefineSSDParameter(m_indexSize, double, 0.05, "IndexSize")
 DefineSSDParameter(m_insertVectorsPath, std::string, std::string(""), "InsertVectorsPath")
 DefineSSDParameter(m_headDistPostingnum, std::string, std::string(""), "HeadDistPostingnum")
 DefineSSDParameter(m_randomDisabled, bool, false, "RandomDisabled")
+DefineSSDParameter(m_SSDVectorDistPath, std::string, std::string(""), "SSDVectorDistPath")
 
 #endif

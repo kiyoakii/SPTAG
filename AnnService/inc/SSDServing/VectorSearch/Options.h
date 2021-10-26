@@ -36,6 +36,7 @@ namespace SPTAG {
 				std::string m_insertVectorsPath;
 				std::string m_headDistPostingnum;
 				bool m_randomDisabled;
+				std::string m_SSDVectorDistPath;
 
 				Options() {
 #define DefineSSDParameter(VarName, VarType, DefaultValue, RepresentStr) \

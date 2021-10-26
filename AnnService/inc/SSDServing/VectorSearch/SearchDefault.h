@@ -431,6 +431,51 @@ namespace SPTAG {
 					return ErrorCode::Success;
 				}
 
+				ErrorCode CalDBDist(std::string& storefile)
+				{
+					std::string postingList;
+					auto ptr = SPTAG::f_createIO();
+                    if (ptr == nullptr || !ptr->Initialize(storefile.c_str(), std::ios::binary | std::ios::out))
+                    {
+                        LOG(Helper::LogLevel::LL_Error, "Failed open file %s\n", storefile.c_str());
+                        exit(1);
+                    }
+					for (int i = 0; i < m_vectorTranslateMap.R(); i++)
+					{
+						postingList.clear();
+						db->Get(ReadOptions(), Helper::Serialize<int>(&i, 1), &postingList);
+						int vectorNum = postingList.size()/ (sizeof(int) + m_vectorSize);
+						std::shared_ptr<uint8_t> postingBuffer;
+						postingBuffer.reset(new uint8_t[postingList.size() + m_vectorSize + sizeof(int)], std::default_delete<uint8_t[]>());
+						uint8_t* bufferVoidPtr = reinterpret_cast<uint8_t*>(postingBuffer.get());
+						memcpy(bufferVoidPtr, postingList.data(), postingList.size());
+						int size = 0;
+						for (int j = 0; j < vectorNum; j++)
+						{
+							uint8_t* vectorInfo = postingBuffer.get() + j * (m_vectorSize + sizeof(int));
+							int vectorID = *(reinterpret_cast<int*>(vectorInfo));
+							if (m_deletedID.Contains(vectorID)) 
+							{
+								continue;
+							}
+							size++;
+						}
+						if (ptr->WriteBinary(sizeof(int), (char*)&i) != sizeof(int)) {
+                        	LOG(Helper::LogLevel::LL_Error, "Fail to write head");
+                        	exit(1);
+                    	}
+						if (ptr->WriteBinary(sizeof(int), (char*)&vectorNum) != sizeof(int)) {
+                        	LOG(Helper::LogLevel::LL_Error, "Fail to write posting size");
+                        	exit(1);
+                    	}
+						if (ptr->WriteBinary(sizeof(int), (char*)&size) != sizeof(int)) {
+                        	LOG(Helper::LogLevel::LL_Error, "Fail to write real posting size");
+                        	exit(1);
+                    	}
+					}
+					return ErrorCode::Success;
+				}
+
 				void Search(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats)
 				{
 					//LARGE_INTEGER qpcStartTime;
