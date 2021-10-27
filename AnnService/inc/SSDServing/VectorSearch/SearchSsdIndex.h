@@ -914,6 +914,8 @@ namespace SPTAG {
                     }
                 }
 
+                searcher.Rebuild();
+
                 for (int i = 0; i < numQueries; ++i)
                 {
                     results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
@@ -937,7 +939,6 @@ namespace SPTAG {
                 LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
                 recall = CalcRecall(results, truth, K);
                 LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
-                
             }
 
             template <typename ValueType>

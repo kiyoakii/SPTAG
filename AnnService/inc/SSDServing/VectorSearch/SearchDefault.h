@@ -398,6 +398,15 @@ namespace SPTAG {
 					return ret;
 				}
 
+				void Rebuild()
+				{
+					// m_index should have a virtual rebuild method, now I just cast
+					LOG(Helper::LogLevel::LL_Info, "Rebuild Head Index...\n");
+					auto bkt = dynamic_cast<SPTAG::BKT::Index<ValueType>*>(m_index.get());
+					bkt->Rebuild();
+					LOG(Helper::LogLevel::LL_Info, "Finish Rebuild Head Index...\n");
+				}
+
 				ErrorCode Delete(const SizeType& p_id) {
             		std::shared_lock<std::shared_timed_mutex> sharedlock(m_dataDeleteLock);
             		if (m_deletedID.Insert(p_id)) return ErrorCode::Success;
