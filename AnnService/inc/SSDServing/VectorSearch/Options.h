@@ -37,6 +37,9 @@ namespace SPTAG {
 				std::string m_headDistPostingnum;
 				bool m_randomDisabled;
 				std::string m_SSDVectorDistPath;
+				// Incremental Time-line
+				std::string m_truthFilePrefix;
+				int m_step;
 
 				Options() {
 #define DefineSSDParameter(VarName, VarType, DefaultValue, RepresentStr) \

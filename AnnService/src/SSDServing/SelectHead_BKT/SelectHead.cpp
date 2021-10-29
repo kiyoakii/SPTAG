@@ -1,8 +1,7 @@
 #include <unordered_set>
 #include <queue>
 
-//#include "inc/Core/Common/BKTree.h"
-#include "inc/Core/Common/BKTreeUpdate.h"
+#include "inc/Core/Common/BKTree.h"
 
 #include "inc/SSDServing/SelectHead_BKT/SelectHead.h"
 #include "inc/SSDServing/SelectHead_BKT/BKTNodeInfo.h"

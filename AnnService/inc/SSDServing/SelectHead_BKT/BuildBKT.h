@@ -1,5 +1,5 @@
 #pragma once
-#include "inc/Core/Common/BKTreeUpdate.h"
+#include "inc/Core/Common/BKTree.h"
 #include "inc/Core/Common/DistanceUtils.h"
 #include "inc/SSDServing/VectorSearch/TimeUtils.h"
 #include "inc/SSDServing/IndexBuildManager/CommonDefines.h"

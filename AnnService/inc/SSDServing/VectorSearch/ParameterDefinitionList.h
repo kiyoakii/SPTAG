@@ -25,4 +25,6 @@ DefineSSDParameter(m_headDistPostingnum, std::string, std::string(""), "HeadDist
 DefineSSDParameter(m_randomDisabled, bool, false, "RandomDisabled")
 DefineSSDParameter(m_SSDVectorDistPath, std::string, std::string(""), "SSDVectorDistPath")
 
+DefineSSDParameter(m_truthFilePrefix, std::string, std::string(""), "TruthFilePrefix")
+DefineSSDParameter(m_step, int, 0, "Step")
 #endif

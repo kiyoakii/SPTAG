@@ -83,284 +83,6 @@ namespace SPTAG {
                         exit(1);
                     }
                 }
-
-//                void SelectPostingOffset(size_t p_spacePerVector,
-//                    const std::vector<std::atomic_int>& p_postingListSizes,
-//                    std::unique_ptr<int[]>& p_postPageNum,
-//                    std::unique_ptr<std::uint16_t[]>& p_postPageOffset,
-//                    std::vector<int>& p_postingOrderInIndex)
-//                {
-//                    p_postPageNum.reset(new int[p_postingListSizes.size()]);
-//                    p_postPageOffset.reset(new std::uint16_t[p_postingListSizes.size()]);
-//
-//                    struct PageModWithID
-//                    {
-//                        int id;
-//
-//                        std::uint16_t rest;
-//                    };
-//
-//                    struct PageModeWithIDCmp
-//                    {
-//                        bool operator()(const PageModWithID& a, const PageModWithID& b) const
-//                        {
-//                            return a.rest == b.rest ? a.id < b.id : a.rest > b.rest;
-//                        }
-//                    };
-//
-//                    std::set<PageModWithID, PageModeWithIDCmp> listRestSize;
-//
-//                    p_postingOrderInIndex.clear();
-//                    p_postingOrderInIndex.reserve(p_postingListSizes.size());
-//
-//                    PageModWithID listInfo;
-//                    for (size_t i = 0; i < p_postingListSizes.size(); ++i)
-//                    {
-//                        if (p_postingListSizes[i] == 0)
-//                        {
-//                            continue;
-//                        }
-//
-//                        listInfo.id = static_cast<int>(i);
-//                        listInfo.rest = static_cast<std::uint16_t>((p_spacePerVector * p_postingListSizes[i]) % c_pageSize);
-//
-//                        listRestSize.insert(listInfo);
-//                    }
-//
-//                    listInfo.id = -1;
-//
-//                    int currPageNum = 0;
-//                    std::uint16_t currOffset = 0;
-//
-//                    while (!listRestSize.empty())
-//                    {
-//                        listInfo.rest = c_pageSize - currOffset;
-//                        auto iter = listRestSize.lower_bound(listInfo);
-//                        if (iter == listRestSize.end())
-//                        {
-//                            ++currPageNum;
-//                            currOffset = 0;
-//                        }
-//                        else
-//                        {
-//                            p_postPageNum[iter->id] = currPageNum;
-//                            p_postPageOffset[iter->id] = currOffset;
-//
-//                            p_postingOrderInIndex.push_back(iter->id);
-//
-//                            currOffset += iter->rest;
-//                            if (currOffset > c_pageSize)
-//                            {
-//                                LOG(Helper::LogLevel::LL_Error, "Crossing extra pages\n");
-//                                exit(1);
-//                            }
-//
-//                            if (currOffset == c_pageSize)
-//                            {
-//                                ++currPageNum;
-//                                currOffset = 0;
-//                            }
-//
-//                            currPageNum += static_cast<int>((p_spacePerVector * p_postingListSizes[iter->id]) / c_pageSize);
-//
-//                            listRestSize.erase(iter);
-//                        }
-//                    }
-//
-//                    LOG(Helper::LogLevel::LL_Info, "TotalPageNumbers: %d, IndexSize: %llu\n", currPageNum, static_cast<uint64_t>(currPageNum)* c_pageSize + currOffset);
-//                }
-
-
-//                void OutputSSDIndexFile(const std::string& p_outputFile,
-//                    size_t p_spacePerVector,
-//                    const std::vector<std::atomic_int>& p_postingListSizes,
-//                    const std::vector<Edge>& p_postingSelections,
-//                    const std::unique_ptr<int[]>& p_postPageNum,
-//                    const std::unique_ptr<std::uint16_t[]>& p_postPageOffset,
-//                    const std::vector<int>& p_postingOrderInIndex,
-//                    std::shared_ptr<VectorSet> p_fullVectors)
-//                {
-//                    LOG(Helper::LogLevel::LL_Info, "Start output...\n");
-//
-//                    auto ptr = SPTAG::f_createIO();
-//                    if (ptr == nullptr || !ptr->Initialize(p_outputFile.c_str(), std::ios::binary | std::ios::out))
-//                    {
-//                        LOG(Helper::LogLevel::LL_Error, "Failed open file %s\n", p_outputFile.c_str());
-//                        exit(1);
-//                    }
-//
-//                    std::uint64_t listOffset = sizeof(int) * 4;
-//                    listOffset += (sizeof(int) + sizeof(std::uint16_t) + sizeof(int) + sizeof(std::uint16_t)) * p_postingListSizes.size();
-//
-//                    std::unique_ptr<char[]> paddingVals(new char[c_pageSize]);
-//                    memset(paddingVals.get(), 0, sizeof(char) * c_pageSize);
-//
-//                    std::uint64_t paddingSize = c_pageSize - (listOffset % c_pageSize);
-//                    if (paddingSize == c_pageSize)
-//                    {
-//                        paddingSize = 0;
-//                    }
-//                    else
-//                    {
-//                        listOffset += paddingSize;
-//                    }
-//
-//                    // Number of lists.
-//                    int i32Val = static_cast<int>(p_postingListSizes.size());
-//                    if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
-//                        LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-//                        exit(1);
-//                    }
-//
-//                    // Number of all documents.
-//                    i32Val = static_cast<int>(p_fullVectors->Count());
-//                    if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
-//                        LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-//                        exit(1);
-//                    }
-//
-//                    // Bytes of each vector.
-//                    i32Val = static_cast<int>(p_fullVectors->Dimension());
-//                    if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
-//                        LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-//                        exit(1);
-//                    }
-//
-//                    // Page offset of list content section.
-//                    i32Val = static_cast<int>(listOffset / c_pageSize);
-//                    if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
-//                        LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-//                        exit(1);
-//                    }
-//
-//                    for (std::int64_t i = 0; i < p_postingListSizes.size(); ++i)
-//                    {
-//                        int pageNum = 0;
-//                        std::uint16_t pageOffset = 0;
-//                        int listEleCount = 0;
-//                        std::uint16_t listPageCount = 0;
-//
-//                        if (p_postingListSizes[i] > 0)
-//                        {
-//                            pageNum = p_postPageNum[i];
-//                            pageOffset = static_cast<std::uint16_t>(p_postPageOffset[i]);
-//                            listEleCount = static_cast<int>(p_postingListSizes[i]);
-//                            listPageCount = static_cast<std::uint16_t>((p_spacePerVector * p_postingListSizes[i]) / c_pageSize);
-//                            if (0 != ((p_spacePerVector * p_postingListSizes[i]) % c_pageSize))
-//                            {
-//                                ++listPageCount;
-//                            }
-//                        }
-//                        if (ptr->WriteBinary(sizeof(pageNum), reinterpret_cast<char*>(&pageNum)) != sizeof(pageNum)) {
-//                            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-//                            exit(1);
-//                        }
-//                        if (ptr->WriteBinary(sizeof(pageOffset), reinterpret_cast<char*>(&pageOffset)) != sizeof(pageOffset)) {
-//                            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-//                            exit(1);
-//                        }
-//                        if (ptr->WriteBinary(sizeof(listEleCount), reinterpret_cast<char*>(&listEleCount)) != sizeof(listEleCount)) {
-//                            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-//                            exit(1);
-//                        }
-//                        if (ptr->WriteBinary(sizeof(listPageCount), reinterpret_cast<char*>(&listPageCount)) != sizeof(listPageCount)) {
-//                            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-//                            exit(1);
-//                        }
-//                    }
-//
-//                    if (paddingSize > 0)
-//                    {
-//                        if (ptr->WriteBinary(paddingSize, reinterpret_cast<char*>(paddingVals.get())) != paddingSize) {
-//                            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-//                            exit(1);
-//                        }
-//                    }
-//
-//                    if (static_cast<uint64_t>(ptr->TellP()) != listOffset)
-//                    {
-//                        LOG(Helper::LogLevel::LL_Info, "List offset not match!\n");
-//                        exit(1);
-//                    }
-//
-//                    LOG(Helper::LogLevel::LL_Info, "SubIndex Size: %llu bytes, %llu MBytes\n", listOffset, listOffset >> 20);
-//
-//                    listOffset = 0;
-//
-//                    std::uint64_t paddedSize = 0;
-//                    for (auto id : p_postingOrderInIndex)
-//                    {
-//                        std::uint64_t targetOffset = static_cast<uint64_t>(p_postPageNum[id])* c_pageSize + p_postPageOffset[id];
-//                        if (targetOffset < listOffset)
-//                        {
-//                            LOG(Helper::LogLevel::LL_Info, "List offset not match, targetOffset < listOffset!\n");
-//                            exit(1);
-//                        }
-//
-//                        if (targetOffset > listOffset)
-//                        {
-//                            if (targetOffset - listOffset > c_pageSize)
-//                            {
-//                                LOG(Helper::LogLevel::LL_Error, "Padding size greater than page size!\n");
-//                                exit(1);
-//                            }
-//
-//                            if (ptr->WriteBinary(targetOffset - listOffset, reinterpret_cast<char*>(paddingVals.get())) != targetOffset - listOffset) {
-//                                LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-//                                exit(1);
-//                            }
-//
-//                            paddedSize += targetOffset - listOffset;
-//
-//                            listOffset = targetOffset;
-//                        }
-//
-//
-//                        std::size_t selectIdx = std::lower_bound(p_postingSelections.begin(), p_postingSelections.end(), id, g_edgeComparer) - p_postingSelections.begin();
-//                        for (int j = 0; j < p_postingListSizes[id]; ++j)
-//                        {
-//                            if (p_postingSelections[selectIdx].headID != id)
-//                            {
-//                                LOG(Helper::LogLevel::LL_Error, "Selection ID NOT MATCH\n");
-//                                exit(1);
-//                            }
-//
-//                            i32Val = p_postingSelections[selectIdx++].fullID;
-//                            if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
-//                                LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-//                                exit(1);
-//                            }
-//                            if (ptr->WriteBinary(p_fullVectors->PerVectorDataSize(), reinterpret_cast<char*>(p_fullVectors->GetVector(i32Val))) != p_fullVectors->PerVectorDataSize()) {
-//                                LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-//                                exit(1);
-//                            }
-//                            listOffset += p_spacePerVector;
-//                        }
-//                    }
-//
-//                    paddingSize = c_pageSize - (listOffset % c_pageSize);
-//                    if (paddingSize == c_pageSize)
-//                    {
-//                        paddingSize = 0;
-//                    }
-//                    else
-//                    {
-//                        listOffset += paddingSize;
-//                        paddedSize += paddingSize;
-//                    }
-//
-//                    if (paddingSize > 0)
-//                    {
-//                        if (ptr->WriteBinary(paddingSize, reinterpret_cast<char*>(paddingVals.get())) != paddingSize) {
-//                            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-//                            exit(1);
-//                        }
-//                    }
-//
-//                    LOG(Helper::LogLevel::LL_Info, "Padded Size: %llu, final total size: %llu.\n", paddedSize, listOffset);
-//
-//                    LOG(Helper::LogLevel::LL_Info, "Output done...\n");
-//                }
             }
 
             template<typename ValueType>
@@ -502,17 +224,17 @@ namespace SPTAG {
 
                 std::sort(selections.begin(), selections.end(), g_edgeComparer);
 
-               int postingSizeLimit = INT_MAX;
-               if (p_opts.m_postingPageLimit > 0)
-               {
-                   postingSizeLimit = static_cast<int>(p_opts.m_postingPageLimit * c_pageSize / (fullVectors->PerVectorDataSize() + sizeof(int)));
-               }
-               if (COMMON_OPTS.m_addHeadToPost)
-               {
-                   postingSizeLimit += 1;
-               }
+                int postingSizeLimit = INT_MAX;
+                if (p_opts.m_postingPageLimit > 0)
+                {
+                    postingSizeLimit = static_cast<int>(p_opts.m_postingPageLimit * c_pageSize / (fullVectors->PerVectorDataSize() + sizeof(int)));
+                }
+                if (COMMON_OPTS.m_addHeadToPost)
+                {
+                    postingSizeLimit += 1;
+                }
 
-               LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", postingSizeLimit);
+                LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", postingSizeLimit);
 
                 {
                     std::vector<int> replicaCountDist(p_opts.m_replicaCount + 1, 0);
@@ -533,48 +255,22 @@ namespace SPTAG {
                     }
                 }
 
-               for (int i = 0; i < postingListSize.size(); ++i)
-               {
-                   if (postingListSize[i] <= postingSizeLimit)
-                   {
-                       continue;
-                   }
+                for (int i = 0; i < postingListSize.size(); ++i)
+                {
+                    if (postingListSize[i] <= postingSizeLimit)
+                    {
+                        continue;
+                    }
 
-                   std::size_t selectIdx = std::lower_bound(selections.begin(), selections.end(), i, g_edgeComparer) - selections.begin();
-					/*
-					int deletenum = postingListSize[i] - postingSizeLimit;
-					for (char remove = p_opts.m_replicaCount - 1; deletenum > 0 && remove > 0; remove--)
-					{
-						for (int dropID = postingListSize[i] - 1; deletenum > 0 && dropID >= 0; --dropID)
-						{
-							if (selections[selectIdx + dropID].order == remove) {
-								selections[selectIdx + dropID].order = -1;
-								--replicaCount[selections[selectIdx + dropID].fullID];
-								deletenum--;
-							}
-						}
-					}
+                    std::size_t selectIdx = std::lower_bound(selections.begin(), selections.end(), i, g_edgeComparer) - selections.begin();
+                    for (size_t dropID = postingSizeLimit; dropID < postingListSize[i]; ++dropID)
+                    {
+                        int fullID = selections[selectIdx + dropID].fullID;
+                        --replicaCount[fullID];
+                    }
 
-					for (int iid = 0; iid < postingSizeLimit + deletenum; iid++) {
-						if (selections[selectIdx + iid].order < 0) {
-							for (int ij = iid + 1; ij < postingListSize[i]; ij++) {
-								if (selections[selectIdx + ij].order >= 0) {
-									std::swap(selections[selectIdx + iid], selections[selectIdx + ij]);
-									break;
-								}
-							}
-						}
-					}
-					*/
-
-                   for (size_t dropID = postingSizeLimit; dropID < postingListSize[i]; ++dropID)
-                   {
-                       int fullID = selections[selectIdx + dropID].fullID;
-                       --replicaCount[fullID];
-                   }
-
-                   postingListSize[i] = postingSizeLimit;
-               }
+                    postingListSize[i] = postingSizeLimit;
+                }
 
                 if (p_opts.m_outputEmptyReplicaID)
                 {
@@ -610,9 +306,6 @@ namespace SPTAG {
                     }
                 }
 
-                // VectorSize + VectorIDSize
-//                size_t vectorInfoSize = sizeof(ValueType) * fullVectors->Dimension() + sizeof(int);
-
                 std::string postinglist;
                 for (int id = 0; id < postingListSize.size(); id++) 
                 {
@@ -627,11 +320,9 @@ namespace SPTAG {
                         }
                         int fullID = selections[selectIdx++].fullID;
                         size_t dim = fullVectors->Dimension();
+                        // First Vector ID, then Vector
                         postinglist += Helper::Serialize<int>(&fullID, 1);
                         postinglist += Helper::Serialize<ValueType>(fullVectors->GetVector(fullID), dim);
-//                        memcpy(&postinglist[j * vectorInfoSize], &fullID, sizeof(int));
-//                        memcpy(&postinglist[j * vectorInfoSize + sizeof(int)], fullVectors->GetVector(fullID),
-//                               sizeof(VectorValueType) * fullVectors->Dimension());
                     }
 
                     db->Put(WriteOptions(), Helper::Serialize<int>(&id, 1), postinglist);
@@ -667,20 +358,6 @@ namespace SPTAG {
                 m_deletedID.Initialize(i32Val);
                 m_deletedID.Save(COMMON_OPTS.m_deleteID);
                 
-//                std::unique_ptr<int[]> postPageNum;
-//                std::unique_ptr<std::uint16_t[]> postPageOffset;
-//                std::vector<int> postingOrderInIndex;
-//                SelectPostingOffset(vectorInfoSize, postingListSize, postPageNum, postPageOffset, postingOrderInIndex);
-//
-//                OutputSSDIndexFile(outputFile,
-//                    vectorInfoSize,
-//                    postingListSize,
-//                    selections,
-//                    postPageNum,
-//                    postPageOffset,
-//                    postingOrderInIndex,
-//                    fullVectors);
-
                 double elapsedMinutes = sw.getElapsedMin();
                 LOG(Helper::LogLevel::LL_Info, "Total used time: %.2lf minutes (about %.2lf hours).\n", elapsedMinutes, elapsedMinutes / 60.0);
             }

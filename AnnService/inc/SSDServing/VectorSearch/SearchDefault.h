@@ -9,7 +9,7 @@
 #endif
 
 #include "inc/Core/BKT/Index.h"
-#include "inc/Core/Common/BKTreeUpdate.h"
+#include "inc/Core/Common/BKTree.h"
 #include "inc/Core/Common/Dataset.h"
 #include "inc/Core/Common/QueryResultSet.h"
 #include "inc/Core/VectorIndex.h"
@@ -190,12 +190,8 @@ namespace SPTAG {
 
 				ErrorCode InsertPostingList(SPTAG::COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, SizeType VID) 
 				{
-					//fetch postingList & update
-
-					//check the size of postingList
-					//if there are oversize postingList
-					//clustering, update headvector postingList
-					//add new vecror
+					// Fetch postingList, then update.
+					// If postingList is oversized, cluster to split.
 					if (COMMON_OPTS.m_indexAlgoType == IndexAlgoType::BKT) {
 						int replicaCount = 0;
 						BasicResult* queryResults = p_queryResults.GetResults();
@@ -213,8 +209,8 @@ namespace SPTAG {
                             for (int j = 0; j < replicaCount; ++j)
                             {
 								float nnDist = m_index->ComputeDistance(
-                                m_index->GetSample(queryResults[i].VID),
-                                m_index->GetSample(selections[j].headID));
+                                							m_index->GetSample(queryResults[i].VID),
+                                							m_index->GetSample(selections[j].headID));
 
                                 // LOG(Helper::LogLevel::LL_Info,  "NNDist: %f Original: %f\n", nnDist, queryResults[i].Score);
                                 if (nnDist <= queryResults[i].Dist)
@@ -305,9 +301,9 @@ namespace SPTAG {
 							vectorNum += 1;
 							if (postingList.size() > m_postingPageLimit * p_pageSize)
 							{
-								//need to split and insert into headinedex
+								// need to split and insert into headinedex
 								//LOG(Helper::LogLevel::LL_Info, "PostingList Oversize, Need to Split\n");
-								//extract out vector and id from postingList
+								// extract out vector and id from postingList
 								COMMON::Dataset<ValueType> smallSample;
 								std::shared_ptr<uint8_t> vectorBuffer;
 								//smallSample[i] -> VID
@@ -362,7 +358,6 @@ namespace SPTAG {
 								int first = 0;
 								bool isHeadUpdate = false;
 								std::vector<SizeType> fatherNodes;
-								fatherNodes.clear();
 								fatherNodes.emplace_back(selections[i].headID);
 								for (int k = 0; k < m_k; k++) 
 								{
@@ -405,8 +400,7 @@ namespace SPTAG {
 									postingList.clear();
 									first += args.counts[k];
 								}
-							} else
-							{
+							} else {
 								db->Put(WriteOptions(), Helper::Serialize<int>(&selections[i].headID, 1), postingList);
 							}
 						}
@@ -424,6 +418,15 @@ namespace SPTAG {
 					auto ret = InsertPostingList(p_queryResults, p_stats, m_vectornum);
 					m_vectornum++;
 					return ret;
+				}
+
+				void Rebuild()
+				{
+					// m_index should have a virtual rebuild method, now I just cast
+					LOG(Helper::LogLevel::LL_Info, "Rebuild Head Index...\n");
+					auto bkt = dynamic_cast<SPTAG::BKT::Index<ValueType>*>(m_index.get());
+					bkt->Rebuild();
+					LOG(Helper::LogLevel::LL_Info, "Finish Rebuild Head Index...\n");
 				}
 
 				ErrorCode Delete(const SizeType& p_id) {
@@ -666,6 +669,11 @@ namespace SPTAG {
 				int getSplitNum()
 				{
 					return m_split_num;
+				}
+
+				int getVecNum()
+				{
+					return m_vectornum;
 				}
 
 				std::shared_ptr<VectorIndex> HeadIndex() {

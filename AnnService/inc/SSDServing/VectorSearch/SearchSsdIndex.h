@@ -855,6 +855,7 @@ namespace SPTAG {
                         }
                     }
 
+                    /*
                     auto sptr = SPTAG::f_createIO();
                     if (sptr == nullptr || !sptr->Initialize(p_opts.m_headDistPostingnum.c_str(), std::ios::binary | std::ios::out))
                     {
@@ -924,7 +925,6 @@ namespace SPTAG {
                             }
                         }
                     }
-                    /*
                     if (!outputFile.empty())
                     {
                         LOG(Helper::LogLevel::LL_Info, "Start output to %s %d\n", outputFile.c_str(), i);
@@ -932,6 +932,183 @@ namespace SPTAG {
                     }
                     */
                 }
+            }
+
+            std::string GetTruthFileName(std::string& truthFilePrefix, int vectorCount)
+            {
+                std::string fileName(truthFilePrefix);
+                fileName += "-";
+                if (vectorCount < 1000)
+                {
+                    fileName += std::to_string(vectorCount);
+                } 
+                else if (vectorCount < 1000000)
+                {
+                    fileName += std::to_string(vectorCount/1000);
+                    fileName += "k";
+                }
+                else if (vectorCount < 1000000000)
+                {
+                    fileName += std::to_string(vectorCount/1000000);
+                    fileName += "M";
+                }
+                else
+                {
+                    fileName += std::to_string(vectorCount/1000000000);
+                    fileName += "B";
+                }
+                return fileName;
+            }
+
+            template <typename ValueType>
+            void TestIncremental(Options& p_opts)
+            {
+                LOG(Helper::LogLevel::LL_Info, "Start incremental test\n");
+
+                std::string truthFilePrefix = p_opts.m_truthFilePrefix;
+                int step = p_opts.m_step;
+                if (step == 0)
+                {
+                    LOG(Helper::LogLevel::LL_Error, "Incremental Test Error, Need to set step.\n");
+                    exit(1);
+                }
+
+                if (!p_opts.m_logFile.empty())
+                {
+                    SPTAG::g_pLogger.reset(new Helper::FileLogger(Helper::LogLevel::LL_Info, p_opts.m_logFile.c_str()));
+                }
+                int numThreads = p_opts.m_iNumberOfThreads;
+                int asyncCallQPS = p_opts.m_qpsLimit;
+
+                int internalResultNum = std::max<int>(p_opts.m_internalResultNum, 64);
+                int K = std::min<int>(p_opts.m_resultNum, internalResultNum);
+
+                SearchDefault<ValueType> searcher;
+                LOG(Helper::LogLevel::LL_Info, "Start setup index...\n");
+                searcher.Setup(p_opts);
+
+                LOG(Helper::LogLevel::LL_Info, "Setup index finish, start setup hint...\n");
+                searcher.SetHint(numThreads, internalResultNum, asyncCallQPS > 0, p_opts);
+
+                searcher.LoadDeleteID(COMMON_OPTS.m_deleteID);
+
+                LOG(Helper::LogLevel::LL_Info, "Start loading VectorSet...\n");
+                std::shared_ptr<Helper::ReaderOptions> vectorOptions(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_vectorType, COMMON_OPTS.m_vectorDelimiter));
+                auto vectorReader = Helper::VectorSetReader::CreateInstance(vectorOptions);
+                if (ErrorCode::Success != vectorReader->LoadFile(COMMON_OPTS.m_extraVectorPath))
+                {
+                    LOG(Helper::LogLevel::LL_Error, "Failed to read extra vector file.\n");
+                    exit(1);
+                }
+                auto extraVectors = vectorReader->GetVectorSet();
+
+                LOG(Helper::LogLevel::LL_Info, "Start loading QuerySet...\n");
+                std::shared_ptr<Helper::ReaderOptions> queryOptions(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_queryType, COMMON_OPTS.m_queryDelimiter));
+                auto queryReader = Helper::VectorSetReader::CreateInstance(queryOptions);
+                if (ErrorCode::Success != queryReader->LoadFile(COMMON_OPTS.m_queryPath))
+                {
+                    LOG(Helper::LogLevel::LL_Error, "Failed to read query file.\n");
+                    exit(1);
+                }
+
+                std::vector<std::set<int>> truth;
+
+                auto querySet = queryReader->GetVectorSet();
+                int numQueries = querySet->Count();
+                int insertCount = extraVectors->Count();
+                int curCount = searcher.getVecNum();
+
+                std::string truthfile;
+
+                LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
+                LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
+
+                std::vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
+                std::vector<SearchStats> stats(numQueries);
+                std::vector<COMMON::QueryResultSet<ValueType>> insertResults(insertCount, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
+                for (int i = 0; i < numQueries; ++i)
+                {
+                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                    results[i].Reset();
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "Start ANN Search...\n");
+
+                if (asyncCallQPS == 0)
+                {
+                    SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
+                }
+                else
+                {
+                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
+
+                float recall = 0;
+
+                recall = CalcRecall(results, truth, K);
+                LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
+
+                for (int i = 0; i < insertCount; i++)
+                {
+                    insertResults[i].SetTarget(reinterpret_cast<ValueType*>(extraVectors->GetVector(i)));
+                    insertResults[i].Reset();
+                }
+                for (int i = 0; i < insertCount; i++)
+                {
+                    searcher.Insert(insertResults[i], stats[i]);
+                    if ((i+1) % 10000 == 0) LOG(Helper::LogLevel::LL_Info, "inserted %d vectors\n", i+1);
+                    if ((i+1) % step == 0)
+                    {
+                        curCount += step;
+                        LOG(Helper::LogLevel::LL_Info, "Total Vector num %d \n", curCount);
+                        LOG(Helper::LogLevel::LL_Info, "Start Searching\n");
+                        for (int i = 0; i < numQueries; ++i)
+                        {
+                            results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                            results[i].Reset();
+                        }
+                        if (asyncCallQPS == 0)
+                        {
+                            SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
+                        }
+                        else
+                        {
+                            SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
+                        }
+                        LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
+                        LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
+                        recall = CalcRecall(results, truth, K);
+                        LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
+                    }
+                }
+
+                searcher.Rebuild();
+
+                for (int i = 0; i < numQueries; ++i)
+                {
+                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                    results[i].Reset();
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "Start ANN Search...\n");
+
+                if (asyncCallQPS == 0)
+                {
+                    SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
+                }
+                else
+                {
+                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
+
+                LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
+                LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
+                recall = CalcRecall(results, truth, K);
+                LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
             }
 
             template <typename ValueType>
@@ -944,6 +1121,10 @@ namespace SPTAG {
                 } else if (COMMON_OPTS.m_testUpdateSta)
                 {
                     TestUpdateSta<ValueType>(p_opts);
+                    return;
+                } else if (COMMON_OPTS.m_testInc)
+                {
+                    TestIncremental<ValueType>(p_opts);
                     return;
                 }
                 std::string outputFile = p_opts.m_searchResult;

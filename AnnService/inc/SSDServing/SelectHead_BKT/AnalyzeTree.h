@@ -3,7 +3,7 @@
 #include <unordered_map>
 
 #include "inc/Core/Common.h"
-#include "inc/Core/Common/BKTreeUpdate.h"
+#include "inc/Core/Common/BKTree.h"
 #include "inc/Core/VectorSet.h"
 
 #include "inc/SSDServing/SelectHead_BKT/BKTNodeInfo.h"
