@@ -63,15 +63,6 @@ namespace SPTAG {
 				mkdir(folderPath.c_str());
 			}
 
-			dbOptions.IncreaseParallelism();
-			dbOptions.OptimizeLevelStyleCompaction();
-			dbOptions.create_if_missing = true;
-			kDBPath = COMMON_OPTS.m_ssdIndex;
-
-			// open DB
-			Status s = DB::Open(dbOptions, kDBPath, &db);
-			assert(s.op());
-
 			VectorSearch::TimeUtils::StopW sw;
 
 			SSDServing::SelectHead_BKT::Options slOpts;
@@ -102,12 +93,26 @@ namespace SPTAG {
 			LOG(Helper::LogLevel::LL_Info, "select head time: %.2lf\nbuild head time: %.2lf\n", selectHeadTime, buildHeadTime);
 			sw.reset();
 
+			dbOptions.IncreaseParallelism();
+			dbOptions.OptimizeLevelStyleCompaction();
+			dbOptions.create_if_missing = true;
+			kDBPath = COMMON_OPTS.m_ssdIndex;
+
+
 			SSDServing::VectorSearch::Options vsOpts;
 			auto& buildSSDParameters = iniReader.GetParameters("BuildSSDIndex");
 			for (const auto& iter : buildSSDParameters)
 			{
 				vsOpts.SetParameter(iter.first.c_str(), iter.second.c_str());
 			}
+			// open DB
+			if (vsOpts.m_buildSsdIndex && direxists(kDBPath.c_str()))
+			{
+				rmdir(kDBPath.c_str());
+			}
+
+			Status s = DB::Open(dbOptions, kDBPath, &db);
+			assert(s.op());
 			if (vsOpts.m_execute) {
 				SSDServing::VectorSearch::Bootstrap(vsOpts);
 			}
