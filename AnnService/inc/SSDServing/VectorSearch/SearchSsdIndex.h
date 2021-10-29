@@ -1049,6 +1049,7 @@ namespace SPTAG {
 
                 recall = CalcRecall(results, truth, K);
                 LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
+                searcher.setSplitZero();
 
                 for (int i = 0; i < insertCount; i++)
                 {
@@ -1083,6 +1084,7 @@ namespace SPTAG {
                         LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
                     }
                 }
+                LOG(Helper::LogLevel::LL_Info, "Insert finished, split %d time\n", searcher.getSplitNum());
 
                 searcher.Rebuild();
 

@@ -1,3 +1,4 @@
+#include <climits>
 #ifdef DefineSSDParameter
 
 // Both Building and Searching
@@ -27,4 +28,6 @@ DefineSSDParameter(m_SSDVectorDistPath, std::string, std::string(""), "SSDVector
 
 DefineSSDParameter(m_truthFilePrefix, std::string, std::string(""), "TruthFilePrefix")
 DefineSSDParameter(m_step, int, 0, "Step")
+DefineSSDParameter(m_k, int, 2, "ClusterNum")
+DefineSSDParameter(m_searchVectorLimit, int, INT_MAX, "SearchVectorLimit")
 #endif

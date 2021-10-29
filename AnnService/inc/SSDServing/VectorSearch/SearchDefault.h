@@ -652,7 +652,9 @@ namespace SPTAG {
 
 					m_split_num = 0;
 
-					m_searchVectorLimit = 1000;
+					m_k = p_opts.m_k;
+
+					m_searchVectorLimit = p_opts.m_searchVectorLimit;
 
 					if (p_asyncCall)
 					{
@@ -744,7 +746,7 @@ namespace SPTAG {
 
 				int m_vectorSize;
 
-				int m_k = 2;
+				int m_k = 4;
 
 				int m_vectornum;
 

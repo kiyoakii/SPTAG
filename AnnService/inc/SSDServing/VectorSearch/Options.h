@@ -40,6 +40,8 @@ namespace SPTAG {
 				// Incremental Time-line
 				std::string m_truthFilePrefix;
 				int m_step;
+				int m_k;
+				int m_searchVectorLimit;
 
 				Options() {
 #define DefineSSDParameter(VarName, VarType, DefaultValue, RepresentStr) \
