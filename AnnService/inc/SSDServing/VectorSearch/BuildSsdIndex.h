@@ -633,6 +633,7 @@ namespace SPTAG {
 //                        memcpy(&postinglist[j * vectorInfoSize + sizeof(int)], fullVectors->GetVector(fullID),
 //                               sizeof(VectorValueType) * fullVectors->Dimension());
                     }
+
                     db->Put(WriteOptions(), Helper::Serialize<int>(&id, 1), postinglist);
                 }
                 auto ptr = SPTAG::f_createIO();
@@ -647,7 +648,21 @@ namespace SPTAG {
                     LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndexInfo File!");
                     exit(1);
                 }
-
+                //Number of postings
+                i32Val = static_cast<int>(postingListSize.size());
+                if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
+                    LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndexInfo File!");
+                    exit(1);
+                }
+                for(int id = 0; id < postingListSize.size(); id++)
+                {
+                    i32Val = postingListSize[id];
+                    if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndexInfo File!");
+                        exit(1);
+                    }
+                }
+                i32Val = static_cast<int>(fullVectors->Count());
                 COMMON::Labelset m_deletedID;
                 m_deletedID.Initialize(i32Val);
                 m_deletedID.Save(COMMON_OPTS.m_deleteID);

@@ -133,6 +133,14 @@ namespace SPTAG {
 
 					LOG(Helper::LogLevel::LL_Info, "Current vector num: %d.\n", m_vectornum);
 
+					input.read(reinterpret_cast<char*>(&m_posting_num), sizeof(m_posting_num));
+
+					LOG(Helper::LogLevel::LL_Info, "Current posting num: %d.\n", m_posting_num);
+
+					m_postingSizes.resize(m_posting_num);
+
+					input.read(reinterpret_cast<char*>(m_postingSizes.data()), sizeof(int)*m_posting_num);
+
 					input.close();
 
 					m_extraSearcher.reset(new ExtraFullGraphSearcher<ValueType>(extraFullGraphFile));
@@ -293,6 +301,7 @@ namespace SPTAG {
 							//LOG(Helper::LogLevel::LL_Info, "No Found Deleted ID, Insert ID: %d\n", VID);
 							postingList += Helper::Serialize<int>(&VID, 1);
 							postingList += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
+							m_postingSizes[selections[i].headID]++;
 							vectorNum += 1;
 							if (postingList.size() > m_postingPageLimit * p_pageSize)
 							{
@@ -336,6 +345,16 @@ namespace SPTAG {
 									db->Put(WriteOptions(), Helper::Serialize<int>(&selections[i].headID, 1), postingList);
 									return ErrorCode::Success;
 								}
+								/*
+								for (int k = 0; k < m_k; k++)
+								{
+									if (args.counts[k] < 9) 
+									{
+										db->Put(WriteOptions(), Helper::Serialize<int>(&selections[i].headID, 1), postingList);
+										return ErrorCode::Success;
+									}
+								}
+								*/
 
 								postingList.resize(0);
 								postingList.clear();
@@ -374,11 +393,13 @@ namespace SPTAG {
 											//BUG: newHeadVID maybe a exist head vector
 											m_vectorTranslateMap.AddBatch(&newHeadVID, 1);
 											newHeadVID = m_vectorTranslateMap.R() - 1;
+											m_postingSizes.emplace_back(0);
 											m_split_num++;
 											m_index->AddHeadIndex(smallSample[localindices[first + args.counts[k] - 1]], 1, COMMON_OPTS.m_dim, fatherNodes);
 										}
 									}
-									LOG(Helper::LogLevel::LL_Info, "Headid: %d split into : %d\n", selections[i].headID, newHeadVID);
+									m_postingSizes[newHeadVID] = args.counts[k];
+									//LOG(Helper::LogLevel::LL_Info, "Headid: %d split into : %d\n", selections[i].headID, newHeadVID);
 									db->Put(WriteOptions(), Helper::Serialize<int>(&newHeadVID, 1), postingList);
 									postingList.resize(0);
 									postingList.clear();
@@ -496,6 +517,7 @@ namespace SPTAG {
 						auto_ws = GetWs();
 						auto_ws->m_postingIDs.clear();
 						//LOG(Helper::LogLevel::LL_Info, "Adding PostingList\n");
+						int totalVectors = 0;
 						for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
 						{
 							auto res = p_queryResults.GetResult(i);
@@ -503,6 +525,11 @@ namespace SPTAG {
 							{
 								auto_ws->m_postingIDs.emplace_back(res->VID);
 								p_stats.m_headAndDist[res->VID] = res->Dist;
+								totalVectors += m_postingSizes[res->VID];
+								if (totalVectors > m_searchVectorLimit)
+								{
+									break;
+								}
 							}
 						}
 						const uint32_t postingListCount = static_cast<uint32_t>(auto_ws->m_postingIDs.size());
@@ -622,6 +649,8 @@ namespace SPTAG {
 
 					m_split_num = 0;
 
+					m_searchVectorLimit = 1000;
+
 					if (p_asyncCall)
 					{
 						m_threadPool.reset(new Helper::ThreadPool());
@@ -714,6 +743,12 @@ namespace SPTAG {
 				bool m_clearHead = true;
 
 				int m_split_num;
+
+				int m_searchVectorLimit;
+
+				int m_posting_num;
+				
+				std::vector<int> m_postingSizes;
 
 				boost::lockfree::stack<ExtraWorkSpace*> m_workspaces;
 			};
