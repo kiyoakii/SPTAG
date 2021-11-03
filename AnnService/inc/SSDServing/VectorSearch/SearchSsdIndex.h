@@ -622,9 +622,12 @@ namespace SPTAG {
                     recall = static_cast<float>(recall)/static_cast<float>(results.size() * K);
                     LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
                 }
-                //std::string storeFilePrev = p_opts.m_SSDVectorDistPath;
-                //storeFilePrev += "_prev";
-                //searcher.CalDBDist(storeFilePrev);
+                std::string storeFilePrev = p_opts.m_SSDVectorDistPath;
+                if (!storeFilePrev.empty())
+                {
+                    storeFilePrev += "_prev";
+                    searcher.CalDBDist(storeFilePrev);
+                }
                 /*
                 if (!outputFile.empty())
                 {
@@ -836,9 +839,12 @@ namespace SPTAG {
                         LOG(Helper::LogLevel::LL_Info, "Checked Compare(Total): Prev: %d Curr: %d\n", totalCountPrev/numQueries, totalCountCur/numQueries);
                     }
 
-                    //std::string storeFileCurr = p_opts.m_SSDVectorDistPath;
-                    //storeFileCurr += "_curr";
-                    //searcher.CalDBDist(storeFileCurr);
+                    std::string storeFileCurr = p_opts.m_SSDVectorDistPath;
+                    if (!storeFileCurr.empty())
+                    {
+                        storeFileCurr += "_curr";
+                        searcher.CalDBDist(storeFileCurr);
+                    }
 
                     if (!p_opts.m_randomDisabled)
                     {
@@ -855,76 +861,79 @@ namespace SPTAG {
                         }
                     }
 
+                    if (p_opts.m_storeSearchDetail)
+                    {
+                        auto sptr = SPTAG::f_createIO();
+                        if (sptr == nullptr || !sptr->Initialize(p_opts.m_headDistPostingnum.c_str(), std::ios::binary | std::ios::out))
+                        {
+                            LOG(Helper::LogLevel::LL_Error, "Failed open file %s\n", p_opts.m_headDistPostingnum.c_str());
+                            exit(1);
+                        }
+                        for (int k = 0; k < numQueries; k++)
+                        {
+                            if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&recallPrev[k])) != sizeof(int)) {
+                                LOG(Helper::LogLevel::LL_Error, "Fail to store recallPrev, query number: %d\n", k);
+                                exit(1);
+                            }
+
+                            if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&recallCur[k])) != sizeof(int)) {
+                                LOG(Helper::LogLevel::LL_Error, "Fail to store recallCurr, query number: %d\n", k);
+                                exit(1);
+                            }
+
+                            int postingSize = statsPrev[k].m_headAndDist.size();
+                            if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&postingSize)) != sizeof(int)) {
+                                LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev, query number: %d\n", k);
+                                exit(1);
+                            }
+                            for (std::map<int,float>::iterator it=statsPrev[k].m_headAndDist.begin(); it!=statsPrev[k].m_headAndDist.end(); ++it)
+                            {
+                                int headID = it->first;
+                                if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&headID)) != sizeof(int)) {
+                                    LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev headID, query number: %d\n", k);
+                                    exit(1);
+                                }
+
+                                float headDist = it->second;
+                                if (sptr->WriteBinary(sizeof(float), reinterpret_cast<char*>(&headDist)) != sizeof(float)) {
+                                    LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev Dist, query number: %d\n", k);
+                                    exit(1);
+                                }
+
+                                int headSize = statsPrev[k].m_headAndPostingSize[it->first];
+                                if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&headSize)) != sizeof(int)) {
+                                    LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev posting size, query number: %d\n", k);
+                                    exit(1);
+                                }
+                            }
+                            postingSize = stats[k].m_headAndDist.size();
+                            if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&postingSize)) != sizeof(int)) {
+                                LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev, query number: %d\n", k);
+                                exit(1);
+                            }
+                            for (std::map<int,float>::iterator it=stats[k].m_headAndDist.begin(); it!=stats[k].m_headAndDist.end(); ++it)
+                            {
+                                int headID = it->first;
+                                if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&headID)) != sizeof(int)) {
+                                    LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev headID, query number: %d\n", k);
+                                    exit(1);
+                                }
+
+                                float headDist = it->second;
+                                if (sptr->WriteBinary(sizeof(float), reinterpret_cast<char*>(&headDist)) != sizeof(float)) {
+                                    LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev Dist, query number: %d\n", k);
+                                    exit(1);
+                                }
+
+                                int headSize = stats[k].m_headAndPostingSize[it->first];
+                                if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&headSize)) != sizeof(int)) {
+                                    LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev posting size, query number: %d\n", k);
+                                    exit(1);
+                                }
+                            }
+                        }
+                    }
                     /*
-                    auto sptr = SPTAG::f_createIO();
-                    if (sptr == nullptr || !sptr->Initialize(p_opts.m_headDistPostingnum.c_str(), std::ios::binary | std::ios::out))
-                    {
-                        LOG(Helper::LogLevel::LL_Error, "Failed open file %s\n", p_opts.m_headDistPostingnum.c_str());
-                        exit(1);
-                    }
-                    for (int k = 0; k < numQueries; k++)
-                    {
-                        if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&recallPrev[k])) != sizeof(int)) {
-                            LOG(Helper::LogLevel::LL_Error, "Fail to store recallPrev, query number: %d\n", k);
-                            exit(1);
-                        }
-
-                        if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&recallCur[k])) != sizeof(int)) {
-                            LOG(Helper::LogLevel::LL_Error, "Fail to store recallCurr, query number: %d\n", k);
-                            exit(1);
-                        }
-
-                        int postingSize = statsPrev[k].m_headAndDist.size();
-                        if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&postingSize)) != sizeof(int)) {
-                            LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev, query number: %d\n", k);
-                            exit(1);
-                        }
-                        for (std::map<int,float>::iterator it=statsPrev[k].m_headAndDist.begin(); it!=statsPrev[k].m_headAndDist.end(); ++it)
-                        {
-                            int headID = it->first;
-                            if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&headID)) != sizeof(int)) {
-                                LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev headID, query number: %d\n", k);
-                                exit(1);
-                            }
-
-                            float headDist = it->second;
-                            if (sptr->WriteBinary(sizeof(float), reinterpret_cast<char*>(&headDist)) != sizeof(float)) {
-                                LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev Dist, query number: %d\n", k);
-                                exit(1);
-                            }
-
-                            int headSize = statsPrev[k].m_headAndPostingSize[it->first];
-                            if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&headSize)) != sizeof(int)) {
-                                LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev posting size, query number: %d\n", k);
-                                exit(1);
-                            }
-                        }
-                        postingSize = stats[k].m_headAndDist.size();
-                        if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&postingSize)) != sizeof(int)) {
-                            LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev, query number: %d\n", k);
-                            exit(1);
-                        }
-                        for (std::map<int,float>::iterator it=stats[k].m_headAndDist.begin(); it!=stats[k].m_headAndDist.end(); ++it)
-                        {
-                            int headID = it->first;
-                            if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&headID)) != sizeof(int)) {
-                                LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev headID, query number: %d\n", k);
-                                exit(1);
-                            }
-
-                            float headDist = it->second;
-                            if (sptr->WriteBinary(sizeof(float), reinterpret_cast<char*>(&headDist)) != sizeof(float)) {
-                                LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev Dist, query number: %d\n", k);
-                                exit(1);
-                            }
-
-                            int headSize = stats[k].m_headAndPostingSize[it->first];
-                            if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&headSize)) != sizeof(int)) {
-                                LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev posting size, query number: %d\n", k);
-                                exit(1);
-                            }
-                        }
-                    }
                     if (!outputFile.empty())
                     {
                         LOG(Helper::LogLevel::LL_Info, "Start output to %s %d\n", outputFile.c_str(), i);
@@ -1082,11 +1091,18 @@ namespace SPTAG {
                         LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
                         recall = CalcRecall(results, truth, K);
                         LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
+                        LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times\n", i+1, searcher.getSplitNum());
                     }
                 }
                 LOG(Helper::LogLevel::LL_Info, "Insert finished, split %d time\n", searcher.getSplitNum());
 
-                searcher.Rebuild();
+                //searcher.setSplitZero();
+
+                //searcher.SplitLongPosting();
+
+                //LOG(Helper::LogLevel::LL_Info, "spliting in the end, split %d time\n", searcher.getSplitNum());
+
+                //searcher.Rebuild();
 
                 for (int i = 0; i < numQueries; ++i)
                 {
@@ -1106,6 +1122,10 @@ namespace SPTAG {
                 }
 
                 LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
+
+                std::string storeFileCurr = p_opts.m_SSDVectorDistPath;
+                if (!storeFileCurr.empty())
+                    searcher.CalDBDist(storeFileCurr);
 
                 LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
                 LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
@@ -1345,6 +1365,10 @@ namespace SPTAG {
                     static_cast<double>(exListSum) / numQueries);
 
                 LOG(Helper::LogLevel::LL_Info, "\n");
+
+                std::string storeFileCurr = p_opts.m_SSDVectorDistPath;
+                if (!storeFileCurr.empty())
+                    searcher.CalDBDist(storeFileCurr);
             }
 		}
 	}

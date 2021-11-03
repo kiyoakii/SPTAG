@@ -455,6 +455,108 @@ namespace SPTAG {
 					return ErrorCode::Success;
 				}
 
+				ErrorCode SplitLongPosting()
+				{
+					std::string postingList;
+					int postingNumPrev = m_vectorTranslateMap.R();
+					//LOG(Helper::LogLevel::LL_Info, "Total length :%d\n", postingNumPrev);
+					for (int i = 0; i < postingNumPrev; i++)
+					{
+						//LOG(Helper::LogLevel::LL_Info, "Scanning :%d\n", i);
+						int vectorNum = m_postingSizes[i];
+						//LOG(Helper::LogLevel::LL_Info, "length :%d\n", vectorNum);
+						if (vectorNum > m_postingVectorLimit * 0.8) {
+							postingList.clear();
+							db->Get(ReadOptions(), Helper::Serialize<int>(&i, 1), &postingList);
+							std::shared_ptr<uint8_t> postingBuffer;
+							postingBuffer.reset(new uint8_t[postingList.size()], std::default_delete<uint8_t[]>());
+							uint8_t* bufferVoidPtr = reinterpret_cast<uint8_t*>(postingBuffer.get());
+							memcpy(bufferVoidPtr, postingList.data(), postingList.size());
+							COMMON::Dataset<ValueType> smallSample;
+							std::shared_ptr<uint8_t> vectorBuffer;
+							//smallSample[i] -> VID
+							std::vector<int> localindicesInsert;
+							//localindices for kmeans smallSample[i] -> localindices[j] = i
+							std::vector<int> localindices;
+							localindicesInsert.resize(vectorNum);
+							localindices.resize(vectorNum);
+							bufferVoidPtr = reinterpret_cast<uint8_t*>(postingBuffer.get());
+							memcpy(bufferVoidPtr, postingList.data(), postingList.size());
+							vectorBuffer.reset(new uint8_t[m_vectorSize * vectorNum], std::default_delete<uint8_t[]>());
+							bufferVoidPtr = reinterpret_cast<uint8_t*>(vectorBuffer.get());
+							for (int j = 0; j < vectorNum; j++)
+							{
+								uint8_t* vectorInfo = postingBuffer.get() + j * (m_vectorSize + sizeof(int));
+								localindicesInsert[j] = *(reinterpret_cast<int*>(vectorInfo));
+								localindices[j] = j;
+								memcpy(bufferVoidPtr, vectorInfo + sizeof(int), m_vectorSize);
+								bufferVoidPtr += m_vectorSize;
+							}
+							smallSample.Initialize(vectorNum, COMMON_OPTS.m_dim, reinterpret_cast<ValueType*>(vectorBuffer.get()), false);
+							SPTAG::COMMON::KmeansArgs<ValueType> args(m_k, smallSample.C(), (SizeType)localindicesInsert.size(), 1, m_index->GetDistCalcMethod());
+							
+							//int fBalanceFactor = SPTAG::COMMON::DynamicFactorSelect(smallSample, localindices, 0, (SizeType)localindices.size(), args);
+
+							std::random_shuffle(localindices.begin(), localindices.end());
+
+							int numClusters = SPTAG::COMMON::KmeansClustering(smallSample, localindices, 0, (SizeType)localindices.size(), args);
+
+							if(numClusters <= 1)
+							{
+								continue;
+							}
+							postingList.resize(0);
+							postingList.clear();
+							long long newHeadVID = -1;
+							int first = 0;
+							bool isHeadUpdate = false;
+							std::vector<SizeType> fatherNodes;
+							fatherNodes.emplace_back(i);
+							for (int k = 0; k < m_k; k++) 
+							{
+								if (args.counts[k] == 0) continue;
+								newHeadVID = -1;
+								for (int j = 0; j < args.counts[k]; j++)
+								{
+									if (!isHeadUpdate && localindicesInsert[localindices[first + j]] == *m_vectorTranslateMap[i])
+									{
+										newHeadVID = i;
+										isHeadUpdate = true;
+									}
+									postingList += Helper::Serialize<int>(&localindicesInsert[localindices[first + j]], 1);
+									postingList += Helper::Serialize<ValueType>(smallSample[localindices[first + j]], COMMON_OPTS.m_dim);
+								}
+								if (newHeadVID == -1)
+								{
+									if (!isHeadUpdate && k == m_k-1)
+									{
+										//the last new head vector and the privous father head vector is deleted
+										//add this postinglist into head vector
+										newHeadVID = i;
+									}
+									else
+									{
+										//LOG(Helper::LogLevel::LL_Info, "Insert new head vector\n");
+										newHeadVID = localindicesInsert[localindices[first + args.counts[k] - 1]];
+										m_vectorTranslateMap.AddBatch(&newHeadVID, 1);
+										newHeadVID = m_vectorTranslateMap.R() - 1;
+										m_postingSizes.emplace_back(0);
+										m_split_num++;
+										m_index->AddHeadIndex(smallSample[localindices[first + args.counts[k] - 1]], 1, COMMON_OPTS.m_dim, fatherNodes);
+									}
+								}
+								m_postingSizes[newHeadVID] = args.counts[k];
+								//LOG(Helper::LogLevel::LL_Info, "Headid: %d split into : %d\n", i, newHeadVID);
+								db->Put(WriteOptions(), Helper::Serialize<int>(&newHeadVID, 1), postingList);
+								postingList.resize(0);
+								postingList.clear();
+								first += args.counts[k];
+							}
+						}
+					}
+					return ErrorCode::Success;
+				}
+
 				ErrorCode CalDBDist(std::string& storefile)
 				{
 					std::string postingList;
@@ -650,6 +752,8 @@ namespace SPTAG {
 
 					m_vectorSize = COMMON_OPTS.m_dim * sizeof(ValueType);
 
+					m_postingVectorLimit = m_postingPageLimit * p_pageSize / (sizeof(int) + m_vectorSize);
+
 					m_split_num = 0;
 
 					m_k = p_opts.m_k;
@@ -743,6 +847,8 @@ namespace SPTAG {
 				int m_replicaCount;
 
 				int m_postingPageLimit;
+
+				int m_postingVectorLimit;
 
 				int m_vectorSize;
 

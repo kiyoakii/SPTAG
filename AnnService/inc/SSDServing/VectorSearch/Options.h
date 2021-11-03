@@ -37,6 +37,7 @@ namespace SPTAG {
 				std::string m_headDistPostingnum;
 				bool m_randomDisabled;
 				std::string m_SSDVectorDistPath;
+				bool m_storeSearchDetail;
 				// Incremental Time-line
 				std::string m_truthFilePrefix;
 				int m_step;
