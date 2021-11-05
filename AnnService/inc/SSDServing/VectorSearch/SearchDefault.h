@@ -196,6 +196,7 @@ namespace SPTAG {
 						int replicaCount = 0;
 						BasicResult* queryResults = p_queryResults.GetResults();
 						std::vector<EdgeInsert> selections(static_cast<size_t>(m_replicaCount));
+						std::vector<
 						for (int i = 0; i < m_internalResultNum && replicaCount < m_replicaCount; ++i)
                         {
                             if (queryResults[i].VID == -1)

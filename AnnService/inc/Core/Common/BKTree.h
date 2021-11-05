@@ -27,8 +27,9 @@ namespace SPTAG
             SizeType centerid;
             SizeType firstChild;
             SizeType sibling;
-
-            BKTNodeUpdate(SizeType cid = -1) : centerid(cid), firstChild(-1), sibling(-1) {}
+            SizeType father;
+            BKTNodeUpdate(SizeType cid = -1) : centerid(cid), firstChild(-1), sibling(-1), father(-1) {}
+            BKTNodeUpdate(SizeType cid = -1, SizeType fid) : centerid(cid), firstChild(-1), sibling(-1), father(fid) {}
         };
 
         template <typename T>
@@ -412,10 +413,11 @@ namespace SPTAG
             void BuildTrees(const Dataset<T>& data, DistCalcMethod distMethod, int numOfThreads, std::vector<SizeType>* indices = nullptr, std::vector<SizeType>* reverseIndices = nullptr, bool dynamicK = false, IAbortOperation* abort = nullptr)
             {
                 //need change
-                struct  BKTStackItem {
-                    SizeType index, first, last;
+                struct BKTStackItem {
+                    SizeType index, first, last, father;
                     bool debug;
-                    BKTStackItem(SizeType index_, SizeType first_, SizeType last_) : index(index_), first(first_), last(last_) {}
+                    BKTStackItem(SizeType index_, SizeType first_, SizeType last_) : index(index_), first(first_), last(last_), father(-1) {}
+                    BKTStackItem(SizeType index_, SizeType first_, SizeType last_, SizeType father) : index(index_), first(first_), last(last_), father(father) {}
                 };
                 std::stack<BKTStackItem> ss;
 
@@ -445,11 +447,12 @@ namespace SPTAG
                         BKTStackItem item = ss.top(); ss.pop();
                         SizeType newBKTid = (SizeType)m_pTreeRoots.size();
                         m_pTreeRoots[item.index].firstChild = newBKTid;
+                        SizeType fid = item.father;
                         if (item.last - item.first <= m_iBKTLeafSize) {
                             for (SizeType j = item.first; j < item.last; j++) {
                                 SizeType cid = (reverseIndices == nullptr)? localindices[j]: reverseIndices->at(localindices[j]);
-                                m_pTreeRoots.emplace_back(cid);
-                                m_pTreeRoots[newBKTid].sibling = newBKTid+1;
+                                m_pTreeRoots.emplace_back(cid, fid);
+                                m_pTreeRoots[newBKTid].sibling = newBKTid + 1;
                                 newBKTid++;
                             }
                             m_pTreeRoots[newBKTid-1].sibling = -1;
@@ -468,7 +471,7 @@ namespace SPTAG
                                 m_pTreeRoots[item.index].firstChild = -m_pTreeRoots[item.index].firstChild;
                                 for (SizeType j = item.first + 1; j < end; j++) {
                                     SizeType cid = (reverseIndices == nullptr) ? localindices[j] : reverseIndices->at(localindices[j]);
-                                    m_pTreeRoots.emplace_back(cid);
+                                    m_pTreeRoots.emplace_back(cid, fid);
                                     m_pTreeRoots[newBKTid].sibling = newBKTid+1;
                                     m_pSampleCenterMap[cid] = m_pTreeRoots[item.index].centerid;
                                     newBKTid++;
@@ -479,9 +482,9 @@ namespace SPTAG
                                 for (int k = 0; k < m_iBKTKmeansK; k++) {
                                     if (args.counts[k] == 0) continue;
                                     SizeType cid = (reverseIndices == nullptr) ? localindices[item.first + args.counts[k] - 1] : reverseIndices->at(localindices[item.first + args.counts[k] - 1]);
-                                    m_pTreeRoots.emplace_back(cid);
+                                    m_pTreeRoots.emplace_back(cid, fid);
                                     m_pTreeRoots[newBKTid].sibling = newBKTid+1;
-                                    if (args.counts[k] > 1) ss.push(BKTStackItem(newBKTid, item.first, item.first + args.counts[k] - 1));
+                                    if (args.counts[k] > 1) ss.push(BKTStackItem(newBKTid, item.first, item.first + args.counts[k] - 1, cid));
                                     newBKTid++;
                                     item.first += args.counts[k];
                                 }
@@ -562,10 +565,11 @@ namespace SPTAG
                 return LoadTrees(ptr);
             }
 
-            // Insert a new node as Node's sibling,
+            // Insert a new node as Node's child,
             // the second arg is new node's centerid
             ErrorCode InsertNode(BKTNodeUpdate Node, SizeType centerid)
             {
+                // TODO: add node
                 SizeType newBKTid = m_pTreeRoots.size();
                 m_pTreeRoots.emplace_back(centerid);
                 if (Node.sibling < 0) {
@@ -580,7 +584,7 @@ namespace SPTAG
             template <typename T>
             void InitSearchTrees(const Dataset<T>& data, float(*fComputeDistance)(const T* pX, const T* pY, DimensionType length), const COMMON::QueryResultSet<T> &p_query, COMMON::WorkSpace &p_space) const
             {
-                //need change
+                // need change
                 for (char i = 0; i < m_iTreeNumber; i++) {
                     const BKTNodeUpdate& node = m_pTreeRoots[m_pTreeStart[i]];
                     if (node.firstChild < 0) {
@@ -612,9 +616,7 @@ namespace SPTAG
                         if (p_space.m_iNumberOfCheckedLeaves >= p_limits) break;
                     }
                     else {
-                        // if (!p_space.CheckAndSet(tnode.centerid)) {
-                        //     p_space.m_NGQueue.insert(COMMON::HeapCell(tnode.centerid, bcell.distance));
-                        // }
+                        // leaf nodes
                         for (SizeType begin = tnode.firstChild; begin > 0; begin = m_pTreeRoots[begin].sibling) {
                             SizeType index = m_pTreeRoots[begin].centerid;
                             p_space.m_SPTQueue.insert(COMMON::HeapCell(begin, fComputeDistance(p_query.GetTarget(), data[index], data.C())));
