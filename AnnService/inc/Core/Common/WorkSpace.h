@@ -15,9 +15,11 @@ namespace SPTAG
         struct HeapCell
         {
             SizeType node;
+            SizeType father;
+
             float distance;
 
-            HeapCell(SizeType _node = -1, float _distance = MaxDist) : node(_node), distance(_distance) {}
+            HeapCell(SizeType _node = -1, float _distance = MaxDist, SizeType father = -1) : node(_node), distance(_distance), father(father) {}
 
             inline bool operator < (const HeapCell& rhs) const
             {

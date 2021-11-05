@@ -99,6 +99,7 @@ namespace SPTAG
         while (!p_space.m_NGQueue.empty()) { \
             COMMON::HeapCell gnode = p_space.m_NGQueue.pop(); \
             SizeType tmpNode = gnode.node; \
+            SizeType tmpFather = gnode.father; \
             const SizeType *node = m_pGraph[tmpNode]; \
             _mm_prefetch((const char *)node, _MM_HINT_T0); \
             for (DimensionType i = 0; i <= checkPos; i++) { \
@@ -123,7 +124,7 @@ namespace SPTAG
                     CheckDeleted \
                     { \
                         p_space.m_iNumOfContinuousNoBetterPropagation = 0; \
-                        p_query.AddPoint(tmpNode, gnode.distance); \
+                        p_query.AddPoint(tmpNode, gnode.distance, tmpFather); \
                     } \
                 } \
             } else { \
@@ -154,6 +155,7 @@ namespace SPTAG
         while (!p_space.m_NGQueue.empty()) { \
             COMMON::HeapCell gnode = p_space.m_NGQueue.pop(); \
             SizeType tmpNode = gnode.node; \
+            SizeType tmpFather = gnode.father; \
             const SizeType *node = m_pGraph[tmpNode]; \
             _mm_prefetch((const char *)node, _MM_HINT_T0); \
             for (DimensionType i = 0; i <= checkPos; i++) { \
@@ -176,7 +178,7 @@ namespace SPTAG
                } else { \
                    CheckDeleted \
                    { \
-                       p_query.AddPoint(tmpNode, gnode.distance); \
+                       p_query.AddPoint(tmpNode, gnode.distance, tmpFather); \
                    } \
                } \
             } else { \
@@ -211,22 +213,22 @@ namespace SPTAG
             {
                 if (p_searchDuplicated)
                 {
-                    Search(;, if (!p_query.AddPoint(tmpNode, gnode.distance)))
+                    Search(;, if (!p_query.AddPoint(tmpNode, gnode.distance, tmpFather)))
                 }
                 else
                 {
-                    Search(;, p_query.AddPoint(tmpNode, gnode.distance);)
+                    Search(;, p_query.AddPoint(tmpNode, gnode.distance, tmpFather);)
                 }
             }
             else
             {
                 if (p_searchDuplicated)
                 {
-                    Search(if (!m_deletedID.Contains(tmpNode)), if (!p_query.AddPoint(tmpNode, gnode.distance)))
+                    Search(if (!m_deletedID.Contains(tmpNode)), if (!p_query.AddPoint(tmpNode, gnode.distance, tmpFather)))
                 }
                 else
                 {
-                    Search(if (!m_deletedID.Contains(tmpNode)), p_query.AddPoint(tmpNode, gnode.distance);)
+                    Search(if (!m_deletedID.Contains(tmpNode)), p_query.AddPoint(tmpNode, gnode.distance, tmpFather);)
                 }
             }
         }

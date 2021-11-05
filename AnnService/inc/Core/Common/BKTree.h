@@ -28,8 +28,7 @@ namespace SPTAG
             SizeType firstChild;
             SizeType sibling;
             SizeType father;
-            BKTNodeUpdate(SizeType cid = -1) : centerid(cid), firstChild(-1), sibling(-1), father(-1) {}
-            BKTNodeUpdate(SizeType cid = -1, SizeType fid) : centerid(cid), firstChild(-1), sibling(-1), father(fid) {}
+            BKTNodeUpdate(SizeType cid = -1, SizeType fid = -1) : centerid(cid), firstChild(-1), sibling(-1), father(fid) {}
         };
 
         template <typename T>
@@ -447,7 +446,7 @@ namespace SPTAG
                         BKTStackItem item = ss.top(); ss.pop();
                         SizeType newBKTid = (SizeType)m_pTreeRoots.size();
                         m_pTreeRoots[item.index].firstChild = newBKTid;
-                        SizeType fid = item.father;
+                        SizeType fid = item.index;
                         if (item.last - item.first <= m_iBKTLeafSize) {
                             for (SizeType j = item.first; j < item.last; j++) {
                                 SizeType cid = (reverseIndices == nullptr)? localindices[j]: reverseIndices->at(localindices[j]);
@@ -569,15 +568,14 @@ namespace SPTAG
             // the second arg is new node's centerid
             ErrorCode InsertNode(BKTNodeUpdate Node, SizeType centerid)
             {
-                // TODO: add node
                 SizeType newBKTid = m_pTreeRoots.size();
                 m_pTreeRoots.emplace_back(centerid);
-                if (Node.sibling < 0) {
-                    Node.sibling = newBKTid;
+                if (Node.firstChild < 0) {
+                    Node.firstChild = newBKTid;
                 } else {
-                    m_pTreeRoots[newBKTid].sibling = Node.sibling;
-                    Node.sibling = newBKTid;
-                } 
+                    m_pTreeRoots[newBKTid].sibling = Node.firstChild;
+                    Node.firstChild = newBKTid;
+                }
                 return ErrorCode::Success;
             } 
 
@@ -609,18 +607,18 @@ namespace SPTAG
                     COMMON::HeapCell bcell = p_space.m_SPTQueue.pop();
                     const BKTNodeUpdate& tnode = m_pTreeRoots[bcell.node];
                     if (tnode.firstChild < 0) {
+                        // leaf nodes
                         if (!p_space.CheckAndSet(tnode.centerid)) {
                             p_space.m_iNumberOfCheckedLeaves++;
-                            p_space.m_NGQueue.insert(COMMON::HeapCell(tnode.centerid, bcell.distance));
+                            p_space.m_NGQueue.insert(COMMON::HeapCell(tnode.centerid, bcell.distance, tnode.father));
                         }
                         if (p_space.m_iNumberOfCheckedLeaves >= p_limits) break;
                     }
                     else {
-                        // leaf nodes
                         for (SizeType begin = tnode.firstChild; begin > 0; begin = m_pTreeRoots[begin].sibling) {
                             SizeType index = m_pTreeRoots[begin].centerid;
-                            p_space.m_SPTQueue.insert(COMMON::HeapCell(begin, fComputeDistance(p_query.GetTarget(), data[index], data.C())));
-                        } 
+                            p_space.m_SPTQueue.insert(COMMON::HeapCell(begin, fComputeDistance(p_query.GetTarget(), data[index], data.C()), tnode.father));
+                        }
                     }
                 }
             }

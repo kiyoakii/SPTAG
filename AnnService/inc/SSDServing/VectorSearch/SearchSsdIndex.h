@@ -1102,7 +1102,7 @@ namespace SPTAG {
 
                 //LOG(Helper::LogLevel::LL_Info, "spliting in the end, split %d time\n", searcher.getSplitNum());
 
-                //searcher.Rebuild();
+                // searcher.Rebuild();
 
                 for (int i = 0; i < numQueries; ++i)
                 {

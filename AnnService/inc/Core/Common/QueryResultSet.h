@@ -52,12 +52,13 @@ public:
         return m_results[0].Dist;
     }
 
-    bool AddPoint(const SizeType index, float dist)
+    bool AddPoint(const SizeType index, float dist, const SizeType father = -1)
     {
         if (dist < m_results[0].Dist || (dist == m_results[0].Dist && index < m_results[0].VID))
         {
             m_results[0].VID = index;
             m_results[0].Dist = dist;
+            m_results[0].fatherVID = father;
             Heapify(m_resultNum);
             return true;
         }

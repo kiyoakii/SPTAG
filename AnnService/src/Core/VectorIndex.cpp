@@ -332,7 +332,7 @@ VectorIndex::AddIndex(std::shared_ptr<VectorSet> p_vectorSet, std::shared_ptr<Me
 ErrorCode
 VectorIndex::DeleteIndex(ByteArray p_meta) {
     if (m_pMetaToVec == nullptr) return ErrorCode::VectorNotFound;
-
+    
     std::string meta((char*)p_meta.Data(), p_meta.Length());
     SizeType vid = GetMetaMapping(meta);
     if (vid >= 0) return DeleteIndex(vid);

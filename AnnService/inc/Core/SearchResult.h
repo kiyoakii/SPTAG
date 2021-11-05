@@ -16,13 +16,13 @@ namespace SPTAG
 
         SizeType fatherVID;
 
-        BasicResult() : VID(-1), Dist(MaxDist), fatherID(-1) {}
+        BasicResult() : VID(-1), Dist(MaxDist), fatherVID(-1) {}
 
-        BasicResult(SizeType p_vid, float p_dist) : VID(p_vid), Dist(p_dist), fatherID(-1) {}
+        BasicResult(SizeType p_vid, float p_dist) : VID(p_vid), Dist(p_dist), fatherVID(-1) {}
         
         BasicResult(SizeType p_vid, float p_dist, SizeType f_vid) : VID(p_vid), Dist(p_dist), fatherVID(f_vid) {}
 
-        BasicResult(SizeType p_vid, float p_dist, ByteArray p_meta) : VID(p_vid), Dist(p_dist), Meta(p_meta), fatherID(-1) {}
+        BasicResult(SizeType p_vid, float p_dist, ByteArray p_meta) : VID(p_vid), Dist(p_dist), Meta(p_meta), fatherVID(-1) {}
     };
 
 } // namespace SPTAG
