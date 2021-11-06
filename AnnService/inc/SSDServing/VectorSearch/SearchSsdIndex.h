@@ -516,7 +516,7 @@ namespace SPTAG {
                 int numThreads = p_opts.m_iNumberOfThreads;
                 int asyncCallQPS = p_opts.m_qpsLimit;
 
-                int internalResultNum = std::max<int>(p_opts.m_internalResultNum, 64);
+                int internalResultNum = 2 * std::max<int>(p_opts.m_internalResultNum, 64);
                 int K = std::min<int>(p_opts.m_resultNum, internalResultNum);
                 int cycle = 1;
 
@@ -529,7 +529,7 @@ namespace SPTAG {
                 LOG(Helper::LogLevel::LL_Info, "Setup index finish, start setup hint...\n");
                 searcher.SetHint(numThreads, internalResultNum, asyncCallQPS > 0, p_opts);
 
-                searcher.setSearchLimit(K);
+                searcher.setSearchLimit(p_opts.m_internalResultNum);
 
                 searcher.LoadDeleteID(COMMON_OPTS.m_deleteID);
 
@@ -993,7 +993,7 @@ namespace SPTAG {
                 int numThreads = p_opts.m_iNumberOfThreads;
                 int asyncCallQPS = p_opts.m_qpsLimit;
 
-                int internalResultNum = std::max<int>(p_opts.m_internalResultNum, 64);
+                int internalResultNum = 2 * std::max<int>(p_opts.m_internalResultNum, 64);
                 int K = std::min<int>(p_opts.m_resultNum, internalResultNum);
 
                 int internalResultNum_insert = 64;
@@ -1005,7 +1005,7 @@ namespace SPTAG {
                 LOG(Helper::LogLevel::LL_Info, "Setup index finish, start setup hint...\n");
                 searcher.SetHint(numThreads, internalResultNum, asyncCallQPS > 0, p_opts);
 
-                searcher.setSearchLimit(K);
+                searcher.setSearchLimit(p_opts.m_internalResultNum);
 
                 searcher.LoadDeleteID(COMMON_OPTS.m_deleteID);
 
@@ -1169,7 +1169,7 @@ namespace SPTAG {
                 int numThreads = p_opts.m_iNumberOfThreads;
                 int asyncCallQPS = p_opts.m_qpsLimit;
 
-                int internalResultNum = std::max<int>(p_opts.m_internalResultNum, p_opts.m_resultNum);
+                int internalResultNum = 2 * std::max<int>(p_opts.m_internalResultNum, p_opts.m_resultNum);
                 int K = std::min<int>(p_opts.m_resultNum, internalResultNum);
 
                 SearchDefault<ValueType> searcher;
@@ -1179,7 +1179,7 @@ namespace SPTAG {
                 LOG(Helper::LogLevel::LL_Info, "Setup index finish, start setup hint...\n");
                 searcher.SetHint(numThreads, internalResultNum, asyncCallQPS > 0, p_opts);
 
-                searcher.setSearchLimit(K);
+                searcher.setSearchLimit(p_opts.m_internalResultNum);
                 searcher.LoadDeleteID(COMMON_OPTS.m_deleteID);
 
                 if (!warmupFile.empty())

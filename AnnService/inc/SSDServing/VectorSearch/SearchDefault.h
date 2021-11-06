@@ -756,7 +756,7 @@ namespace SPTAG {
 
 				void setSearchLimit(int topK)
 				{
-					m_searchVectorLimit = m_replicaCount * topK * m_postingSize_avg;
+					m_searchVectorLimit = topK * m_postingSize_avg;
 					LOG(Helper::LogLevel::LL_Info, "Search Vector Limit: %d\n", m_searchVectorLimit);
 				}
 
