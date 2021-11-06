@@ -756,12 +756,8 @@ namespace SPTAG {
 
 				void setSearchLimit(int topK)
 				{
-					if (m_searchVectorLimit == INT_MAX)
-					{
-						//5 is a testing parameter
-						m_searchVectorLimit = m_replicaCount * topK * m_postingSize_avg;
-						LOG(Helper::LogLevel::LL_Info, "Search Vector Limit: %d\n", m_searchVectorLimit);
-					}
+					m_searchVectorLimit = m_replicaCount * topK * m_postingSize_avg;
+					LOG(Helper::LogLevel::LL_Info, "Search Vector Limit: %d\n", m_searchVectorLimit);
 				}
 
 				std::shared_ptr<VectorIndex> HeadIndex() {

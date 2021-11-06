@@ -1079,6 +1079,7 @@ namespace SPTAG {
                     if ((i+1) % 10000 == 0) LOG(Helper::LogLevel::LL_Info, "inserted %d vectors\n", i+1);
                     if ((i+1) % step == 0)
                     {
+                        searcher.setSearchLimit(K);
                         curCount += step;
                         LOG(Helper::LogLevel::LL_Info, "Total Vector num %d \n", curCount);
                         LOG(Helper::LogLevel::LL_Info, "Start Searching\n");
