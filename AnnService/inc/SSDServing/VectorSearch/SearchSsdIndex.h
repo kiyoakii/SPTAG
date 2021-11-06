@@ -520,12 +520,16 @@ namespace SPTAG {
                 int K = std::min<int>(p_opts.m_resultNum, internalResultNum);
                 int cycle = 1;
 
+                int internalResultNum_insert = 64; 
+
                 SearchDefault<ValueType> searcher;
                 LOG(Helper::LogLevel::LL_Info, "Start setup index...\n");
                 searcher.Setup(p_opts);
 
                 LOG(Helper::LogLevel::LL_Info, "Setup index finish, start setup hint...\n");
                 searcher.SetHint(numThreads, internalResultNum, asyncCallQPS > 0, p_opts);
+
+                searcher.setSearchLimit(K);
 
                 searcher.LoadDeleteID(COMMON_OPTS.m_deleteID);
 
@@ -638,7 +642,7 @@ namespace SPTAG {
 
                 LOG(Helper::LogLevel::LL_Info, "Index delete/re-insert index size : %lf\n", p_opts.m_indexSize);
 
-                std::vector<COMMON::QueryResultSet<ValueType>> insertResult(updateVectorNum, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
+                std::vector<COMMON::QueryResultSet<ValueType>> insertResult(updateVectorNum, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum_insert));
                 
                 std::vector<SizeType> updateIndice;
                 std::vector<SizeType> indices;
@@ -846,7 +850,7 @@ namespace SPTAG {
                         searcher.CalDBDist(storeFileCurr);
                     }
 
-                    if (!p_opts.m_randomDisabled)
+                    if (!p_opts.m_randomDisabled && !p_opts.m_insertVectorsPath.empty())
                     {
                         //store the inserted vector ID
                         auto ptr = SPTAG::f_createIO();
@@ -992,12 +996,16 @@ namespace SPTAG {
                 int internalResultNum = std::max<int>(p_opts.m_internalResultNum, 64);
                 int K = std::min<int>(p_opts.m_resultNum, internalResultNum);
 
+                int internalResultNum_insert = 64;
+
                 SearchDefault<ValueType> searcher;
                 LOG(Helper::LogLevel::LL_Info, "Start setup index...\n");
                 searcher.Setup(p_opts);
 
                 LOG(Helper::LogLevel::LL_Info, "Setup index finish, start setup hint...\n");
                 searcher.SetHint(numThreads, internalResultNum, asyncCallQPS > 0, p_opts);
+
+                searcher.setSearchLimit(K);
 
                 searcher.LoadDeleteID(COMMON_OPTS.m_deleteID);
 
@@ -1034,7 +1042,7 @@ namespace SPTAG {
 
                 std::vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
                 std::vector<SearchStats> stats(numQueries);
-                std::vector<COMMON::QueryResultSet<ValueType>> insertResults(insertCount, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
+                std::vector<COMMON::QueryResultSet<ValueType>> insertResults(insertCount, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum_insert));
                 for (int i = 0; i < numQueries; ++i)
                 {
                     results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
@@ -1169,6 +1177,8 @@ namespace SPTAG {
 
                 LOG(Helper::LogLevel::LL_Info, "Setup index finish, start setup hint...\n");
                 searcher.SetHint(numThreads, internalResultNum, asyncCallQPS > 0, p_opts);
+
+                searcher.setSearchLimit(K);
                 searcher.LoadDeleteID(COMMON_OPTS.m_deleteID);
 
                 if (!warmupFile.empty())

@@ -143,6 +143,10 @@ namespace SPTAG {
 
 					input.close();
 
+					m_vectornum_last = m_vectornum;
+					
+					calAvgPostingSize();
+
 					m_extraSearcher.reset(new ExtraFullGraphSearcher<ValueType>(extraFullGraphFile));
 				}
 
@@ -200,7 +204,7 @@ namespace SPTAG {
 					BasicResult* queryResults = p_queryResults.GetResults();
 					std::vector<EdgeInsert> selections(static_cast<size_t>(m_replicaCount));
 					std::vector<SizeType> fathers(static_cast<size_t>(m_replicaCount));
-					for (int i = 0; i < m_internalResultNum && replicaCount < m_replicaCount; ++i)
+					for (int i = 0; i < p_queryResults.GetResultNum() && replicaCount < m_replicaCount; ++i)
 					{
 						if (queryResults[i].VID == -1)
 						{
@@ -372,6 +376,9 @@ namespace SPTAG {
 					m_index->SearchIndex(p_queryResults);
 					auto ret = InsertPostingList(p_queryResults, p_stats, m_vectornum);
 					m_vectornum++;
+					if (m_vectornum - m_vectornum_last > m_vectornum_last * 0.05) {
+						calAvgPostingSize();
+					}
 					return ret;
 				}
 
@@ -737,6 +744,26 @@ namespace SPTAG {
 					return m_vectornum;
 				}
 
+				void calAvgPostingSize()
+				{
+					int total = 0;
+					for (int i = 0; i < m_postingSizes.size(); i++)
+					{
+						total += m_postingSizes[i];
+					}
+					m_postingSize_avg = total / m_postingSizes.size();
+				}
+
+				void setSearchLimit(int topK)
+				{
+					if (m_searchVectorLimit == INT_MAX)
+					{
+						//5 is a testing parameter
+						m_searchVectorLimit = m_replicaCount * topK * m_postingSize_avg;
+						LOG(Helper::LogLevel::LL_Info, "Search Vector Limit: %d\n", m_searchVectorLimit);
+					}
+				}
+
 				std::shared_ptr<VectorIndex> HeadIndex() {
 					return m_index;
 				}
@@ -807,9 +834,11 @@ namespace SPTAG {
 
 				int m_vectorSize;
 
-				int m_k = 4;
+				int m_k = 2;
 
 				int m_vectornum;
+				
+				int m_vectornum_last;
 
 				bool m_clearHead = true;
 
@@ -818,6 +847,8 @@ namespace SPTAG {
 				int m_searchVectorLimit;
 
 				int m_posting_num;
+
+				int m_postingSize_avg;
 				
 				std::vector<int> m_postingSizes;
 
