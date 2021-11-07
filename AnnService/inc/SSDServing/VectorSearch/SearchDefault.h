@@ -423,7 +423,7 @@ namespace SPTAG {
 						//LOG(Helper::LogLevel::LL_Info, "Scanning :%d\n", i);
 						int vectorNum = m_postingSizes[i];
 						//LOG(Helper::LogLevel::LL_Info, "length :%d\n", vectorNum);
-						if (vectorNum > m_postingVectorLimit * 0.8) {
+						if (m_index->ContainSample(i) && vectorNum > m_postingVectorLimit * 0.8) {
 							postingList.clear();
 							db->Get(ReadOptions(), Helper::Serialize<int>(&i, 1), &postingList);
 							std::shared_ptr<uint8_t> postingBuffer;
@@ -526,36 +526,38 @@ namespace SPTAG {
                     }
 					for (int i = 0; i < m_vectorTranslateMap.R(); i++)
 					{
-						postingList.clear();
-						db->Get(ReadOptions(), Helper::Serialize<int>(&i, 1), &postingList);
-						int vectorNum = postingList.size()/ (sizeof(int) + m_vectorSize);
-						std::shared_ptr<uint8_t> postingBuffer;
-						postingBuffer.reset(new uint8_t[postingList.size() + m_vectorSize + sizeof(int)], std::default_delete<uint8_t[]>());
-						uint8_t* bufferVoidPtr = reinterpret_cast<uint8_t*>(postingBuffer.get());
-						memcpy(bufferVoidPtr, postingList.data(), postingList.size());
-						int size = 0;
-						for (int j = 0; j < vectorNum; j++)
-						{
-							uint8_t* vectorInfo = postingBuffer.get() + j * (m_vectorSize + sizeof(int));
-							int vectorID = *(reinterpret_cast<int*>(vectorInfo));
-							if (m_deletedID.Contains(vectorID)) 
+						if (m_index->ContainSample(i)) {
+							postingList.clear();
+							db->Get(ReadOptions(), Helper::Serialize<int>(&i, 1), &postingList);
+							int vectorNum = postingList.size()/ (sizeof(int) + m_vectorSize);
+							std::shared_ptr<uint8_t> postingBuffer;
+							postingBuffer.reset(new uint8_t[postingList.size() + m_vectorSize + sizeof(int)], std::default_delete<uint8_t[]>());
+							uint8_t* bufferVoidPtr = reinterpret_cast<uint8_t*>(postingBuffer.get());
+							memcpy(bufferVoidPtr, postingList.data(), postingList.size());
+							int size = 0;
+							for (int j = 0; j < vectorNum; j++)
 							{
-								continue;
+								uint8_t* vectorInfo = postingBuffer.get() + j * (m_vectorSize + sizeof(int));
+								int vectorID = *(reinterpret_cast<int*>(vectorInfo));
+								if (m_deletedID.Contains(vectorID)) 
+								{
+									continue;
+								}
+								size++;
 							}
-							size++;
+							if (ptr->WriteBinary(sizeof(int), (char*)&i) != sizeof(int)) {
+								LOG(Helper::LogLevel::LL_Error, "Fail to write head");
+								exit(1);
+							}
+							if (ptr->WriteBinary(sizeof(int), (char*)&vectorNum) != sizeof(int)) {
+								LOG(Helper::LogLevel::LL_Error, "Fail to write posting size");
+								exit(1);
+							}
+							if (ptr->WriteBinary(sizeof(int), (char*)&size) != sizeof(int)) {
+								LOG(Helper::LogLevel::LL_Error, "Fail to write real posting size");
+								exit(1);
+							}
 						}
-						if (ptr->WriteBinary(sizeof(int), (char*)&i) != sizeof(int)) {
-                        	LOG(Helper::LogLevel::LL_Error, "Fail to write head");
-                        	exit(1);
-                    	}
-						if (ptr->WriteBinary(sizeof(int), (char*)&vectorNum) != sizeof(int)) {
-                        	LOG(Helper::LogLevel::LL_Error, "Fail to write posting size");
-                        	exit(1);
-                    	}
-						if (ptr->WriteBinary(sizeof(int), (char*)&size) != sizeof(int)) {
-                        	LOG(Helper::LogLevel::LL_Error, "Fail to write real posting size");
-                        	exit(1);
-                    	}
 					}
 					return ErrorCode::Success;
 				}
@@ -745,7 +747,7 @@ namespace SPTAG {
 					int total = 0;
 					for (int i = 0; i < m_postingSizes.size(); i++)
 					{
-						total += m_postingSizes[i];
+						if (m_index->ContainSample(i)) total += m_postingSizes[i];
 					}
 					m_postingSize_avg = total / m_postingSizes.size();
 				}
