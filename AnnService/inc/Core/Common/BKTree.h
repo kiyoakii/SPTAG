@@ -574,6 +574,7 @@ namespace SPTAG
                     Node.firstChild = newBKTid;
                 } else {
                     m_pTreeRoots[newBKTid].sibling = Node.firstChild;
+                    m_pTreeRoots[newBKTid].father = Node.centerid;
                     Node.firstChild = newBKTid;
                 }
                 return ErrorCode::Success;

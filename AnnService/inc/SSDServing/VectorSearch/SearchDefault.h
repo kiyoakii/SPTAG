@@ -336,7 +336,7 @@ namespace SPTAG {
 								m_postingSizes.emplace_back(0);
 								m_split_num++;
 								
-								if (newHeadVID == selections[i].headID) {
+								if (newHeadVID == *m_vectorTranslateMap[selections[i].headID]) {
 									removeOrigin = false;
 								} else {
 									m_index->AddHeadIndex(smallSample[localindices[first + args.counts[k] - 1]], 1, COMMON_OPTS.m_dim, fatherNodes);
@@ -346,10 +346,6 @@ namespace SPTAG {
 								// LOG(Helper::LogLevel::LL_Info, "Headid: %d split into : %d\n", selections[i].headID, newHeadVID);
 								for (int j = 0; j < args.counts[k]; j++)
 								{
-									// if (localindicesInsert[localindices[first + j]] == *m_vectorTranslateMap[selections[i].headID])
-									// {
-									// 	newHeadVID = selections[i].headID;
-									// }
 									postingList += Helper::Serialize<int>(&localindicesInsert[localindices[first + j]], 1);
 									postingList += Helper::Serialize<ValueType>(smallSample[localindices[first + j]], COMMON_OPTS.m_dim);
 								}
