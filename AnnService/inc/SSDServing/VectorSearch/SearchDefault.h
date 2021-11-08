@@ -374,6 +374,7 @@ namespace SPTAG {
 					m_vectornum++;
 					if (m_vectornum - m_vectornum_last > m_vectornum_last * 0.05) {
 						calAvgPostingSize();
+						m_vectornum_last = m_vectornum;
 					}
 					return ret;
 				}

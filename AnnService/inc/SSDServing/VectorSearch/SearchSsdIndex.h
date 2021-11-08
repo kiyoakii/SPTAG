@@ -518,7 +518,7 @@ namespace SPTAG {
 
                 int internalResultNum = 2 * std::max<int>(p_opts.m_internalResultNum, 64);
                 int K = std::min<int>(p_opts.m_resultNum, internalResultNum);
-                int cycle = 1;
+                int cycle = 50;
 
                 int internalResultNum_insert = 64; 
 
