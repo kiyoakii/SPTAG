@@ -330,19 +330,18 @@ namespace SPTAG {
 								// LOG(Helper::LogLevel::LL_Info, "Insert new head vector\n");
 								newHeadVID = localindicesInsert[localindices[first + args.counts[k] - 1]];
 								// Notice: newHeadVID maybe a exist head vector
-								
-								m_vectorTranslateMap.AddBatch(&newHeadVID, 1);
-								newHeadVID = m_vectorTranslateMap.R() - 1;
-								m_postingSizes.emplace_back(0);
-								m_split_num++;
-								
+
 								if (newHeadVID == *m_vectorTranslateMap[selections[i].headID]) {
+									newHeadVID = selections[i].headID;
 									removeOrigin = false;
 								} else {
 									m_index->AddHeadIndex(smallSample[localindices[first + args.counts[k] - 1]], 1, COMMON_OPTS.m_dim, fatherNodes);
+									m_postingSizes.emplace_back(args.counts[k]);
+									m_vectorTranslateMap.AddBatch(&newHeadVID, 1);
+									newHeadVID = m_vectorTranslateMap.R() - 1;
+									m_split_num++;
 								}
 
-								m_postingSizes[newHeadVID] = args.counts[k];
 								// LOG(Helper::LogLevel::LL_Info, "Headid: %d split into : %d\n", selections[i].headID, newHeadVID);
 								for (int j = 0; j < args.counts[k]; j++)
 								{
