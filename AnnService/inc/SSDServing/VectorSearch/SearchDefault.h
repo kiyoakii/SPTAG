@@ -316,14 +316,14 @@ namespace SPTAG {
 								if (args.counts[k] == 0)	continue;
 
 								// LOG(Helper::LogLevel::LL_Info, "Insert new head vector\n");
-								newHeadVID = localindicesInsert[localindices[first + args.counts[k] - 1]];
+								newHeadVID = localindicesInsert[args.clusterIdx[k]];
 								// Notice: newHeadVID maybe a exist head vector
 
 								if (newHeadVID == *m_vectorTranslateMap[selections[i].headID]) {
 									newHeadVID = selections[i].headID;
 									removeOrigin = false;
 								} else {
-									m_index->AddHeadIndex(smallSample[localindices[first + args.counts[k] - 1]], 1, COMMON_OPTS.m_dim, fatherNodes);
+									m_index->AddHeadIndex(smallSample[args.clusterIdx[k]], 1, COMMON_OPTS.m_dim, fatherNodes);
 									m_postingSizes.emplace_back(args.counts[k]);
 									m_vectorTranslateMap.AddBatch(&newHeadVID, 1);
 									newHeadVID = m_vectorTranslateMap.R() - 1;
