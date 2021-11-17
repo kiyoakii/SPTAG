@@ -56,9 +56,6 @@ namespace SPTAG {
                 std::chrono::steady_clock::time_point m_searchRequestTime;
 
                 int m_threadID;
-
-                std::map<int, float> m_headAndDist;
-                std::map<int, int> m_headAndPostingSize;
             };
         }
     }

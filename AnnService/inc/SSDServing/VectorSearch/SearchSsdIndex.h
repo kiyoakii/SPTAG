@@ -566,7 +566,6 @@ namespace SPTAG {
                 }
 
                 std::vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
-                std::vector<SearchStats> statsPrev(numQueries);
                 std::vector<SearchStats> stats(numQueries);
                 for (int i = 0; i < numQueries; ++i)
                 {
@@ -579,35 +578,19 @@ namespace SPTAG {
 
                 if (asyncCallQPS == 0)
                 {
-                    SearchSequential(searcher, numThreads, results, statsPrev, p_opts.m_queryCountLimit);
+                    SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
                 }
                 else
                 {
-                    SearchAsync(searcher, asyncCallQPS, results, statsPrev, p_opts.m_queryCountLimit);
+                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
                 }
 
                 LOG(Helper::LogLevel::LL_Info, "Finish First ANN Search...\n");
 
                 float recall = 0;
-                std::vector<int> recallPrev;
-                recallPrev.clear();
-                recallPrev.resize(numQueries);
-                for (int i = 0; i < numQueries; i++)
-                {
-                    recallPrev[i] = 0;
-                }
-
-                std::vector<int> recallCur;
-                recallCur.clear();
-                recallCur.resize(numQueries);
-                for (int i = 0; i < numQueries; i++)
-                {
-                    recallCur[i] = 0;
-                }
 
                 if (!truthFile.empty())
                 {
-                    recall = 0;
                     for (int k = 0; k < results.size(); k++)
                     {
                         for (int id : truth[k])
@@ -616,7 +599,6 @@ namespace SPTAG {
                             {
                                 if (results[k].GetResult(j)->VID == id)
                                 {
-                                    recallPrev[k]++;
                                     recall++;
                                     break;
                                 }
@@ -626,12 +608,22 @@ namespace SPTAG {
                     recall = static_cast<float>(recall)/static_cast<float>(results.size() * K);
                     LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
                 }
-                std::string storeFilePrev = p_opts.m_SSDVectorDistPath;
-                if (!storeFilePrev.empty())
-                {
-                    storeFilePrev += "_prev";
-                    searcher.CalDBDist(storeFilePrev);
-                }
+
+                LOG(Helper::LogLevel::LL_Info, "\nEx Latency Distribution:\n");
+                PrintPercentiles<double, SearchStats>(stats,
+                    [](const SearchStats& ss) -> double
+                    {
+                        return ss.m_exLatency;
+                    },
+                    "%.3lf");
+
+                LOG(Helper::LogLevel::LL_Info, "\nTotal Search Latency Distribution:\n");
+                PrintPercentiles<double, SearchStats>(stats,
+                    [](const SearchStats& ss) -> double
+                    {
+                        return ss.m_totalSearchLatency;
+                    },
+                    "%.3lf");
                 /*
                 if (!outputFile.empty())
                 {
@@ -654,60 +646,36 @@ namespace SPTAG {
                     indices[i] = i;
                 }
 
-
                 int vectorNum = fullVectors->Count();
                 int totalNum = fullVectors->Count();
                 int section = totalNum / numThreads;
                 int selectionNum = updateVectorNum / numThreads;
                 for (int i = 0; i < cycle; i++)
                 {
-
-                    for (int k = 0; k < numQueries; k++)
-                    {
-                        recallCur[k] = 0;
-                    }
-
-                    if (p_opts.m_randomDisabled)
-                    {
-                        auto ptr = SPTAG::f_createIO();
-                        if (ptr == nullptr || !ptr->Initialize(p_opts.m_insertVectorsPath.c_str(), std::ios::binary | std::ios::in))
+                    updateIndice.clear();
+                    updateIndice.resize(updateVectorNum);
+                    LOG(Helper::LogLevel::LL_Info, "cycle %d: selecting update vector\n", i);
+                    omp_set_num_threads(numThreads);
+                    #pragma omp parallel
                         {
-                            LOG(Helper::LogLevel::LL_Error, "Failed open file %s\n", p_opts.m_insertVectorsPath.c_str());
-                            exit(1);
-                        }
-                        updateIndice.resize(updateVectorNum);
-                        if (ptr->ReadBinary(sizeof(int) * updateVectorNum, (char*)updateIndice.data()) != sizeof(int) * updateVectorNum) {
-                            LOG(Helper::LogLevel::LL_Error, "Failed to read update vector number!\n");
-                            exit(1);
-                        }
-                    }
-                    else
-                    {
-                        updateIndice.clear();
-                        updateIndice.resize(updateVectorNum);
-                        LOG(Helper::LogLevel::LL_Info, "cycle %d: selecting update vector\n", i);
-                        omp_set_num_threads(numThreads);
-                        #pragma omp parallel
+                            int tid = omp_get_thread_num();
+                            int lowerBound = tid * section;
+                            int upperBound = (tid == numThreads-1) ? totalNum : (tid + 1) * section;
+                            int selectBegin = tid * selectionNum;
+                            int select = (tid == numThreads-1) ? (updateVectorNum- selectionNum * (numThreads - 1)) : selectionNum;
+                            LOG(Helper::LogLevel::LL_Info, "tid: %d, select range: (%d, %d), select indice range: (%d,%d), select num: %d\n", tid, lowerBound, upperBound, selectBegin, selectBegin+select, select);
+                            std::vector<int> tempIndice;
+                            tempIndice.resize(select);
+                            for (int k = 0; k < select; k++)
                             {
-                                int tid = omp_get_thread_num();
-                                int lowerBound = tid * section;
-                                int upperBound = (tid == numThreads-1) ? totalNum : (tid + 1) * section;
-                                int selectBegin = tid * selectionNum;
-                                int select = (tid == numThreads-1) ? (updateVectorNum- selectionNum * (numThreads - 1)) : selectionNum;
-                                LOG(Helper::LogLevel::LL_Info, "tid: %d, select range: (%d, %d), select indice range: (%d,%d), select num: %d\n", tid, lowerBound, upperBound, selectBegin, selectBegin+select, select);
-                                std::vector<int> tempIndice;
-                                tempIndice.resize(select);
-                                for (int k = 0; k < select; k++)
-                                {
-                                    SizeType randid = COMMON::Utils::rand(upperBound, lowerBound);
-                                    while (std::count(tempIndice.begin(), tempIndice.end(), randid)) {
-                                        randid = COMMON::Utils::rand(upperBound, lowerBound);
-                                    }
-                                    updateIndice[k + selectBegin] = randid;
-                                    tempIndice[k] = randid;
+                                SizeType randid = COMMON::Utils::rand(upperBound, lowerBound);
+                                while (std::count(tempIndice.begin(), tempIndice.end(), randid)) {
+                                    randid = COMMON::Utils::rand(upperBound, lowerBound);
                                 }
+                                updateIndice[k + selectBegin] = randid;
+                                tempIndice[k] = randid;
                             }
-                    }
+                        }
                     /*
                     for (int k = 0; k < updateVectorNum; k++) 
                     {
@@ -757,11 +725,9 @@ namespace SPTAG {
                         SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
                     }
                     LOG(Helper::LogLevel::LL_Info, "cycle %d: begin calclating recall\n", i);
-                    
 
-                    int numLow = 0;
-                    int totalCountPrev = 0;
-                    int totalCountCur = 0;
+                    float recall = 0;
+
                     if (!truthFile.empty())
                     {
                         recall = 0;
@@ -773,170 +739,32 @@ namespace SPTAG {
                                 {
                                     if (results[k].GetResult(j)->VID == indices[id])
                                     {
-                                        recallCur[k]++;
                                         recall++;
                                         break;
                                     }
                                 }
                             }
-                            if (recallCur[k] < recallPrev[k])
-                            {
-                                //LOG(Helper::LogLevel::LL_Info, "cycle %d: query %d get prev result:\n", i, k);
-                                numLow++;
-                                int countPrev = 0;
-                                for (std::map<int,int>::iterator it=statsPrev[k].m_headAndPostingSize.begin(); it!=statsPrev[k].m_headAndPostingSize.end(); ++it)
-                                {
-                                    countPrev += it->second;
-                                    //LOG(Helper::LogLevel::LL_Info, "headid: %d, size: %d ", it->first, it->second);
-                                }
-                                //LOG(Helper::LogLevel::LL_Info, "\n");
-                                //LOG(Helper::LogLevel::LL_Info, "cycle %d: query %d get cur result:\n", i, k);
-                                int countCur = 0;
-                                for (std::map<int,int>::iterator it=stats[k].m_headAndPostingSize.begin(); it!=stats[k].m_headAndPostingSize.end(); ++it)
-                                {
-                                    countCur += it->second;
-                                    //LOG(Helper::LogLevel::LL_Info, "headid: %d, size: %d ", it->first, it->second);
-                                }
-                                //LOG(Helper::LogLevel::LL_Info, "cycle %d: query:%d get\n", i, k);
-                                //LOG(Helper::LogLevel::LL_Info, "prev hit: %d checked size: %d\n", recallPrev[k], countPrev);
-                                //LOG(Helper::LogLevel::LL_Info, "curr hit: %d checked size: %d\n", recallCur[k], countCur);
-                                //LOG(Helper::LogLevel::LL_Info, "\n");
-                                totalCountPrev += countPrev;
-                                totalCountCur += countCur;
-                                /*
-                                if (recallCur[k] + 3 < recallPrev[k])
-                                {
-                                    LOG(Helper::LogLevel::LL_Info, "prev hit: %d checked size: %d\n", recallPrev[k], countPrev);
-                                    LOG(Helper::LogLevel::LL_Info, "curr hit: %d checked size: %d\n", recallCur[k], countCur);
-                                    LOG(Helper::LogLevel::LL_Info, "cycle %d: query %d get prev result:\n", i, k);
-                                    for (std::map<int,int>::iterator it=statsPrev[k].m_headAndPostingSize.begin(); it!=statsPrev[k].m_headAndPostingSize.end(); ++it)
-                                    {
-                                        LOG(Helper::LogLevel::LL_Info, "headid: %d, size: %d ", it->first, it->second);
-                                    }
-                                    LOG(Helper::LogLevel::LL_Info, "\n");
-                                    LOG(Helper::LogLevel::LL_Info, "cycle %d: query %d get cur result:\n", i, k);
-                                    for (std::map<int,int>::iterator it=stats[k].m_headAndPostingSize.begin(); it!=stats[k].m_headAndPostingSize.end(); ++it)
-                                    {
-                                        LOG(Helper::LogLevel::LL_Info, "headid: %d, size: %d ", it->first, it->second);
-                                    }
-                                    LOG(Helper::LogLevel::LL_Info, "\n");
-                                }
-                                */
-                            }
                         }
                         recall = static_cast<float>(recall)/static_cast<float>(results.size() * K);
                         LOG(Helper::LogLevel::LL_Info, "cycle %d: Recall: %f\n", i, recall);
-                        LOG(Helper::LogLevel::LL_Info, "Checked Compare(Recall Low): Prev: %d Curr: %d\n", totalCountPrev/numLow, totalCountCur/numLow);
-                        totalCountPrev = 0;
-                        totalCountCur = 0;
-                        for (int k = 0; k < numQueries; k++)
-                        {
-                            for (std::map<int,int>::iterator it=statsPrev[k].m_headAndPostingSize.begin(); it!=statsPrev[k].m_headAndPostingSize.end(); ++it)
-                            {
-                                totalCountPrev += it->second;
-                            }
-                            for (std::map<int,int>::iterator it=stats[k].m_headAndPostingSize.begin(); it!=stats[k].m_headAndPostingSize.end(); ++it)
-                            {
-                                totalCountCur += it->second;
-                            }
-                        }
-                        LOG(Helper::LogLevel::LL_Info, "Checked Compare(Total): Prev: %d Curr: %d\n", totalCountPrev/numQueries, totalCountCur/numQueries);
                     }
 
-                    std::string storeFileCurr = p_opts.m_SSDVectorDistPath;
-                    if (!storeFileCurr.empty())
-                    {
-                        storeFileCurr += "_curr";
-                        searcher.CalDBDist(storeFileCurr);
-                    }
-
-                    if (!p_opts.m_randomDisabled && !p_opts.m_insertVectorsPath.empty())
-                    {
-                        //store the inserted vector ID
-                        auto ptr = SPTAG::f_createIO();
-                        if (ptr == nullptr || !ptr->Initialize(p_opts.m_insertVectorsPath.c_str(), std::ios::binary | std::ios::out))
+                    LOG(Helper::LogLevel::LL_Info, "\ncycle %d: Ex Latency Distribution:\n", i);
+                    PrintPercentiles<double, SearchStats>(stats,
+                        [](const SearchStats& ss) -> double
                         {
-                            LOG(Helper::LogLevel::LL_Error, "Failed open file %s\n", p_opts.m_insertVectorsPath.c_str());
-                            exit(1);
-                        }
-                        if (ptr->WriteBinary(sizeof(int) * updateVectorNum, (char*)updateIndice.data()) != sizeof(int) * updateVectorNum) {
-                            LOG(Helper::LogLevel::LL_Error, "Fail to store inserted vector ID");
-                            exit(1);
-                        }
-                    }
+                            return ss.m_exLatency;
+                        },
+                        "%.3lf");
 
-                    if (p_opts.m_storeSearchDetail)
-                    {
-                        auto sptr = SPTAG::f_createIO();
-                        if (sptr == nullptr || !sptr->Initialize(p_opts.m_headDistPostingnum.c_str(), std::ios::binary | std::ios::out))
+                    LOG(Helper::LogLevel::LL_Info, "\ncycle %d: Total Search Latency Distribution:\n", i);
+                    PrintPercentiles<double, SearchStats>(stats,
+                        [](const SearchStats& ss) -> double
                         {
-                            LOG(Helper::LogLevel::LL_Error, "Failed open file %s\n", p_opts.m_headDistPostingnum.c_str());
-                            exit(1);
-                        }
-                        for (int k = 0; k < numQueries; k++)
-                        {
-                            if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&recallPrev[k])) != sizeof(int)) {
-                                LOG(Helper::LogLevel::LL_Error, "Fail to store recallPrev, query number: %d\n", k);
-                                exit(1);
-                            }
-
-                            if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&recallCur[k])) != sizeof(int)) {
-                                LOG(Helper::LogLevel::LL_Error, "Fail to store recallCurr, query number: %d\n", k);
-                                exit(1);
-                            }
-
-                            int postingSize = statsPrev[k].m_headAndDist.size();
-                            if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&postingSize)) != sizeof(int)) {
-                                LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev, query number: %d\n", k);
-                                exit(1);
-                            }
-                            for (std::map<int,float>::iterator it=statsPrev[k].m_headAndDist.begin(); it!=statsPrev[k].m_headAndDist.end(); ++it)
-                            {
-                                int headID = it->first;
-                                if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&headID)) != sizeof(int)) {
-                                    LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev headID, query number: %d\n", k);
-                                    exit(1);
-                                }
-
-                                float headDist = it->second;
-                                if (sptr->WriteBinary(sizeof(float), reinterpret_cast<char*>(&headDist)) != sizeof(float)) {
-                                    LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev Dist, query number: %d\n", k);
-                                    exit(1);
-                                }
-
-                                int headSize = statsPrev[k].m_headAndPostingSize[it->first];
-                                if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&headSize)) != sizeof(int)) {
-                                    LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev posting size, query number: %d\n", k);
-                                    exit(1);
-                                }
-                            }
-                            postingSize = stats[k].m_headAndDist.size();
-                            if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&postingSize)) != sizeof(int)) {
-                                LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev, query number: %d\n", k);
-                                exit(1);
-                            }
-                            for (std::map<int,float>::iterator it=stats[k].m_headAndDist.begin(); it!=stats[k].m_headAndDist.end(); ++it)
-                            {
-                                int headID = it->first;
-                                if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&headID)) != sizeof(int)) {
-                                    LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev headID, query number: %d\n", k);
-                                    exit(1);
-                                }
-
-                                float headDist = it->second;
-                                if (sptr->WriteBinary(sizeof(float), reinterpret_cast<char*>(&headDist)) != sizeof(float)) {
-                                    LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev Dist, query number: %d\n", k);
-                                    exit(1);
-                                }
-
-                                int headSize = stats[k].m_headAndPostingSize[it->first];
-                                if (sptr->WriteBinary(sizeof(int), reinterpret_cast<char*>(&headSize)) != sizeof(int)) {
-                                    LOG(Helper::LogLevel::LL_Error, "Fail to store statsPrev posting size, query number: %d\n", k);
-                                    exit(1);
-                                }
-                            }
-                        }
-                    }
+                            return ss.m_totalSearchLatency;
+                        },
+                        "%.3lf");
+                    
                     /*
                     if (!outputFile.empty())
                     {

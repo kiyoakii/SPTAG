@@ -258,6 +258,8 @@ namespace SPTAG {
 								covered = true;
 								memcpy(vectorInfo, &VID, sizeof(int));
 								memcpy(vectorInfo+sizeof(int), (uint8_t*)p_queryResults.GetTarget(), m_vectorSize);
+								vectorID = *(reinterpret_cast<int*>(vectorInfo));
+								if (vectorID != VID) LOG(Helper::LogLevel::LL_Info, "Not covered! %d :%d\n", vectorID, VID);
 								db->Put(WriteOptions(), Helper::Serialize<int>(&selections[i].headID, 1), postingList);
 								break;
 							}
@@ -577,7 +579,6 @@ namespace SPTAG {
 							if (res->VID != -1)
 							{
 								auto_ws->m_postingIDs.emplace_back(res->VID);
-								p_stats.m_headAndDist[res->VID] = res->Dist;
 								totalVectors += m_postingSizes[res->VID];
 								if (totalVectors > m_searchVectorLimit)
 								{
