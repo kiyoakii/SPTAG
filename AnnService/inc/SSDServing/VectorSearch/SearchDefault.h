@@ -191,7 +191,6 @@ namespace SPTAG {
 					m_clearHead = !p_config.m_buildSsdIndex;
 				}
 
-
 				ErrorCode InsertPostingList(SPTAG::COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, SizeType VID) 
 				{
 					// Fetch postingList, then update.
@@ -240,61 +239,57 @@ namespace SPTAG {
 					}
 					for (int i = 0; i < replicaCount; ++i)
 					{
-						std::string postingList;
-						// LOG(Helper::LogLevel::LL_Info, "Insert VID: %d : Head Vector: %d\n", VID, selections[i].headID);
-						db->Get(ReadOptions(), Helper::Serialize<int>(&selections[i].headID, 1), &postingList);
-						int vectorNum = postingList.size()/ (sizeof(int) + m_vectorSize);
-						uint8_t* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
-						// Note: Do not use postingP after invoking any method of postingList that may change itself
-
-						bool covered = false;
-						for (int j = 0; j < vectorNum; j++)
-						{
-							uint8_t* vectorInfo = postingP + j * (m_vectorSize + sizeof(int));
-							int vectorID = *(reinterpret_cast<int*>(vectorInfo));
-							if (m_deletedID.Contains(vectorID)) 
-							{
-								//LOG(Helper::LogLevel::LL_Info, "Found Deleted ID: %d, replaced with ID: %d\n", vectorID, VID);
-								covered = true;
-								memcpy(vectorInfo, &VID, sizeof(int));
-								memcpy(vectorInfo+sizeof(int), (uint8_t*)p_queryResults.GetTarget(), m_vectorSize);
-								vectorID = *(reinterpret_cast<int*>(vectorInfo));
-								if (vectorID != VID) LOG(Helper::LogLevel::LL_Info, "Not covered! %d :%d\n", vectorID, VID);
-								db->Put(WriteOptions(), Helper::Serialize<int>(&selections[i].headID, 1), postingList);
-								break;
-							}
-						}
-						if (covered)	continue;
-
-						// LOG(Helper::LogLevel::LL_Info, "No Found Deleted ID, Insert ID: %d\n", VID);
-						postingList += Helper::Serialize<int>(&VID, 1);
-						postingList += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
-						// Now postingP can not be trusted!
 						m_postingSizes[selections[i].headID]++;
-						vectorNum += 1;
-						if (postingList.size() > m_postingPageLimit * p_pageSize)
+						if (m_postingSizes[selections[i].headID] * (m_vectorSize + sizeof(int)) > m_postingPageLimit * p_pageSize)
 						{
-							// LOG(Helper::LogLevel::LL_Info, "PostingList Oversize, Need to Split\n");
+							std::string postingList;
+							db->Get(ReadOptions(), Helper::Serialize<int>(&selections[i].headID, 1), &postingList);
+							//LOG(Helper::LogLevel::LL_Info, "Insert VID: %d : Head Vector: %d\n", VID, selections[i].headID);
+							postingList += Helper::Serialize<int>(&VID, 1);
+							postingList += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
+							LOG(Helper::LogLevel::LL_Info, "PostingList %d Oversize, Need to Split\n", selections[i].headID);
 							uint8_t* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
 
 							// reinterpret postingList to vectors and IDs
 							COMMON::Dataset<ValueType> smallSample;  // smallSample[i] -> VID
-							std::shared_ptr<uint8_t> vectorBuffer(new uint8_t[m_vectorSize * vectorNum], std::default_delete<uint8_t[]>());
-							std::vector<int> localindicesInsert(vectorNum);  // smallSample[i] = j <-> localindices[j] = i
-							std::vector<int> localindices(vectorNum);
+							std::shared_ptr<uint8_t> vectorBuffer(new uint8_t[m_vectorSize * m_postingSizes[selections[i].headID]], std::default_delete<uint8_t[]>());
+							std::vector<int> localindicesInsert(m_postingSizes[selections[i].headID]);  // smallSample[i] = j <-> localindices[j] = i
+							std::vector<int> localindices(m_postingSizes[selections[i].headID]);
 
 							auto vectorBuf = vectorBuffer.get();
-							for (int j = 0; j < vectorNum; j++)
+							int realVectorNum = m_postingSizes[selections[i].headID];
+
+							int index = 0;
+							for (int j = 0; j < m_postingSizes[selections[i].headID]; j++)
 							{
 								uint8_t* vectorId = postingP + j * (m_vectorSize + sizeof(int));
-								localindicesInsert[j] = *(reinterpret_cast<int*>(vectorId));
-								localindices[j] = j;
-								memcpy(vectorBuf, vectorId + sizeof(int), m_vectorSize);
-								vectorBuf += m_vectorSize;
+								if (m_deletedID.Contains(*(reinterpret_cast<int*>(vectorId))))
+								{
+									realVectorNum--;
+								} else {
+									localindicesInsert[index] = *(reinterpret_cast<int*>(vectorId));
+									localindices[index] = index;
+									index++;
+									memcpy(vectorBuf, vectorId + sizeof(int), m_vectorSize);
+									vectorBuf += m_vectorSize;
+								}
 							}
-							smallSample.Initialize(vectorNum, COMMON_OPTS.m_dim, reinterpret_cast<ValueType*>(vectorBuffer.get()), false);
+							if (realVectorNum < m_postingSizes[selections[i].headID] * 0.9)
+							{
+								postingList.clear();
+								for (int j = 0; j < realVectorNum; j++)
+								{
+									postingList += Helper::Serialize<int>(&localindicesInsert[j], 1);
+									postingList += Helper::Serialize<ValueType>(vectorBuffer.get() + j * m_vectorSize, COMMON_OPTS.m_dim);
+								}
+								db->Put(WriteOptions(), Helper::Serialize<int>(&selections[i].headID, 1), postingList);
+								continue;
+							}
+							localindicesInsert.resize(realVectorNum);
+							localindices.resize(realVectorNum);
+							smallSample.Initialize(realVectorNum, COMMON_OPTS.m_dim, reinterpret_cast<ValueType*>(vectorBuffer.get()), false);
 							
-							// LOG(Helper::LogLevel::LL_Info, "Headid: %d Sample Vector Num: %d, Real Vector Num: %d\n", selections[i].headID, smallSample.R(), vectorNum);
+							LOG(Helper::LogLevel::LL_Info, "Headid: %d Sample Vector Num: %d, Real Vector Num: %d\n", selections[i].headID, smallSample.R(), realVectorNum);
 							
 							// k = 2, maybe we can change the split number
 							SPTAG::COMMON::KmeansArgs<ValueType> args(m_k, smallSample.C(), (SizeType)localindicesInsert.size(), 1, m_index->GetDistCalcMethod());
@@ -302,7 +297,12 @@ namespace SPTAG {
 							int numClusters = SPTAG::COMMON::KmeansClustering(smallSample, localindices, 0, (SizeType)localindices.size(), args);
 							if(numClusters <= 1)
 							{
-								// LOG(Helper::LogLevel::LL_Error, "Insert Stage: Very Close, First We Ignore spliting\n");
+								postingList.clear();
+								for (int j = 0; j < realVectorNum; j++)
+								{
+									postingList += Helper::Serialize<int>(&localindicesInsert[j], 1);
+									postingList += Helper::Serialize<ValueType>(vectorBuffer.get() + j * m_vectorSize, COMMON_OPTS.m_dim);
+								}
 								db->Put(WriteOptions(), Helper::Serialize<int>(&selections[i].headID, 1), postingList);
 								continue;
 							}
@@ -323,6 +323,7 @@ namespace SPTAG {
 
 								if (newHeadVID == *m_vectorTranslateMap[selections[i].headID]) {
 									newHeadVID = selections[i].headID;
+									m_postingSizes[newHeadVID] = args.counts[k];
 									removeOrigin = false;
 								} else {
 									m_index->AddHeadIndex(smallSample[args.clusterIdx[k]], 1, COMMON_OPTS.m_dim, fatherNodes);
@@ -349,11 +350,16 @@ namespace SPTAG {
 								db->Delete(WriteOptions(), Helper::Serialize<int>(&selections[i].headID, 1));
 							}
 						} else {
-							db->Put(WriteOptions(), Helper::Serialize<int>(&selections[i].headID, 1), postingList);
+							std::string postingList;
+							LOG(Helper::LogLevel::LL_Info, "Append VID: %d : Head Vector: %d\n", VID, selections[i].headID);
+							postingList += Helper::Serialize<int>(&VID, 1);
+							postingList += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
+							db->Merge(WriteOptions(), Helper::Serialize<int>(&selections[i].headID, 1), postingList);
 						}
 					}
 					return ErrorCode::Success;
 				}
+
 
 				ErrorCode Insert(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats)
 				{
