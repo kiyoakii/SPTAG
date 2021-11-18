@@ -11,6 +11,7 @@
 #include "inc/SSDServing/VectorSearch/Options.h"
 #include "inc/SSDServing/VectorSearch/TimeUtils.h"
 #include "inc/SSDServing/VectorSearch/BootVectorSearch.h"
+#include "inc/SSDServing/VectorSearch/AnnMergeOperator.h"
 #include "rocksdb/db.h"
 #include "rocksdb/slice.h"
 #include "rocksdb/options.h"
@@ -19,7 +20,7 @@ using namespace SPTAG;
 
 namespace SPTAG {
 	namespace SSDServing {
-
+		
 		BaseOptions COMMON_OPTS;
 		std::string kDBPath;
         ROCKSDB_NAMESPACE::DB* db;
@@ -96,6 +97,7 @@ namespace SPTAG {
 			dbOptions.IncreaseParallelism();
 			dbOptions.OptimizeLevelStyleCompaction();
 			dbOptions.create_if_missing = true;
+			dbOptions.merge_operator.reset(new AnnMergeOperator);
 			kDBPath = COMMON_OPTS.m_ssdIndex;
 
 

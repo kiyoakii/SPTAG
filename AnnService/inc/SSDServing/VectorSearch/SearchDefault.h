@@ -191,6 +191,22 @@ namespace SPTAG {
 					m_clearHead = !p_config.m_buildSsdIndex;
 				}
 
+				void testPrint(int headID)
+				{
+					std::string postingList;
+					//LOG(Helper::LogLevel::LL_Info, "reading posting\n");
+					db->Get(ReadOptions(), Helper::Serialize<int>(&headID, 1), &postingList);
+					//LOG(Helper::LogLevel::LL_Info, "reading posting finish\n");
+					int vectorNum = postingList.size() / (sizeof(int) + m_vectorSize);
+					uint8_t* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
+					for (int i = 0; i < vectorNum; i++)
+					{
+						uint8_t* vectorId = postingP + i * (sizeof(int) + m_vectorSize);
+						LOG(Helper::LogLevel::LL_Info, "vector ID: %d ", *(reinterpret_cast<int*>(vectorId)));
+					}
+					LOG(Helper::LogLevel::LL_Info, "\n");
+				}
+
 				ErrorCode InsertPostingList(SPTAG::COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, SizeType VID) 
 				{
 					// Fetch postingList, then update.
@@ -247,7 +263,7 @@ namespace SPTAG {
 							//LOG(Helper::LogLevel::LL_Info, "Insert VID: %d : Head Vector: %d\n", VID, selections[i].headID);
 							postingList += Helper::Serialize<int>(&VID, 1);
 							postingList += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
-							LOG(Helper::LogLevel::LL_Info, "PostingList %d Oversize, Need to Split\n", selections[i].headID);
+							//LOG(Helper::LogLevel::LL_Info, "PostingList %d Oversize, Need to Split\n", selections[i].headID);
 							uint8_t* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
 
 							// reinterpret postingList to vectors and IDs
@@ -260,9 +276,11 @@ namespace SPTAG {
 							int realVectorNum = m_postingSizes[selections[i].headID];
 
 							int index = 0;
+							//LOG(Helper::LogLevel::LL_Info, "Scanning\n");
 							for (int j = 0; j < m_postingSizes[selections[i].headID]; j++)
 							{
 								uint8_t* vectorId = postingP + j * (m_vectorSize + sizeof(int));
+								//LOG(Helper::LogLevel::LL_Info, "vector index/total:id: %d/%d:%d\n", j, m_postingSizes[selections[i].headID], *(reinterpret_cast<int*>(vectorId)));
 								if (m_deletedID.Contains(*(reinterpret_cast<int*>(vectorId))))
 								{
 									realVectorNum--;
@@ -282,14 +300,16 @@ namespace SPTAG {
 									postingList += Helper::Serialize<int>(&localindicesInsert[j], 1);
 									postingList += Helper::Serialize<ValueType>(vectorBuffer.get() + j * m_vectorSize, COMMON_OPTS.m_dim);
 								}
+								m_postingSizes[selections[i].headID] = realVectorNum;
 								db->Put(WriteOptions(), Helper::Serialize<int>(&selections[i].headID, 1), postingList);
 								continue;
 							}
+							//LOG(Helper::LogLevel::LL_Info, "Resize\n");
 							localindicesInsert.resize(realVectorNum);
 							localindices.resize(realVectorNum);
 							smallSample.Initialize(realVectorNum, COMMON_OPTS.m_dim, reinterpret_cast<ValueType*>(vectorBuffer.get()), false);
 							
-							LOG(Helper::LogLevel::LL_Info, "Headid: %d Sample Vector Num: %d, Real Vector Num: %d\n", selections[i].headID, smallSample.R(), realVectorNum);
+							//LOG(Helper::LogLevel::LL_Info, "Headid: %d Sample Vector Num: %d, Real Vector Num: %d\n", selections[i].headID, smallSample.R(), realVectorNum);
 							
 							// k = 2, maybe we can change the split number
 							SPTAG::COMMON::KmeansArgs<ValueType> args(m_k, smallSample.C(), (SizeType)localindicesInsert.size(), 1, m_index->GetDistCalcMethod());
@@ -303,6 +323,7 @@ namespace SPTAG {
 									postingList += Helper::Serialize<int>(&localindicesInsert[j], 1);
 									postingList += Helper::Serialize<ValueType>(vectorBuffer.get() + j * m_vectorSize, COMMON_OPTS.m_dim);
 								}
+								m_postingSizes[selections[i].headID] = realVectorNum;
 								db->Put(WriteOptions(), Helper::Serialize<int>(&selections[i].headID, 1), postingList);
 								continue;
 							}
@@ -351,15 +372,16 @@ namespace SPTAG {
 							}
 						} else {
 							std::string postingList;
-							LOG(Helper::LogLevel::LL_Info, "Append VID: %d : Head Vector: %d\n", VID, selections[i].headID);
+							//testPrint(selections[i].headID);
+							//LOG(Helper::LogLevel::LL_Info, "Append VID: %d : Head Vector: %d\n", VID, selections[i].headID);
 							postingList += Helper::Serialize<int>(&VID, 1);
 							postingList += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
 							db->Merge(WriteOptions(), Helper::Serialize<int>(&selections[i].headID, 1), postingList);
+							//testPrint(selections[i].headID);
 						}
 					}
 					return ErrorCode::Success;
 				}
-
 
 				ErrorCode Insert(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats)
 				{
