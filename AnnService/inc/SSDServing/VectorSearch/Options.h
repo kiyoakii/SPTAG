@@ -44,6 +44,9 @@ namespace SPTAG {
 				int m_k;
 				int m_searchVectorLimit;
 
+				// Persistent Buffer
+				std::string m_persistentBufferPath;
+
 				Options() {
 #define DefineSSDParameter(VarName, VarType, DefaultValue, RepresentStr) \
                 VarName = DefaultValue; \

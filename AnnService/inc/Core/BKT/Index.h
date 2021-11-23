@@ -171,6 +171,7 @@ namespace SPTAG
                 m_pTrees.Rebuild<T>(m_pSamples, m_iDistCalcMethod);
 				m_pGraph.BuildGraph<T>(this, &(m_pTrees.GetSampleMap()));
             };
+
         private:
             void SearchIndex(COMMON::QueryResultSet<T> &p_query, COMMON::WorkSpace &p_space, bool p_searchDeleted, bool p_searchDuplicated) const;
         };

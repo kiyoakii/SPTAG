@@ -31,4 +31,7 @@ DefineSSDParameter(m_step, int, 0, "Step")
 DefineSSDParameter(m_k, int, 2, "ClusterNum")
 DefineSSDParameter(m_searchVectorLimit, int, INT_MAX, "SearchVectorLimit")
 DefineSSDParameter(m_storeSearchDetail, bool, false, "StoreSearchDetail")
+
+//persisientBuffer
+DefineSSDParameter(m_persistentBufferPath, std::string, std::string(""), "PersistentBufferPath");
 #endif
