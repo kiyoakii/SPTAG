@@ -235,7 +235,7 @@ namespace SPTAG {
 						selections[replicaCount].fullID = VID;
 						selections[replicaCount].distance = queryResults[i].Dist;
 						selections[replicaCount].order = (char)replicaCount;
-						fathers[replicaCount] = queryResults[i].fatherVID;
+						fathers[replicaCount] = m_index->GetFatherID(queryResults[i].VID);
 						++replicaCount;
 					}
 					for (int i = 0; i < replicaCount; ++i)

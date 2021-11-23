@@ -505,6 +505,8 @@ namespace SPTAG
                 }
             }
 
+            inline SizeType GetFatherID(const SizeType headID) const { return m_pTreeRoots[headID].father; }
+
             inline std::uint64_t BufferSize() const
             {
                 return sizeof(int) + sizeof(SizeType) * m_iTreeNumber +

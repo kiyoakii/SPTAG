@@ -51,6 +51,8 @@ public:
     virtual SizeType GetNumSamples() const = 0;
     virtual SizeType GetNumDeleted() const = 0;
 
+    virtual SizeType GetFatherID(const SizeType headID) const = 0;
+
     virtual DistCalcMethod GetDistCalcMethod() const = 0;
     virtual IndexAlgoType GetIndexAlgoType() const = 0;
     virtual VectorValueType GetVectorValueType() const = 0;
