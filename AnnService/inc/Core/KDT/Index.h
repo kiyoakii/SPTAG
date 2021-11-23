@@ -131,6 +131,11 @@ namespace SPTAG
                 return std::move(buffersize);
             }
 
+            inline SizeType GetFatherID(const SizeType headID) const { 
+                LOG(Helper::LogLevel::LL_Error, "Err: Get FatherID is supported only by BKT!\n");
+                return (SizeType)0;
+            }
+            
             std::shared_ptr<std::vector<std::string>> GetIndexFiles() const
             {
                 std::shared_ptr<std::vector<std::string>> files(new std::vector<std::string>);

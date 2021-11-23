@@ -58,7 +58,6 @@ public:
         {
             m_results[0].VID = index;
             m_results[0].Dist = dist;
-            m_results[0].fatherVID = father;
             Heapify(m_resultNum);
             return true;
         }
