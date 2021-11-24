@@ -14,6 +14,7 @@
 #include "inc/Core/Common/QueryResultSet.h"
 #include "inc/Core/VectorIndex.h"
 #include "inc/Helper/ThreadPool.h"
+#include "inc/Helper/Concurrent.h"
 #include "inc/SSDServing/IndexBuildManager/CommonDefines.h"
 #include "inc/SSDServing/IndexBuildManager/Utils.h"
 #include "inc/SSDServing/VectorSearch/TimeUtils.h"
@@ -416,6 +417,7 @@ namespace SPTAG {
 
 				ErrorCode Split(const SizeType headID, int appendNum, std::string& appendPosting)
 				{
+					int father = m_index->GetFatherID(headID);
 					std::string postingList;
 					db->Get(ReadOptions(), Helper::Serialize<int>(&headID, 1), &postingList);
 					postingList += appendPosting;
@@ -485,7 +487,7 @@ namespace SPTAG {
 					long long newHeadVID = -1;
 					int first = 0;
 					std::vector<SizeType> fatherNodes;
-					fatherNodes.emplace_back(fathers[i]);
+					fatherNodes.emplace_back(father);
 					for (int k = 0; k < m_k; k++) 
 					{
 						std::string postingList;
@@ -578,7 +580,6 @@ namespace SPTAG {
 					int replicaCount = 0;
 					BasicResult* queryResults = p_queryResults.GetResults();
 					std::vector<EdgeInsert> selections(static_cast<size_t>(m_replicaCount));
-					std::vector<SizeType> fathers(static_cast<size_t>(m_replicaCount));
 					for (int i = 0; i < p_queryResults.GetResultNum() && replicaCount < m_replicaCount; ++i)
 					{
 						if (queryResults[i].VID == -1)
@@ -609,8 +610,17 @@ namespace SPTAG {
 						selections[replicaCount].fullID = VID;
 						selections[replicaCount].distance = queryResults[i].Dist;
 						selections[replicaCount].order = (char)replicaCount;
-						fathers[replicaCount] = queryResults[i].fatherVID;
 						++replicaCount;
+					}
+					char insertCode = 0;
+					for (int i = 0; i < replicaCount; i++)
+					{
+						std::string assignment;
+						assignment += Helper::Serialize<char>(&insertCode, 1);
+						assignment += Helper::Serialize<int>(&selections[i].headID, 1);
+						assignment += Helper::Serialize<int>(&VID, 1);
+						assignment += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
+						m_persistentBuffer->PutAssignment(assignment);
 					}
 					return VID;
 				}
@@ -618,6 +628,12 @@ namespace SPTAG {
 				//delete updater
 				ErrorCode Updater(const SizeType& p_id)
 				{
+					char deleteCode = 1;
+					int VID = p_id;
+					std::string assignment;
+					assignment += Helper::Serialize<char>(&deleteCode, 1);
+					assignment += Helper::Serialize<int>(&VID, 1);
+					m_persistentBuffer->PutAssignment(assignment);
 					return ErrorCode::Success;
 				}
 
@@ -811,6 +827,60 @@ namespace SPTAG {
 					m_threadPool->add(curJob);
 				}
 
+				class AppendAsyncJob : public SPTAG::Helper::ThreadPool::Job
+				{
+				private:
+					SearchDefault* m_processor;
+					const SizeType headID;
+					int appendNum;
+					std::string& appendPosting;
+					std::function<void()> m_callback;
+				public:
+					AppendAsyncJob(SearchDefault* p_processor,
+						const SizeType headID, int appendNum, std::string& appendPosting, std::function<void()> p_callback)
+						: m_processor(p_processor),
+						headID(headID), appendNum(appendNum), appendPosting(appendPosting), m_callback(p_callback) {}
+
+					~AppendAsyncJob() {}
+
+					void exec() {
+						m_processor->ProcessAsyncAppend(headID, appendNum, appendPosting, std::move(m_callback));
+					}
+				};
+
+				void AppendAsync(const SizeType headID, int appendNum, std::string& appendPosting, std::function<void()> p_callback)
+				{
+					AppendAsyncJob* curJob = new AppendAsyncJob(this, headID, appendNum, appendPosting, p_callback);
+
+					m_appendThreadPool->add(curJob);
+				}
+
+				class DeleteAsyncJob : public SPTAG::Helper::ThreadPool::Job
+				{
+				private:
+					SearchDefault* m_processor;
+					const SizeType& p_id,
+					std::function<void()> m_callback;
+				public:
+					DeleteAsyncJob(SearchDefault* p_processor,
+						const SizeType& p_id, std::function<void()> p_callback)
+						: m_processor(p_processor),
+						p_id(p_id), m_callback(p_callback) {}
+
+					~DeleteAsyncJob() {}
+
+					void exec() {
+						m_processor->ProcessAsyncDelete(p_id, std::move(m_callback));
+					}
+				};
+
+				void DeleteAsync(const SizeType& p_id, std::function<void()> p_callback)
+				{
+					DeleteAsyncJob* curJob = new DeleteAsyncJob(this, p_id, p_callback);
+
+					m_deleteThreadPool->add(curJob);
+				}
+
 
 				void SetHint(int p_threadNum, int p_resultNum, bool p_asyncCall, const Options& p_opts)
 				{
@@ -842,6 +912,7 @@ namespace SPTAG {
 				void updaterSetup()
 				{
 					updateID = 0;
+					m_dispatcher.reset(new dispatcher());
 				}
 
 				void setSplitZero()
@@ -901,22 +972,93 @@ namespace SPTAG {
 					{
 						applyedAssignment = 0;
 						finishedAssignment = 0;
+						m_appendThreadPool.reset(new Helper::ThreadPool());
+						m_appendThreadPool->init(m_appendThreadNum);
+						m_deleteThreadPool.reset(new Helper::ThreadPool());
+						m_deleteThreadPool->init(m_deleteThreadNum);
+						std::thread DispatchLoopThread(DispatchLoop());
+						m_dispatcher_running_flag = true;
+						DispatchLoopThread.detach();
 					}
 
 					void DispatchLoop()
 					{
 						while(1)
 						{
+							bool noAssignment = true;
 							int currentAssignmentID = m_persistentBuffer->GetCurrentAssignmentID();
-							for (int i = applyedAssignment; i < currentAssignmentID; i++)
+							int scanNum = std::min<int>(applyedAssignment + 1000, currentAssignmentID);
+							if (scanNum != applyedAssignment)
+							{
+								noAssignment = false;
+							}
+							std::map<int, std::string> headAppendMap;
+							std::set<int> vectorDeleteSet;
+							Helper::Concurrent::WaitSignal waitFinishAppend;
+							Helper::Concurrent::WaitSignal waitFinishDelete;
+							for (int i = applyedAssignment; i < scanNum; i++)
 							{
 								std::string assignment;
 								m_persistentBuffer->GetAssignment(i, &assignment);
-								//parse the assignment	
-								//....
+								uint8_t* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
+								char code = *(reinterpret_cast<char*>(postingP));
+								if (code == 0)
+								{
+									//insert
+									uint8_t* headPointer = postingP + sizeof(char);
+									int headID = *(reinterpret_cast<int*>(headPointer));
+									auto iter = headAppendMap.find(headID);
+									if (iter == headAppendMap.end())
+									{
+										//no found current posting
+										headAppendMap[headID] = Helper::Serialize<uint8_t>(headPointer + sizeof(int), m_vectorSize + sizeof(int));
+									}
+									else
+									{
+										headAppendMap[headID] += Helper::Serialize<uint8_t>(headPointer + sizeof(int), m_vectorSize + sizeof(int));
+									}
+								}
+								else
+								{
+									//delete
+									uint8_t* vectorPointer = postingP + sizeof(char);
+									int VID = *(reinterpret_cast<int*>(vectorPointer));
+									vectorDeleteSet.insert(VID);
+								}
 							}
-							applyedAssignment = currentAssignmentID;
-							std::this_thread::sleep_for(std::chrono::milliseconds(300));
+							waitFinishAppend.Reset(static_cast<uint32_t>(headAppendMap.size()));
+							waitFinishDelete.Reset(static_cast<uint32_t>(vectorDeleteSet.size()));
+							auto callbackAppend = [&waitFinishAppend]()
+							{
+								waitFinishAppend.FinishOne();
+							};
+							auto callbackDelete = [&waitFinishDelete]()
+							{
+								waitFinishDelete.FinishOne();
+							};
+							for (auto iter = headAppendMap.begin(); iter != headAppendMap.end(); iter++)
+							{
+								int appendNum = iter->second.size() / (m_vectorSize + sizeof(int));
+								AppendAsync(iter->first, appendNum, iter->second, callbackAppend);
+							}
+							for (auto iter = vectorDeleteSet.begin(); iter != vectorDeleteSet.end(); iter++)
+							{
+								DeleteAsync(*it, callbackDelete);
+							}
+							applyedAssignment = scanNum;
+
+							waitFinishAppend.Wait();
+							waitFinishDelete.Wait();
+
+							finishedAssignment = scanNum;
+							if (noAssignment) 
+							{
+								std::this_thread::sleep_for(std::chrono::milliseconds(500));
+							}
+							else
+							{
+								LOG(Helper::LogLevel::LL_Info, "Process Append Assignments: %d, Delete Assignments\n", headAppendMap.size(), vectorDeleteSet.size());
+							}
 						}
 					}
 
@@ -925,9 +1067,14 @@ namespace SPTAG {
 						return finishedAssignment;
 					}
 
+					void setDispatcher
+
 					private:
 						int applyedAssignment;
 						int finishedAssignment;
+						int m_appendThreadNum = 4;
+						int m_deleteThreadNum = 1;
+						bool m_dispatcher_running_flag;
 				};
 
 			protected:
@@ -952,6 +1099,20 @@ namespace SPTAG {
 					m_lastQuit = std::chrono::steady_clock::now();
 				}
 
+				void ProcessAsyncAppend(const SizeType headID, int appendNum, std::string& appendPosting, std::function<void()> p_callback)
+				{
+					Append(headID, appendNum, appendPosting);
+
+					p_callback();
+				}
+
+				void ProcessAsyncDelete(const SizeType& p_id, std::function<void()> p_callback)
+				{
+					Delete(p_id);
+
+					p_callback();
+				}
+
 				std::shared_ptr<VectorIndex> m_index;
 
 				//std::unique_ptr<long long[]> m_vectorTranslateMap;
@@ -962,8 +1123,11 @@ namespace SPTAG {
 				//persisten buffer
 
 				std::unique_ptr<PersistentBuffer> m_persistentBuffer;
+				std::unique_ptr<Dispatcher> m_dispatcher;
 
 				std::unique_ptr<Helper::ThreadPool> m_threadPool;
+				std::unique_ptr<Helper::ThreadPool> m_appendThreadPool;
+				std::unique_ptr<Helper::ThreadPool> m_deleteThreadPool;
 
 				std::atomic<std::int32_t> m_tids;
 
