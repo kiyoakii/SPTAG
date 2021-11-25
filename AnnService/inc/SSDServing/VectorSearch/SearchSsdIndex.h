@@ -405,7 +405,7 @@ namespace SPTAG {
                 {
                     for (int j = 0; j < deletenum; j++)
                     {
-                        deletedPoints.insert(results[i].GetResult(j)->VID);
+                        //deletedPoints.insert(results[i].GetResult(j)->VID);
                         searcher.Delete(results[i].GetResult(j)->VID);
                     }
                 }
@@ -453,7 +453,7 @@ namespace SPTAG {
                 }
                 for (int i = 0; i < insertnum; i++)
                 {
-                    searcher.Insert(results[i], stats[i]);
+                    //searcher.Insert(results[i], stats[i]);
                 }
 
                 for (int i = 0; i < numQueries; ++i)
@@ -703,7 +703,7 @@ namespace SPTAG {
                     for (int k = 0; k < updateVectorNum; k++) 
                     {
                         if ((k+1) % 10000 == 0) LOG(Helper::LogLevel::LL_Info, "cycle %d: inserted %d vectors\n", i, k+1);
-                        searcher.Insert(insertResult[k], stats[k]);
+                        //searcher.Insert(insertResult[k], stats[k]);
                         indices[updateIndice[k]] = vectorNum++;
                     }
                     LOG(Helper::LogLevel::LL_Info, "cycle %d: after %d insertion, head vectors split %d times\n", i, updateVectorNum, searcher.getSplitNum());
@@ -833,6 +833,8 @@ namespace SPTAG {
                 LOG(Helper::LogLevel::LL_Info, "Setup index finish, start setup hint...\n");
                 searcher.SetHint(numThreads, internalResultNum, asyncCallQPS > 0, p_opts);
 
+                searcher.updaterSetup();
+
                 searcher.setSearchLimit(p_opts.m_internalResultNum);
 
                 searcher.LoadDeleteID(COMMON_OPTS.m_deleteID);
@@ -864,6 +866,13 @@ namespace SPTAG {
                 int curCount = searcher.getVecNum();
 
                 std::string truthfile;
+                std::vector<SizeType> indices;
+                indices.clear();
+                indices.resize(curCount + insertCount);
+                for (int i = 0; i < indices.size(); i++) 
+                {
+                    indices[i] = i;
+                }
 
                 LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
                 LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
@@ -901,12 +910,22 @@ namespace SPTAG {
                     insertResults[i].SetTarget(reinterpret_cast<ValueType*>(extraVectors->GetVector(i)));
                     insertResults[i].Reset();
                 }
+                int assignID;
                 for (int i = 0; i < insertCount; i++)
                 {
-                    searcher.Insert(insertResults[i], stats[i]);
+                    int VID;
+                    assignID = searcher.Updater(insertResults[i], stats[i], &VID);
                     if ((i+1) % 10000 == 0) LOG(Helper::LogLevel::LL_Info, "inserted %d vectors\n", i+1);
                     if ((i+1) % step == 0)
                     {
+                        int currentID = searcher.getCurrentFinishedAssignment();
+                        while((currentID - 1) != assignID)
+                        {
+                            LOG(Helper::LogLevel::LL_Info, "Current Finished assignment number:%d, remain:%d\n", currentID, assignID - currentID + 1);
+                            sleep(1);
+                            currentID = searcher.getCurrentFinishedAssignment();
+                        }
+                        searcher.calAvgPostingSize();
                         searcher.setSearchLimit(p_opts.m_internalResultNum);
                         curCount += step;
                         LOG(Helper::LogLevel::LL_Info, "Total Vector num %d \n", curCount);
@@ -931,6 +950,15 @@ namespace SPTAG {
                         LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times\n", i+1, searcher.getSplitNum());
                     }
                 }
+                searcher.setDispatcherStop();
+                int currentID = searcher.getCurrentFinishedAssignment();
+                while((currentID - 1)!= assignID)
+                {
+                    LOG(Helper::LogLevel::LL_Info, "Current Finished assignment number:%d, remain:%d\n", currentID, assignID - currentID);
+                    sleep(1);
+                    currentID = searcher.getCurrentFinishedAssignment();
+                }
+
                 LOG(Helper::LogLevel::LL_Info, "Insert finished, split %d time\n", searcher.getSplitNum());
 
                 //searcher.setSplitZero();

@@ -133,21 +133,35 @@ namespace SPTAG {
                         exit(1);
                     }
 
-                    input.read(reinterpret_cast<char*>(&m_vectornum), sizeof(m_vectornum));
+					int vectornum, postingnum;
+					std::vector<int> postingSizes;
 
-					LOG(Helper::LogLevel::LL_Info, "Current vector num: %d.\n", m_vectornum);
+                    input.read(reinterpret_cast<char*>(&vectornum), sizeof(vectornum));
 
-					input.read(reinterpret_cast<char*>(&m_posting_num), sizeof(m_posting_num));
+					m_vectornum.store(vectornum);
 
-					LOG(Helper::LogLevel::LL_Info, "Current posting num: %d.\n", m_posting_num);
+					LOG(Helper::LogLevel::LL_Info, "Current vector num: %d.\n", m_vectornum.load());
 
-					m_postingSizes.resize(m_posting_num);
+					input.read(reinterpret_cast<char*>(&postingnum), sizeof(postingnum));
 
-					input.read(reinterpret_cast<char*>(m_postingSizes.data()), sizeof(int)*m_posting_num);
+					m_posting_num.store(postingnum);
+
+					LOG(Helper::LogLevel::LL_Info, "Current posting num: %d.\n", m_posting_num.load());
+
+					postingSizes.resize(m_posting_num.load());
+
+					input.read(reinterpret_cast<char*>(postingSizes.data()), sizeof(int) * m_posting_num.load());
 
 					input.close();
 
-					m_vectornum_last = m_vectornum;
+					m_postingSizes.resize(postingSizes.size());
+
+					for (int i = 0; i < postingSizes.size(); i++)
+					{
+						m_postingSizes[i].reset(new std::atomic_int (postingSizes[i]));
+					}
+
+					m_vectornum_last = m_vectornum.load();
 					
 					calAvgPostingSize();
 
@@ -217,6 +231,7 @@ namespace SPTAG {
 					LOG(Helper::LogLevel::LL_Info, "\n");
 				}
 
+				/*
 				ErrorCode InsertPostingList(SPTAG::COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, SizeType VID) 
 				{
 					// Fetch postingList, then update.
@@ -399,12 +414,13 @@ namespace SPTAG {
 					m_index->SearchIndex(p_queryResults);
 					auto ret = InsertPostingList(p_queryResults, p_stats, m_vectornum);
 					m_vectornum++;
-					if (m_vectornum - m_vectornum_last > m_vectornum_last * 0.05) {
+					if (m_vectornum.load() - m_vectornum_last > m_vectornum_last * 0.05) {
 						calAvgPostingSize();
-						m_vectornum_last = m_vectornum;
+						m_vectornum_last = m_vectornum.load();
 					}
 					return ret;
 				}
+				*/
 
 				void Rebuild()
 				{
@@ -422,14 +438,14 @@ namespace SPTAG {
 					db->Get(ReadOptions(), Helper::Serialize<int>(&headID, 1), &postingList);
 					postingList += appendPosting;
 					uint8_t* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
-					int postVectorNum = m_postingSizes[headID] + appendNum;
+					int postVectorNum =  postingList.size() / (m_vectorSize + sizeof(int));
 					// reinterpret postingList to vectors and IDs
 					COMMON::Dataset<ValueType> smallSample;  // smallSample[i] -> VID
 					std::shared_ptr<uint8_t> vectorBuffer(new uint8_t[m_vectorSize * postVectorNum], std::default_delete<uint8_t[]>());
 					std::vector<int> localindicesInsert(postVectorNum);  // smallSample[i] = j <-> localindices[j] = i
 					std::vector<int> localindices(postVectorNum);
 					auto vectorBuf = vectorBuffer.get();
-					int realVectorNum = m_postingSizes[headID] + appendNum;
+					int realVectorNum = postVectorNum;
 					int index = 0;
 					//LOG(Helper::LogLevel::LL_Info, "Scanning\n");
 					for (int j = 0; j < postVectorNum; j++)
@@ -455,7 +471,7 @@ namespace SPTAG {
 							postingList += Helper::Serialize<int>(&localindicesInsert[j], 1);
 							postingList += Helper::Serialize<ValueType>(vectorBuffer.get() + j * m_vectorSize, COMMON_OPTS.m_dim);
 						}
-						m_postingSizes[headID] = realVectorNum;
+						m_postingSizes[headID]->store(realVectorNum);
 						db->Put(WriteOptions(), Helper::Serialize<int>(&headID, 1), postingList);
 						return ErrorCode::Success;
 					}
@@ -478,7 +494,7 @@ namespace SPTAG {
 							postingList += Helper::Serialize<int>(&localindicesInsert[j], 1);
 							postingList += Helper::Serialize<ValueType>(vectorBuffer.get() + j * m_vectorSize, COMMON_OPTS.m_dim);
 						}
-						m_postingSizes[headID] = realVectorNum;
+						m_postingSizes[headID]->store(realVectorNum);
 						db->Put(WriteOptions(), Helper::Serialize<int>(&headID, 1), postingList);
 						return ErrorCode::Success;
 					}
@@ -499,14 +515,14 @@ namespace SPTAG {
 
 						if (newHeadVID == *m_vectorTranslateMap[headID]) {
 							newHeadVID = headID;
-							m_postingSizes[newHeadVID] = args.counts[k];
+							m_postingSizes[newHeadVID]->store(args.counts[k]);
 							removeOrigin = false;
 						} else {
 							{
 								std::lock_guard<std::mutex> lock(m_headAddLock);
-
 								m_index->AddHeadIndex(smallSample[args.clusterIdx[k]], 1, COMMON_OPTS.m_dim, fatherNodes);
-								m_postingSizes.emplace_back(args.counts[k]);
+								std::unique_ptr<std::atomic_int> newAtomicSize(new std::atomic_int(args.counts[k]));
+								m_postingSizes.push_back(std::move(newAtomicSize));
 								m_vectorTranslateMap.AddBatch(&newHeadVID, 1);
 								newHeadVID = m_vectorTranslateMap.R() - 1;
 							}
@@ -527,21 +543,21 @@ namespace SPTAG {
 						auto bktIndex = dynamic_cast<SPTAG::BKT::Index<ValueType>*>(m_index.get());
 						bktIndex->DeleteIndex(headID);
 						// delete from disk
-						db->Delete(WriteOptions(), Helper::Serialize<int>(headID, 1));
+						db->Delete(WriteOptions(), Helper::Serialize<int>(&headID, 1));
 					}
 					return ErrorCode::Success;
 				}
 
 				ErrorCode Append(const SizeType headID, int appendNum, std::string& appendPosting)
 				{
-					if (m_postingSizes[headID] + appendNum > m_postingVectorLimit)
+					if (m_postingSizes[headID]->load() + appendNum > m_postingVectorLimit)
 					{
 						Split(headID, appendNum, appendPosting);
 					}
 					else
 					{
-						db->Merge(WriteOptions(), Helper::Serialize<int>(&headID, 1), postingList);
-						m_postingSizes[headID] += appendNum;
+						db->Merge(WriteOptions(), Helper::Serialize<int>(&headID, 1), appendPosting);
+						m_postingSizes[headID]->fetch_add(appendNum);
 					}
 					return ErrorCode::Success;
 				}
@@ -565,9 +581,9 @@ namespace SPTAG {
         		}
 
 				//insert updater
-				SizeType Updater(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats)
+				int Updater(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, int* VID)
 				{
-					int VID = m_vectornum.fetch_add(1);
+					*VID = m_vectornum.fetch_add(1);
 					{
 						std::lock_guard<std::mutex> lock(m_dataAddLock);
 						m_deletedID.AddBatch(1);
@@ -575,7 +591,7 @@ namespace SPTAG {
 					m_index->SearchIndex(p_queryResults);
 					if (COMMON_OPTS.m_indexAlgoType != IndexAlgoType::BKT) {
 						LOG(Helper::LogLevel::LL_Error, "Only Support BKT Update");
-						return ErrorCode::Undefined;
+						return -1;
 					}
 					int replicaCount = 0;
 					BasicResult* queryResults = p_queryResults.GetResults();
@@ -607,22 +623,23 @@ namespace SPTAG {
 						if (!rngAccpeted)
 							continue;
 						selections[replicaCount].headID = queryResults[i].VID;
-						selections[replicaCount].fullID = VID;
+						selections[replicaCount].fullID = *VID;
 						selections[replicaCount].distance = queryResults[i].Dist;
 						selections[replicaCount].order = (char)replicaCount;
 						++replicaCount;
 					}
 					char insertCode = 0;
+					int assignID;
 					for (int i = 0; i < replicaCount; i++)
 					{
 						std::string assignment;
 						assignment += Helper::Serialize<char>(&insertCode, 1);
 						assignment += Helper::Serialize<int>(&selections[i].headID, 1);
-						assignment += Helper::Serialize<int>(&VID, 1);
+						assignment += Helper::Serialize<int>(VID, 1);
 						assignment += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
-						m_persistentBuffer->PutAssignment(assignment);
+						assignID = m_persistentBuffer->PutAssignment(assignment);
 					}
-					return VID;
+					return assignID;
 				}
 
 				//delete updater
@@ -718,7 +735,7 @@ namespace SPTAG {
 							if (res->VID != -1)
 							{
 								auto_ws->m_postingIDs.emplace_back(res->VID);
-								totalVectors += m_postingSizes[res->VID];
+								totalVectors += m_postingSizes[res->VID]->load();
 								if (totalVectors > m_searchVectorLimit)
 								{
 									break;
@@ -859,7 +876,7 @@ namespace SPTAG {
 				{
 				private:
 					SearchDefault* m_processor;
-					const SizeType& p_id,
+					const SizeType& p_id;
 					std::function<void()> m_callback;
 				public:
 					DeleteAsyncJob(SearchDefault* p_processor,
@@ -911,8 +928,15 @@ namespace SPTAG {
 
 				void updaterSetup()
 				{
-					updateID = 0;
-					m_dispatcher.reset(new dispatcher());
+					applyedAssignment = 0;
+					finishedAssignment = 0;
+					m_appendThreadPool.reset(new Helper::ThreadPool());
+					m_appendThreadPool->init(m_appendThreadNum);
+					m_deleteThreadPool.reset(new Helper::ThreadPool());
+					m_deleteThreadPool->init(m_deleteThreadNum);
+					m_dispatcher_running_flag = true;
+					auto DispatchLoopThread = std::thread(&SearchDefault::DispatchLoop, this);
+					DispatchLoopThread.detach();
 				}
 
 				void setSplitZero()
@@ -935,7 +959,7 @@ namespace SPTAG {
 					int total = 0;
 					for (int i = 0; i < m_postingSizes.size(); i++)
 					{
-						if (m_index->ContainSample(i)) total += m_postingSizes[i];
+						if (m_index->ContainSample(i)) total += m_postingSizes[i]->load();
 					}
 					m_postingSize_avg = total / m_postingSizes.size();
 				}
@@ -966,116 +990,101 @@ namespace SPTAG {
 					}
 				}
 
-				class Dispatcher
+				void DispatchLoop()
 				{
-					Dispatcher()
+					while(1)
 					{
-						applyedAssignment = 0;
-						finishedAssignment = 0;
-						m_appendThreadPool.reset(new Helper::ThreadPool());
-						m_appendThreadPool->init(m_appendThreadNum);
-						m_deleteThreadPool.reset(new Helper::ThreadPool());
-						m_deleteThreadPool->init(m_deleteThreadNum);
-						std::thread DispatchLoopThread(DispatchLoop());
-						m_dispatcher_running_flag = true;
-						DispatchLoopThread.detach();
-					}
-
-					void DispatchLoop()
-					{
-						while(1)
+						bool noAssignment = true;
+						int currentAssignmentID = m_persistentBuffer->GetCurrentAssignmentID();
+						int scanNum = std::min<int>(applyedAssignment + 1000, currentAssignmentID);
+						if (scanNum != applyedAssignment)
 						{
-							bool noAssignment = true;
-							int currentAssignmentID = m_persistentBuffer->GetCurrentAssignmentID();
-							int scanNum = std::min<int>(applyedAssignment + 1000, currentAssignmentID);
-							if (scanNum != applyedAssignment)
+							noAssignment = false;
+						} 
+						else if (!m_dispatcher_running_flag)
+						{
+							return;
+						}
+						std::map<int, std::string> headAppendMap;
+						std::set<int> vectorDeleteSet;
+						Helper::Concurrent::WaitSignal waitFinishAppend;
+						Helper::Concurrent::WaitSignal waitFinishDelete;
+						for (int i = applyedAssignment; i < scanNum; i++)
+						{
+							std::string assignment;
+							m_persistentBuffer->GetAssignment(i, &assignment);
+							uint8_t* postingP = reinterpret_cast<uint8_t*>(&assignment.front());
+							char code = *(reinterpret_cast<char*>(postingP));
+							if (code == 0)
 							{
-								noAssignment = false;
-							}
-							std::map<int, std::string> headAppendMap;
-							std::set<int> vectorDeleteSet;
-							Helper::Concurrent::WaitSignal waitFinishAppend;
-							Helper::Concurrent::WaitSignal waitFinishDelete;
-							for (int i = applyedAssignment; i < scanNum; i++)
-							{
-								std::string assignment;
-								m_persistentBuffer->GetAssignment(i, &assignment);
-								uint8_t* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
-								char code = *(reinterpret_cast<char*>(postingP));
-								if (code == 0)
+								//insert
+								uint8_t* headPointer = postingP + sizeof(char);
+								int headID = *(reinterpret_cast<int*>(headPointer));
+								auto iter = headAppendMap.find(headID);
+								if (iter == headAppendMap.end())
 								{
-									//insert
-									uint8_t* headPointer = postingP + sizeof(char);
-									int headID = *(reinterpret_cast<int*>(headPointer));
-									auto iter = headAppendMap.find(headID);
-									if (iter == headAppendMap.end())
-									{
-										//no found current posting
-										headAppendMap[headID] = Helper::Serialize<uint8_t>(headPointer + sizeof(int), m_vectorSize + sizeof(int));
-									}
-									else
-									{
-										headAppendMap[headID] += Helper::Serialize<uint8_t>(headPointer + sizeof(int), m_vectorSize + sizeof(int));
-									}
+									//no found current posting
+									headAppendMap[headID] = Helper::Serialize<uint8_t>(headPointer + sizeof(int), m_vectorSize + sizeof(int));
 								}
 								else
 								{
-									//delete
-									uint8_t* vectorPointer = postingP + sizeof(char);
-									int VID = *(reinterpret_cast<int*>(vectorPointer));
-									vectorDeleteSet.insert(VID);
+									headAppendMap[headID] += Helper::Serialize<uint8_t>(headPointer + sizeof(int), m_vectorSize + sizeof(int));
 								}
-							}
-							waitFinishAppend.Reset(static_cast<uint32_t>(headAppendMap.size()));
-							waitFinishDelete.Reset(static_cast<uint32_t>(vectorDeleteSet.size()));
-							auto callbackAppend = [&waitFinishAppend]()
-							{
-								waitFinishAppend.FinishOne();
-							};
-							auto callbackDelete = [&waitFinishDelete]()
-							{
-								waitFinishDelete.FinishOne();
-							};
-							for (auto iter = headAppendMap.begin(); iter != headAppendMap.end(); iter++)
-							{
-								int appendNum = iter->second.size() / (m_vectorSize + sizeof(int));
-								AppendAsync(iter->first, appendNum, iter->second, callbackAppend);
-							}
-							for (auto iter = vectorDeleteSet.begin(); iter != vectorDeleteSet.end(); iter++)
-							{
-								DeleteAsync(*it, callbackDelete);
-							}
-							applyedAssignment = scanNum;
-
-							waitFinishAppend.Wait();
-							waitFinishDelete.Wait();
-
-							finishedAssignment = scanNum;
-							if (noAssignment) 
-							{
-								std::this_thread::sleep_for(std::chrono::milliseconds(500));
 							}
 							else
 							{
-								LOG(Helper::LogLevel::LL_Info, "Process Append Assignments: %d, Delete Assignments\n", headAppendMap.size(), vectorDeleteSet.size());
+								//delete
+								uint8_t* vectorPointer = postingP + sizeof(char);
+								int VID = *(reinterpret_cast<int*>(vectorPointer));
+								vectorDeleteSet.insert(VID);
 							}
 						}
+						waitFinishAppend.Reset(static_cast<uint32_t>(headAppendMap.size()));
+						waitFinishDelete.Reset(static_cast<uint32_t>(vectorDeleteSet.size()));
+						auto callbackAppend = [&waitFinishAppend]()
+						{
+							waitFinishAppend.FinishOne();
+						};
+						auto callbackDelete = [&waitFinishDelete]()
+						{
+							waitFinishDelete.FinishOne();
+						};
+						for (auto iter = headAppendMap.begin(); iter != headAppendMap.end(); iter++)
+						{
+							int appendNum = iter->second.size() / (m_vectorSize + sizeof(int));
+							AppendAsync(iter->first, appendNum, iter->second, callbackAppend);
+						}
+						for (auto iter = vectorDeleteSet.begin(); iter != vectorDeleteSet.end(); iter++)
+						{
+							DeleteAsync(*iter, callbackDelete);
+						}
+						applyedAssignment = scanNum;
+
+						waitFinishAppend.Wait();
+						waitFinishDelete.Wait();
+
+						finishedAssignment = scanNum;
+						if (noAssignment) 
+						{
+							std::this_thread::sleep_for(std::chrono::milliseconds(500));
+						}
+						else
+						{
+							LOG(Helper::LogLevel::LL_Info, "Process Append Assignments: %d, Delete Assignments: %d\n", headAppendMap.size(), vectorDeleteSet.size());
+						}
 					}
+				}
 
-					int getCurrentFinishedAssignment()
-					{
-						return finishedAssignment;
-					}
+				int getCurrentFinishedAssignment()
+				{
+					return finishedAssignment;
+				}
 
-					void setDispatcher
+				void setDispatcherStop()
+				{
+					m_dispatcher_running_flag = false;
+				}
 
-					private:
-						int applyedAssignment;
-						int finishedAssignment;
-						int m_appendThreadNum = 4;
-						int m_deleteThreadNum = 1;
-						bool m_dispatcher_running_flag;
-				};
 
 			protected:
 				void ProcessAsyncSearch(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, std::function<void()> p_callback)
@@ -1123,7 +1132,7 @@ namespace SPTAG {
 				//persisten buffer
 
 				std::unique_ptr<PersistentBuffer> m_persistentBuffer;
-				std::unique_ptr<Dispatcher> m_dispatcher;
+				//std::unique_ptr<Dispatcher> m_dispatcher;
 
 				std::unique_ptr<Helper::ThreadPool> m_threadPool;
 				std::unique_ptr<Helper::ThreadPool> m_appendThreadPool;
@@ -1169,13 +1178,13 @@ namespace SPTAG {
 
 
 				//insert information
-				std::atomic_int m_split_num;
+				int m_split_num;
 
 				//can't be atomic when append new entry, so need to set lock
 
 				std::mutex m_headAddLock;
 				
-				std::vector<int> m_postingSizes;
+				std::vector<std::unique_ptr<std::atomic_int>> m_postingSizes;
 
 				std::atomic<int> m_posting_num;
 
@@ -1184,6 +1193,12 @@ namespace SPTAG {
 
 				boost::lockfree::stack<ExtraWorkSpace*> m_workspaces;
 
+				//dispatcher
+				int applyedAssignment;
+				int finishedAssignment;
+				int m_appendThreadNum = 4;
+				int m_deleteThreadNum = 1;
+				bool m_dispatcher_running_flag;
 			};
 		}
 	}
