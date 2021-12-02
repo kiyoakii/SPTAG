@@ -65,7 +65,7 @@ namespace SPTAG {
 			{
 			public:
 				SearchDefault()
-					: m_workspaces(128), currentTasks(10000)
+					: m_workspaces(128), currentTasks(10000), running(new uint8_t[1000000000])
 				{
 					m_tids = 0;
 					m_replicaCount = 4;
@@ -79,6 +79,7 @@ namespace SPTAG {
 					{
 						delete context;
 					}
+					delete running;
 				}
 
 				void LoadHeadIndex(Options& p_opts) {
@@ -1076,7 +1077,7 @@ namespace SPTAG {
 				std::atomic_flag m_dispatcher_running_flag;
 				
 				boost::lockfree::queue<Task, boost::lockfree::fixed_sized<true>> currentTasks;
-				std::array<uint8_t, 1000000000> running;
+				uint8_t* running;
 				std::unordered_map<SizeType, std::pair<SizeType, SizeType>> splitRoute;
 			};
 		}
