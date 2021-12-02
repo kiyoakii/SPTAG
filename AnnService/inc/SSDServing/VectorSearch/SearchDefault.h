@@ -65,11 +65,15 @@ namespace SPTAG {
 			{
 			public:
 				SearchDefault()
-					: m_workspaces(128), currentTasks(10000), running(new uint8_t[1000000000])
+					: m_workspaces(128), currentTasks(10000), running(new uint8_t[1000000000]), splitRoute(new std::pair<SizeType, SizeType>[1000000000])
 				{
 					m_tids = 0;
 					m_replicaCount = 4;
 					//QueryPerformanceFrequency(&g_systemPerfFreq);
+					for (int i = 0; i < 1000000000; i++) {
+						running[i] = 0;
+						splitRoute[i] = std::make_pair<SizeType, SizeType>(0, 0);
+					}
 				}
 
 				~SearchDefault()
@@ -80,6 +84,7 @@ namespace SPTAG {
 						delete context;
 					}
 					delete running;
+					delete splitRoute;
 				}
 
 				void LoadHeadIndex(Options& p_opts) {
@@ -884,7 +889,7 @@ namespace SPTAG {
 
 				std::vector<SizeType> traceSplitRoute(SizeType id) 
 				{
-					if (splitRoute.count(id) == 0) {
+					if (splitRoute[id] == std::make_pair<SizeType, SizeType>(0, 0)) {
 						return std::vector<SizeType>{ id };
 					} else {
 						auto pair = splitRoute[id];
@@ -1078,7 +1083,8 @@ namespace SPTAG {
 				
 				boost::lockfree::queue<Task, boost::lockfree::fixed_sized<true>> currentTasks;
 				uint8_t* running;
-				std::unordered_map<SizeType, std::pair<SizeType, SizeType>> splitRoute;
+				std::pair<SizeType, SizeType>* splitRoute;
+				// std::unordered_map<SizeType, std::pair<SizeType, SizeType>> splitRoute;
 			};
 		}
 	}
