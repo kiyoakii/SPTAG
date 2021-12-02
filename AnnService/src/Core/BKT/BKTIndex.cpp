@@ -554,12 +554,12 @@ namespace SPTAG
                         COMMON::Utils::Normalize((T*)m_pSamples[i], GetFeatureDim(), base);
                     }
                 }
-            }
-
-            int num = 0;
-            for (SizeType node = begin; node < end; node++, num++)
-            {
-                m_pTrees.InsertNode(m_pTrees[fatherNodes[num]], node);
+                
+                int num = 0;
+                for (SizeType node = begin; node < end; node++, num++)
+                {
+                    m_pTrees.InsertNode(m_pTrees[fatherNodes[num]], node);
+                }
             }
 
             for (SizeType node = begin; node < end; node++)

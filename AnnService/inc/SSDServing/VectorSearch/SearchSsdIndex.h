@@ -910,7 +910,7 @@ namespace SPTAG {
                     insertResults[i].SetTarget(reinterpret_cast<ValueType*>(extraVectors->GetVector(i)));
                     insertResults[i].Reset();
                 }
-                int assignID;
+                SizeType assignID = 0;
                 for (int i = 0; i < insertCount; i++)
                 {
                     int VID;
