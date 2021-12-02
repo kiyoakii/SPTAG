@@ -882,7 +882,7 @@ namespace SPTAG {
 						if (noAssignment) {
 							std::this_thread::sleep_for(std::chrono::milliseconds(500));
 						} else {
-							LOG(Helper::LogLevel::LL_Info, "Process Append Assignments: %d, Delete Assignments: %d\n", newPart.size(), deletedVector.size());
+							//LOG(Helper::LogLevel::LL_Info, "Process Append Assignments: %d, Delete Assignments: %d\n", newPart.size(), deletedVector.size());
 						}
 					}
 				}
@@ -922,6 +922,7 @@ namespace SPTAG {
 								running[task.id] = 1;
 								if (!m_index->ContainSample(task.id)) {
 									// running[task.id] = 0; actually this head will never be used again, we can not reset it
+									running[task.id] = 0;
 									std::vector<SizeType> newIDs = traceSplitRoute(task.id);
 									auto dis = [this, task](SizeType a) -> float { return m_index->ComputeDistance(m_index->GetSample(task.id), m_index->GetSample(a)); };
 									auto sortFunc = [dis](SizeType a, SizeType b) -> bool { return dis(a) < dis(b); };
@@ -1056,7 +1057,6 @@ namespace SPTAG {
 
 				int m_postingSize_avg;
 
-
 				//insert information
 				int m_split_num;
 
@@ -1077,7 +1077,7 @@ namespace SPTAG {
 				//dispatcher
 				int appliedAssignment;
 				int finishedAssignment;
-				int m_appendThreadNum = 4;
+				int m_appendThreadNum = 1;
 				int m_deleteThreadNum = 1;
 				std::atomic_flag m_dispatcher_running_flag;
 				
