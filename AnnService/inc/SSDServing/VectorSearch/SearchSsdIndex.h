@@ -910,20 +910,17 @@ namespace SPTAG {
                     insertResults[i].SetTarget(reinterpret_cast<ValueType*>(extraVectors->GetVector(i)));
                     insertResults[i].Reset();
                 }
-                int assignID;
                 for (int i = 0; i < insertCount; i++)
                 {
                     int VID;
-                    assignID = searcher.Updater(insertResults[i], stats[i], &VID);
+                    searcher.Updater(insertResults[i], stats[i], &VID);
                     if ((i+1) % 10000 == 0) LOG(Helper::LogLevel::LL_Info, "inserted %d vectors\n", i+1);
                     if ((i+1) % step == 0)
                     {
-                        int currentID = searcher.getCurrentFinishedAssignment();
-                        while((currentID - 1) != assignID)
+                        while(!searcher.checkAllTaskesIsFinish())
                         {
-                            LOG(Helper::LogLevel::LL_Info, "Current Finished assignment number:%d, remain:%d\n", currentID, assignID - currentID + 1);
-                            sleep(1);
-                            currentID = searcher.getCurrentFinishedAssignment();
+                            LOG(Helper::LogLevel::LL_Info, "Not Finished\n");
+                            std::this_thread::sleep_for(std::chrono::milliseconds(500));
                         }
                         searcher.calAvgPostingSize();
                         searcher.setSearchLimit(p_opts.m_internalResultNum);
@@ -951,13 +948,6 @@ namespace SPTAG {
                     }
                 }
                 searcher.setDispatcherStop();
-                int currentID = searcher.getCurrentFinishedAssignment();
-                while((currentID - 1)!= assignID)
-                {
-                    LOG(Helper::LogLevel::LL_Info, "Current Finished assignment number:%d, remain:%d\n", currentID, assignID - currentID);
-                    sleep(1);
-                    currentID = searcher.getCurrentFinishedAssignment();
-                }
 
                 LOG(Helper::LogLevel::LL_Info, "Insert finished, split %d time\n", searcher.getSplitNum());
 
