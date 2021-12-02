@@ -69,6 +69,7 @@ namespace SPTAG
             float m_fDeletePercentageForRefine;
             std::mutex m_dataAddLock; // protect data and graph
             std::shared_timed_mutex m_dataDeleteLock;
+            std::mutex m_bktAddLock; // protect BKT
             COMMON::Labelset m_deletedID;
 
             std::unique_ptr<COMMON::WorkSpacePool> m_workSpacePool;
@@ -167,6 +168,9 @@ namespace SPTAG
 
             ErrorCode RefineIndex(const std::vector<std::shared_ptr<Helper::DiskPriorityIO>>& p_indexStreams, IAbortOperation* p_abort);
             ErrorCode RefineIndex(std::shared_ptr<VectorIndex>& p_newIndex);
+
+            ErrorCode AddHeadIndexId(const void* p_data, SizeType p_vectorNum, DimensionType p_dimension, int* beginHead, int* endHead);
+            ErrorCode AddHeadIndexIdx(SizeType begin, SizeType end, std::vector<SizeType>& fatherNodes);
 
             void Rebuild() 
             {

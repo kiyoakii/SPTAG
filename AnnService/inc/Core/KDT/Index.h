@@ -169,6 +169,9 @@ namespace SPTAG
             ErrorCode RefineIndex(const std::vector<std::shared_ptr<Helper::DiskPriorityIO>>& p_indexStreams, IAbortOperation* p_abort);
             ErrorCode RefineIndex(std::shared_ptr<VectorIndex>& p_newIndex);
 
+            ErrorCode AddHeadIndexId(const void* p_data, SizeType p_vectorNum, DimensionType p_dimension, int* beginHead, int* endHead);
+            ErrorCode AddHeadIndexIdx(SizeType begin, SizeType end, std::vector<SizeType>& fatherNodes);
+
         private:
             void SearchIndexWithDeleted(COMMON::QueryResultSet<T> &p_query, COMMON::WorkSpace &p_space) const;
             void SearchIndexWithoutDeleted(COMMON::QueryResultSet<T> &p_query, COMMON::WorkSpace &p_space) const;

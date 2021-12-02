@@ -31,6 +31,10 @@ public:
 
     virtual ErrorCode AddHeadIndex(const void* p_data, SizeType p_vectorNum, DimensionType p_dimension, std::vector<SizeType>& fatherNodes) = 0;
 
+    virtual ErrorCode AddHeadIndexId(const void* p_data, SizeType p_vectorNum, DimensionType p_dimension, int* beginHead, int* endHead) = 0;
+    
+    virtual ErrorCode AddHeadIndexIdx(SizeType begin, SizeType end, std::vector<SizeType>& fatherNodes) = 0;
+
     virtual ErrorCode DeleteIndex(const void* p_vectors, SizeType p_vectorNum) = 0;
 
     virtual ErrorCode SearchIndex(QueryResult& p_results, bool p_searchDeleted = false) const = 0;

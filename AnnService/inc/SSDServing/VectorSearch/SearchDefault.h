@@ -315,6 +315,7 @@ namespace SPTAG {
 					fatherNodes.emplace_back(father);
 					for (int k = 0; k < m_k; k++) 
 					{
+						int begin, end = 0;
 						std::string postingList;
 						if (args.counts[k] == 0)	continue;
 
@@ -327,14 +328,8 @@ namespace SPTAG {
 							m_postingSizes[newHeadVID]->store(args.counts[k]);
 							removeOrigin = false;
 						} else {
-							{
-								std::lock_guard<std::mutex> lock(m_headAddLock);
-								m_index->AddHeadIndex(smallSample[args.clusterIdx[k]], 1, COMMON_OPTS.m_dim, fatherNodes);
-								std::unique_ptr<std::atomic_int> newAtomicSize(new std::atomic_int(args.counts[k]));
-								m_postingSizes.push_back(std::move(newAtomicSize));
-								m_vectorTranslateMap.AddBatch(&newHeadVID, 1);
-								newHeadVID = m_vectorTranslateMap.R() - 1;
-							}
+							m_index->AddHeadIndexId(smallSample[args.clusterIdx[k]], 1, COMMON_OPTS.m_dim, &begin, &end);
+							newHeadVID = begin;
 							m_split_num++;
 						}
 
@@ -346,6 +341,14 @@ namespace SPTAG {
 						}
 						db->Put(WriteOptions(), Helper::Serialize<int>(&newHeadVID, 1), postingList);
 						first += args.counts[k];
+						if (newHeadVID != headID) {
+							{
+								std::lock_guard<std::mutex> lock(m_headAddLock);
+								std::unique_ptr<std::atomic_int> newAtomicSize(new std::atomic_int(args.counts[k]));
+								m_postingSizes.push_back(std::move(newAtomicSize));
+							}
+							m_index->AddHeadIndexIdx(begin, end, fatherNodes);
+						}
 					}
 					if (removeOrigin) {
 						// delete from BKT and RNG
@@ -353,6 +356,7 @@ namespace SPTAG {
 						bktIndex->DeleteIndex(headID);
 						// delete from disk
 						db->Delete(WriteOptions(), Helper::Serialize<int>(&headID, 1));
+						delete *m_postingSizes[headID];
 					}
 					return ErrorCode::Success;
 				}
