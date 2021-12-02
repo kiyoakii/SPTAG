@@ -868,7 +868,8 @@ namespace SPTAG {
 							while(!currentTasks.push(Task(ins, iter->first, appendNum, iter->second))) {}
 						}
 						for (auto iter = deletedVector.begin(); iter != deletedVector.end(); iter++) {
-							while(!currentTasks.push(Task(del, *iter))) {}
+							// while(!currentTasks.push(Task(del, *iter))) {}
+							m_deletedID.Insert(*iter);
 						}
 						
 						appliedAssignment = scanNum;
@@ -902,19 +903,19 @@ namespace SPTAG {
 						Task task;
 						while (currentTasks.pop(task) == false)
 						{
-							//no assignment sleep
+							// no assignment sleep
 							if (!m_dispatcher_running_flag.test_and_set()) {
 								return;
 							}
 							std::this_thread::sleep_for(std::chrono::milliseconds(500));
 						}
-						if (task.type == del) {
-							DeleteAsync(task.id);
-						} else {
+						// if (task.type == del) {
+						// 	DeleteAsync(task.id);
+						// } else {
 							if (running[task.id] == 0) {
 								running[task.id] = 1;
 								if (!m_index->ContainSample(task.id)) {
-									//running[task.id] = 0; actually this head will never be used again, we can not reset it
+									// running[task.id] = 0; actually this head will never be used again, we can not reset it
 									std::vector<SizeType> newIDs = traceSplitRoute(task.id);
 									auto dis = [this, task](SizeType a) -> float { return m_index->ComputeDistance(m_index->GetSample(task.id), m_index->GetSample(a)); };
 									auto sortFunc = [dis](SizeType a, SizeType b) -> bool { return dis(a) < dis(b); };
@@ -926,6 +927,7 @@ namespace SPTAG {
 											LOG(Helper::LogLevel::LL_Error, "Lockfree queue capacity not enough!");
 										}
 									} else {
+										running[newIDs[0]] = 1;
 										AppendAsync(newIDs[0], task.appendNum, task.part);
 									}
 								} else {
@@ -936,33 +938,7 @@ namespace SPTAG {
 									LOG(Helper::LogLevel::LL_Error, "Lockfree queue capacity not enough!");
 								}
 							}
-						}
-
-						//bug1: append task id is head vector id, delete task id is real vector id
-						//bug2: running mark no clear after append/delete
-						//bug3?: parameter std::string: reference and pointer?
-						/*
-						if (running[task.id] == 0) {
-							running[task.id] = 1;
-							if (task.type == del) {
-								DeleteAsync(task.id);
-							} else if (task.type == ins) {
-								if (m_deletedID.Contains(task.id)) {
-									std::vector<SizeType> newIDs = traceSplitRoute(task.id);
-									auto dis = [this, task](SizeType a) -> float { return m_index->ComputeDistance(m_index->GetSample(task.id), m_index->GetSample(a)); };
-									auto sortFunc = [dis](SizeType a, SizeType b) -> bool { return dis(a) < dis(b); };
-									std::sort(newIDs.begin(), newIDs.end(), sortFunc);
-									AppendAsync(newIDs[0], task.appendNum, task.part);
-								} else {
-									AppendAsync(task.id, task.appendNum, task.part);
-								}
-							}
-						} else {
-							if (!currentTasks.push(task)) {
-								LOG(Helper::LogLevel::LL_Error, "Lockfree queue capacity not enough!");
-							}
-						}
-						*/
+						// }
 					}
 				}
 
