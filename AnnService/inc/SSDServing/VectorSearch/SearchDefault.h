@@ -65,7 +65,7 @@ namespace SPTAG {
 			{
 			public:
 				SearchDefault()
-					: m_workspaces(128), currentTasks(10000), running(new uint8_t[1000000000]), splitRoute(new std::pair<SizeType, SizeType>[1000000000])
+					: m_workspaces(128), currentTasks(30000), running(new uint8_t[1000000000]), splitRoute(new std::pair<SizeType, SizeType>[1000000000])
 				{
 					m_tids = 0;
 					m_replicaCount = 4;
@@ -261,7 +261,8 @@ namespace SPTAG {
 
 				ErrorCode Split(const SizeType headID, int appendNum, std::string& appendPosting)
 				{
-					int father = m_index->GetFatherID(headID);
+					//int father = m_index->GetFatherID(headID);
+					//LOG(Helper::LogLevel::LL_Info, "headID: %d, fatherID: %d\n", headID, father);
 					std::string postingList;
 					db->Get(ReadOptions(), Helper::Serialize<int>(&headID, 1), &postingList);
 					postingList += appendPosting;
@@ -330,8 +331,8 @@ namespace SPTAG {
 					bool removeOrigin = true;
 					long long newHeadVID = -1;
 					int first = 0;
-					std::vector<SizeType> fatherNodes;
-					fatherNodes.emplace_back(father);
+					//std::vector<SizeType> fatherNodes;
+					//fatherNodes.emplace_back(father);
 					std::pair<SizeType, SizeType> p;
 					for (int k = 0; k < m_k; k++) 
 					{
@@ -371,7 +372,7 @@ namespace SPTAG {
 								m_postingSizes.emplace_back(args.counts[k]);
 								m_posting_num++;
 							}
-							m_index->AddHeadIndexIdx(begin, end, fatherNodes);
+							m_index->AddHeadIndexIdx(begin, end);
 						}
 					}
 					splitRoute[headID] = p;
@@ -880,7 +881,7 @@ namespace SPTAG {
 						
 						appliedAssignment = scanNum;
 						if (noAssignment) {
-							std::this_thread::sleep_for(std::chrono::milliseconds(500));
+							std::this_thread::sleep_for(std::chrono::milliseconds(100));
 						} else {
 							//LOG(Helper::LogLevel::LL_Info, "Process Append Assignments: %d, Delete Assignments: %d\n", newPart.size(), deletedVector.size());
 						}
@@ -913,7 +914,7 @@ namespace SPTAG {
 							if (!m_dispatcher_running_flag.test_and_set()) {
 								return;
 							}
-							std::this_thread::sleep_for(std::chrono::milliseconds(500));
+							std::this_thread::sleep_for(std::chrono::milliseconds(100));
 						}
 						// if (task.type == del) {
 						// 	DeleteAsync(task.id);
@@ -958,6 +959,11 @@ namespace SPTAG {
 				void setDispatcherStop()
 				{
 					m_dispatcher_running_flag.clear();
+				}
+
+				void setPersistentBufferStop()
+				{
+					m_persistentBuffer->StopPDB();
 				}
 
 
@@ -1077,7 +1083,7 @@ namespace SPTAG {
 				//dispatcher
 				int appliedAssignment;
 				int finishedAssignment;
-				int m_appendThreadNum = 1;
+				int m_appendThreadNum = 16;
 				int m_deleteThreadNum = 1;
 				std::atomic_flag m_dispatcher_running_flag;
 				

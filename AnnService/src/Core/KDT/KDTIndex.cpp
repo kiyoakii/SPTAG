@@ -457,7 +457,7 @@ namespace SPTAG
         }
 
         template <typename T>
-        ErrorCode Index<T>::AddHeadIndexIdx(SizeType begin, SizeType end, std::vector<SizeType>& fatherNodes)
+        ErrorCode Index<T>::AddHeadIndexIdx(SizeType begin, SizeType end)
         {
             LOG(Helper::LogLevel::LL_Info, "No support\n");
             return ErrorCode::Undefined;

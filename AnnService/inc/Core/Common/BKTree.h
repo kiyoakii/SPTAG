@@ -576,15 +576,16 @@ namespace SPTAG
 
             // Insert a new node as Node's child,
             // the second arg is new node's centerid
-            ErrorCode InsertNode(BKTNodeUpdate Node, SizeType centerid)
+            ErrorCode InsertNode(SizeType fatherid, SizeType centerid)
             {
+                BKTNodeUpdate Node = m_pTreeRoots[fatherid];
                 SizeType newBKTid = m_pTreeRoots.size();
                 m_pTreeRoots.emplace_back(centerid);
                 if (Node.firstChild < 0) {
                     Node.firstChild = newBKTid;
                 } else {
                     m_pTreeRoots[newBKTid].sibling = Node.firstChild;
-                    m_pTreeRoots[newBKTid].father = Node.centerid;
+                    m_pTreeRoots[newBKTid].father = fatherid;
                     Node.firstChild = newBKTid;
                 }
                 return ErrorCode::Success;

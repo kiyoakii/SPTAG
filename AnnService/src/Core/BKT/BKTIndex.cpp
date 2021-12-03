@@ -558,7 +558,7 @@ namespace SPTAG
                 int num = 0;
                 for (SizeType node = begin; node < end; node++, num++)
                 {
-                    m_pTrees.InsertNode(m_pTrees[fatherNodes[num]], node);
+                    m_pTrees.InsertNode(fatherNodes[num], node);
                 }
             }
 
@@ -612,16 +612,8 @@ namespace SPTAG
         }
 
         template <typename T>
-        ErrorCode Index<T>::AddHeadIndexIdx(SizeType begin, SizeType end, std::vector<SizeType>& fatherNodes)
+        ErrorCode Index<T>::AddHeadIndexIdx(SizeType begin, SizeType end)
         {
-            {
-                std::lock_guard<std::mutex> lock(m_bktAddLock);
-                int num = 0;
-                for (SizeType node = begin; node < end; node++, num++)
-                {
-                    m_pTrees.InsertNode(m_pTrees[fatherNodes[num]], node);
-                }
-            }
 
             for (SizeType node = begin; node < end; node++)
             {

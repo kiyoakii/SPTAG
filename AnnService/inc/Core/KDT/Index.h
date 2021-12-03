@@ -170,7 +170,7 @@ namespace SPTAG
             ErrorCode RefineIndex(std::shared_ptr<VectorIndex>& p_newIndex);
 
             ErrorCode AddHeadIndexId(const void* p_data, SizeType p_vectorNum, DimensionType p_dimension, int* beginHead, int* endHead);
-            ErrorCode AddHeadIndexIdx(SizeType begin, SizeType end, std::vector<SizeType>& fatherNodes);
+            ErrorCode AddHeadIndexIdx(SizeType begin, SizeType end);
 
         private:
             void SearchIndexWithDeleted(COMMON::QueryResultSet<T> &p_query, COMMON::WorkSpace &p_space) const;
