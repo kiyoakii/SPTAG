@@ -35,6 +35,30 @@ namespace SPTAG {
                 return static_cast<float>(recall)/static_cast<float>(results.size() * K);
             }
 
+            template <typename T>
+            float CalcRecallIndice(std::vector<COMMON::QueryResultSet<T>>& results, const std::vector<std::set<int>>& truth, int K, std::vector<int>& indices)
+            {
+                float recall = 0;
+                for (int i = 0; i < results.size(); i++)
+                {
+                    for (int id : truth[i])
+                    {
+                        //LOG(Helper::LogLevel::LL_Info, "truth id: %d ", id);
+                        for (int j = 0; j < K; j++)
+                        {
+                            //LOG(Helper::LogLevel::LL_Info, "vector id %d: %d", j, results[i].GetResult(j)->VID);
+                            if (results[i].GetResult(j)->VID == indices[id])
+                            {
+                                recall++;
+                                break;
+                            }
+                        }
+                        //LOG(Helper::LogLevel::LL_Info, "\n");
+                    }
+                }
+                return static_cast<float>(recall)/static_cast<float>(results.size() * K);
+            }
+
             void LoadTruthTXT(std::string truthPath, std::vector<std::set<int>>& truth, int K, SizeType p_iTruthNumber)
             {
                 auto ptr = SPTAG::f_createIO();
@@ -730,22 +754,7 @@ namespace SPTAG {
 
                     if (!truthFile.empty())
                     {
-                        recall = 0;
-                        for (int k = 0; k < results.size(); k++)
-                        {
-                            for (int id : truth[k])
-                            {
-                                for (int j = 0; j < K; j++)
-                                {
-                                    if (results[k].GetResult(j)->VID == indices[id])
-                                    {
-                                        recall++;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        recall = static_cast<float>(recall)/static_cast<float>(results.size() * K);
+                        recall = CalcRecallIndice(results, truth, K, indices);
                         LOG(Helper::LogLevel::LL_Info, "cycle %d: Recall: %f\n", i, recall);
                     }
 
@@ -910,44 +919,66 @@ namespace SPTAG {
                     insertResults[i].SetTarget(reinterpret_cast<ValueType*>(extraVectors->GetVector(i)));
                     insertResults[i].Reset();
                 }
-                for (int i = 0; i < insertCount; i++)
+
+                int batch = insertCount / step;
+                int finishedInsert = 0;
+                int insertThreads = 8;
+                for (int i = 0; i < batch; i++)
                 {
-                    int VID;
-                    searcher.Updater(insertResults[i], stats[i], &VID);
-                    if ((i+1) % 10000 == 0) LOG(Helper::LogLevel::LL_Info, "inserted %d vectors\n", i+1);
-                    if ((i+1) % step == 0)
+                    TimeUtils::StopW sw;
+                    #pragma omp parallel for num_threads(insertThreads)
+                    for (int next = 0; next < step; ++next)
                     {
-                        while(!searcher.checkAllTaskesIsFinish())
+                        if ((next + 1) % 10000 == 0)
                         {
-                            LOG(Helper::LogLevel::LL_Info, "Not Finished\n");
-                            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                            LOG(Helper::LogLevel::LL_Info, "inserted %d vectors\n", next + 1);
                         }
-                        searcher.calAvgPostingSize();
-                        searcher.setSearchLimit(p_opts.m_internalResultNum);
-                        curCount += step;
-                        LOG(Helper::LogLevel::LL_Info, "Total Vector num %d \n", curCount);
-                        LOG(Helper::LogLevel::LL_Info, "Start Searching\n");
-                        for (int i = 0; i < numQueries; ++i)
-                        {
-                            results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
-                            results[i].Reset();
-                        }
-                        if (asyncCallQPS == 0)
-                        {
-                            SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
-                        }
-                        else
-                        {
-                            SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
-                        }
-                        LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
-                        LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
-                        recall = CalcRecall(results, truth, K);
-                        LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
-                        LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times\n", i+1, searcher.getSplitNum());
+                        int VID;
+                        searcher.Updater(insertResults[finishedInsert + next], stats[finishedInsert + next], &VID);
+                        indices[curCount + next] = VID;
                     }
+                    double sendingCost = sw.getElapsedSec();
+                    while(!searcher.checkAllTaskesIsFinish())
+                    {
+                        LOG(Helper::LogLevel::LL_Info, "Not Finished\n");
+                        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                    }
+                    double syncingCost = sw.getElapsedSec();
+                    LOG(Helper::LogLevel::LL_Info,
+                    "Finish sending in %.3lf seconds, syncing in %.3lf seconds, sending throughput is %.2lf ,actuall throughput is %.2lf, insertion count %u.\n",
+                    sendingCost,
+                    syncingCost,
+                    step/ sendingCost,
+                    step / syncingCost,
+                    static_cast<uint32_t>(step));
+                    searcher.calAvgPostingSize();
+                    searcher.setSearchLimit(p_opts.m_internalResultNum);
+                    curCount += step;
+                    finishedInsert += step;
+                    LOG(Helper::LogLevel::LL_Info, "Total Vector num %d \n", curCount);
+                    LOG(Helper::LogLevel::LL_Info, "Start Searching\n");
+                    for (int i = 0; i < numQueries; ++i)
+                    {
+                        results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                        results[i].Reset();
+                    }
+                    if (asyncCallQPS == 0)
+                    {
+                        SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
+                    }
+                    else
+                    {
+                        SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
+                    }
+                    LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
+                    LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
+                    recall = 0;
+                    recall = CalcRecallIndice(results, truth, K, indices);
+                    LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
+                    LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times\n", finishedInsert, searcher.getSplitNum());
                 }
                 searcher.setDispatcherStop();
+                searcher.setPersistentBufferStop();
 
                 LOG(Helper::LogLevel::LL_Info, "Insert finished, split %d time\n", searcher.getSplitNum());
 
@@ -984,7 +1015,7 @@ namespace SPTAG {
 
                 LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
                 LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
-                recall = CalcRecall(results, truth, K);
+                recall = CalcRecallIndice(results, truth, K, indices);
                 LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
             }
 

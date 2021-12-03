@@ -43,6 +43,12 @@ namespace SPTAG {
                         return m_updateID;
                     }
 
+                    void StopPDB()
+                    {
+                        pDB->Close();
+                        delete pDB;
+                    }
+
                 private:
                     ROCKSDB_NAMESPACE::DB* pDB;
                     ROCKSDB_NAMESPACE::Options pdbOptions;
