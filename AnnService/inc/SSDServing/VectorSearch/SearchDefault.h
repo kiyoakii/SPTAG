@@ -567,19 +567,23 @@ namespace SPTAG {
 					{
 						auto_ws = GetWs();
 						auto_ws->m_postingIDs.clear();
-						//LOG(Helper::LogLevel::LL_Info, "Adding PostingList\n");
-						int totalVectors = 0;
-						for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
-						{
+						float currentR = 0;
+						// First, add topK (resultNum) headVectors.
+						// TopK actually represents vector number to be returned,
+						// but here it acts as a bound to form initial search area
+						for (int i = 0; i < m_resultNum; ++i) {
 							auto res = p_queryResults.GetResult(i);
-							if (res->VID != -1)
-							{
+							if (res->VID != -1) {
 								auto_ws->m_postingIDs.emplace_back(res->VID);
-								totalVectors += m_postingSizes[res->VID];
-								if (totalVectors > m_searchVectorLimit)
-								{
-									break;
+								if (res->Dist + m_postingRadius[res->VID] >= currentR) {
+									currentR = res->Dist + m_postingRadius[res->VID];
 								}
+							}
+						}
+						for (int i = m_resultNum; i < p_queryResults.GetResultNum(); ++i) {
+							auto res = p_queryResults.GetResult(i);
+							if (res->VID != -1 && res->Dist - m_postingRadius[res->VID] >= currentR) {
+								auto_ws->m_postingIDs.emplace_back(res->VID);
 							}
 						}
 						const uint32_t postingListCount = static_cast<uint32_t>(auto_ws->m_postingIDs.size());
