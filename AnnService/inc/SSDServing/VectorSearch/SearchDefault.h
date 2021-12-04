@@ -580,23 +580,24 @@ namespace SPTAG {
 					{
 						auto_ws = GetWs();
 						auto_ws->m_postingIDs.clear();
-						float currentR = 0;
+						float currentR = p_queryResults.GetResult(m_resultNum - 1)->Dist;
 						// First, add topK (resultNum) headVectors.
 						// TopK actually represents vector number to be returned,
-						// but here it acts as a bound to form initial search area
+						// but here it acts as a bound to form a search area
+						// LOG(Helper::LogLevel::LL_Info, "m_resultNum = %d\n", m_resultNum);
 						for (int i = 0; i < m_resultNum; ++i) {
 							auto res = p_queryResults.GetResult(i);
 							if (res->VID != -1) {
 								auto_ws->m_postingIDs.emplace_back(res->VID);
-								if (res->Dist + m_postingRadius[res->VID] >= currentR) {
-									currentR = res->Dist + m_postingRadius[res->VID];
-								}
+								currentR = res->Dist;
 							}
 						}
 						for (int i = m_resultNum; i < p_queryResults.GetResultNum(); ++i) {
 							auto res = p_queryResults.GetResult(i);
-							if (res->VID != -1 && res->Dist - m_postingRadius[res->VID] >= currentR) {
+							if (res->VID != -1 && res->Dist - m_postingRadius[res->VID] <= currentR) {
 								auto_ws->m_postingIDs.emplace_back(res->VID);
+							} else {
+								m_skipped++;
 							}
 						}
 						const uint32_t postingListCount = static_cast<uint32_t>(auto_ws->m_postingIDs.size());
@@ -725,7 +726,6 @@ namespace SPTAG {
 				void AppendAsync(const SizeType headID, int appendNum, std::string* appendPosting, std::function<void()> p_callback=nullptr)
 				{
 					AppendAsyncJob* curJob = new AppendAsyncJob(this, headID, appendNum, appendPosting, p_callback);
-
 					m_appendThreadPool->add(curJob);
 				}
 
@@ -745,6 +745,22 @@ namespace SPTAG {
 
 					void exec() {
 						m_processor->ProcessAsyncDelete(p_id, std::move(m_callback));
+					}
+				};
+
+				class PushAsyncJob : public SPTAG::Helper::ThreadPool::Job
+				{
+				private:
+					SearchDefault* m_processor;
+					const Task& t;
+				public:
+					PushAsyncJob(SearchDefault* p_processor, const Task& t)
+						: m_processor(p_processor), t(t){}
+
+					~PushAsyncJob() {}
+
+					void exec() {
+						m_processor->ProcessAsyncPush(t);
 					}
 				};
 
@@ -948,9 +964,7 @@ namespace SPTAG {
 									if (running[newIDs[0]] == 1) {
 										// new head is appending
 										task.id = newIDs[0];
-										if (!currentTasks.push(task)) {
-											LOG(Helper::LogLevel::LL_Error, "Lockfree queue capacity not enough!");
-										}
+										m_appendThreadPool->add(new PushAsyncJob(this, task));
 									} else {
 										running[newIDs[0]] = 1;
 										AppendAsync(newIDs[0], task.appendNum, task.part);
@@ -959,9 +973,7 @@ namespace SPTAG {
 									AppendAsync(task.id, task.appendNum, task.part);
 								}
 							} else {
-								if (!currentTasks.push(task)) {
-									LOG(Helper::LogLevel::LL_Error, "Lockfree queue capacity not enough!");
-								}
+								m_appendThreadPool->add(new PushAsyncJob(this, task));
 							}
 						// }
 					}
@@ -982,7 +994,8 @@ namespace SPTAG {
 				{
 					m_persistentBuffer->StopPDB();
 				}
-
+				
+				std::atomic_int m_skipped;
 
 			protected:
 				void ProcessAsyncSearch(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, std::function<void()> p_callback)
@@ -1024,6 +1037,11 @@ namespace SPTAG {
 					if (p_callback != nullptr) {
 						p_callback();
 					}
+				}
+
+				void ProcessAsyncPush(const Task& t)
+				{
+					while (!currentTasks.push(t)) {}
 				}
 
 				std::shared_ptr<VectorIndex> m_index;
@@ -1103,7 +1121,7 @@ namespace SPTAG {
 				//dispatcher
 				int appliedAssignment;
 				int finishedAssignment;
-				int m_appendThreadNum = 16;
+				int m_appendThreadNum = 1;
 				int m_deleteThreadNum = 1;
 				std::atomic_flag m_dispatcher_running_flag;
 				
