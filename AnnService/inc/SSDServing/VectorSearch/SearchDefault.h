@@ -323,7 +323,7 @@ namespace SPTAG {
 					if (numClusters <= 1)
 					{
 						postingList.clear();
-						float r = 0.f;
+						// float r = 0.f;
 						for (int j = 0; j < realVectorNum; j++)
 						{
 							postingList += Helper::Serialize<int>(&localindicesInsert[j], 1);
@@ -364,7 +364,6 @@ namespace SPTAG {
 						}
 
 						// LOG(Helper::LogLevel::LL_Info, "Headid: %d split into : %d\n", selections[i].headID, newHeadVID);
-						float r = 0.f;
 						for (int j = 0; j < args.counts[k]; j++)
 						{
 							postingList += Helper::Serialize<int>(&localindicesInsert[localindices[first + j]], 1);
@@ -403,8 +402,8 @@ namespace SPTAG {
 					} else {
 						db->Merge(WriteOptions(), Helper::Serialize<int>(&headID, 1), *appendPosting);
 						m_postingSizes[headID] += appendNum;
-						
-						uint8_t* postingP = reinterpret_cast<uint8_t*>(&appendPosting.front()) + sizeof(int);
+					
+						uint8_t* postingP = reinterpret_cast<uint8_t*>(&appendPosting->front()) + sizeof(int);
 						float r = m_postingRadius[headID];
 						for (int i = 0; i < appendNum; i++) {
 							r = std::max<float>(r, m_index->ComputeDistance(m_index->GetSample(headID), postingP));
@@ -763,6 +762,8 @@ namespace SPTAG {
 
 					m_internalResultNum = p_resultNum;
 
+					m_resultNum = p_opts.m_resultNum;
+
 					m_replicaCount = p_opts.m_replicaCount;
 
 					m_postingPageLimit = p_opts.m_postingPageLimit;
@@ -1054,6 +1055,8 @@ namespace SPTAG {
 				//config variable, set from beginning, will never change
 
 				int m_internalResultNum;
+
+				int m_resultNum;
 
 				int m_replicaCount;
 
