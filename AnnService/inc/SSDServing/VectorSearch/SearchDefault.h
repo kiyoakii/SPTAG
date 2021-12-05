@@ -65,7 +65,7 @@ namespace SPTAG {
 			{
 			public:
 				SearchDefault()
-					: m_workspaces(128), currentTasks(30000), running(new uint8_t[1000000000]), splitRoute(new std::pair<SizeType, SizeType>[1000000000])
+					: m_workspaces(128), currentTasks(60000), running(new uint8_t[1000000000]), splitRoute(new std::pair<SizeType, SizeType>[1000000000])
 				{
 					m_tids = 0;
 					m_replicaCount = 4;
@@ -340,12 +340,11 @@ namespace SPTAG {
 						if (args.counts[k] == 0)	continue;
 
 						// LOG(Helper::LogLevel::LL_Info, "Insert new head vector\n");
-						newHeadVID = localindicesInsert[args.clusterIdx[k]];
 						// Notice: newHeadVID maybe a exist head vector
 
 						m_index->AddHeadIndexId(smallSample[args.clusterIdx[k]], 1, COMMON_OPTS.m_dim, &begin, &end);
 						newHeadVID = begin;
-						m_split_num++;
+						setPair(p, k+1, newHeadVID);
 
 						// LOG(Helper::LogLevel::LL_Info, "Headid: %d split into : %d\n", selections[i].headID, newHeadVID);
 						for (int j = 0; j < args.counts[k]; j++)
@@ -362,8 +361,10 @@ namespace SPTAG {
 							std::unique_ptr<std::atomic_int> newAtomicSize(new std::atomic_int(args.counts[k]));
 							m_postingSizes.push_back(std::move(newAtomicSize));
 							*/
-							m_postingSizes.emplace_back(args.counts[k]);
+							m_postingSizes.resize(m_index->GetNumSamples());
+							m_postingSizes[newHeadVID] = args.counts[k];
 							m_posting_num++;
+							m_split_num++;
 						}
 						m_index->AddHeadIndexIdx(begin, end);
 					}
@@ -789,11 +790,13 @@ namespace SPTAG {
 				void calAvgPostingSize()
 				{
 					int total = 0;
+					int deleted = 0;
 					for (int i = 0; i < m_postingSizes.size(); i++)
 					{
 						if (m_index->ContainSample(i)) total += m_postingSizes[i];
+						else deleted++;
 					}
-					m_postingSize_avg = total / m_postingSizes.size();
+					m_postingSize_avg = total / (m_posting_num - deleted);
 				}
 
 				void setSearchLimit(int topK)
