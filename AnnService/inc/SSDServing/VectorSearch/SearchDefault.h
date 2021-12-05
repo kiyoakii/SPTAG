@@ -167,14 +167,16 @@ namespace SPTAG {
 					LOG(Helper::LogLevel::LL_Info, "Current posting num: %d.\n", m_posting_num);
 
 					m_postingSizes.resize(m_posting_num);
+					m_postingRadius.resize(m_posting_num);
 
 					input.read(reinterpret_cast<char*>(m_postingSizes.data()), sizeof(int) * m_posting_num);
+					input.read(reinterpret_cast<char*>(m_postingRadius.data()), sizeof(float) * m_posting_num);
 
 					input.close();
 
 					m_vectornum_last = m_vectornum.load();
 					
-					calAvgPostingSize();
+					// calAvgPostingSize();
 
 					m_extraSearcher.reset(new ExtraFullGraphSearcher<ValueType>(extraFullGraphFile));
 
@@ -281,8 +283,7 @@ namespace SPTAG {
 					{
 						uint8_t* vectorId = postingP + j * (m_vectorSize + sizeof(int));
 						//LOG(Helper::LogLevel::LL_Info, "vector index/total:id: %d/%d:%d\n", j, m_postingSizes[selections[i].headID], *(reinterpret_cast<int*>(vectorId)));
-						if (m_deletedID.Contains(*(reinterpret_cast<int*>(vectorId))))
-						{
+						if (m_deletedID.Contains(*(reinterpret_cast<int*>(vectorId)))) {
 							realVectorNum--;
 						} else {
 							localindicesInsert[index] = *(reinterpret_cast<int*>(vectorId));
@@ -295,12 +296,16 @@ namespace SPTAG {
 					if (realVectorNum < postVectorNum * 0.9)
 					{
 						postingList.clear();
+						float r = 0.f;
 						for (int j = 0; j < realVectorNum; j++)
 						{
 							postingList += Helper::Serialize<int>(&localindicesInsert[j], 1);
 							postingList += Helper::Serialize<ValueType>(vectorBuffer.get() + j * m_vectorSize, COMMON_OPTS.m_dim);
+							auto dist = m_index->ComputeDistance(vectorBuffer.get() + j * m_vectorSize, m_index->GetSample(headID));
+							r = std::max<float>(r, dist);
 						}
 						m_postingSizes[headID] = realVectorNum;
+						m_postingRadius[headID] = r;
 						db->Put(WriteOptions(), Helper::Serialize<int>(&headID, 1), postingList);
 						return ErrorCode::Success;
 					}
@@ -315,15 +320,19 @@ namespace SPTAG {
 					SPTAG::COMMON::KmeansArgs<ValueType> args(m_k, smallSample.C(), (SizeType)localindicesInsert.size(), 1, m_index->GetDistCalcMethod());
 					std::random_shuffle(localindices.begin(), localindices.end());
 					int numClusters = SPTAG::COMMON::KmeansClustering(smallSample, localindices, 0, (SizeType)localindices.size(), args);
-					if(numClusters <= 1)
+					if (numClusters <= 1)
 					{
 						postingList.clear();
+						// float r = 0.f;
 						for (int j = 0; j < realVectorNum; j++)
 						{
 							postingList += Helper::Serialize<int>(&localindicesInsert[j], 1);
 							postingList += Helper::Serialize<ValueType>(vectorBuffer.get() + j * m_vectorSize, COMMON_OPTS.m_dim);
+							// auto dist = m_index->ComputeDistance(vectorBuffer.get() + j * m_vectorSize, m_index->GetSample(headID));
+							// r = std::max<float>(r, dist);
 						}
 						m_postingSizes[headID] = realVectorNum;
+						m_postingRadius[headID] = args.clusterDist[0];
 						db->Put(WriteOptions(), Helper::Serialize<int>(&headID, 1), postingList);
 						return ErrorCode::Success;
 					}
@@ -346,7 +355,7 @@ namespace SPTAG {
 						newHeadVID = begin;
 						setPair(p, k+1, newHeadVID);
 
-						// LOG(Helper::LogLevel::LL_Info, "Headid: %d split into : %d\n", selections[i].headID, newHeadVID);
+						//LOG(Helper::LogLevel::LL_Info, "Headid: %d split into : %d\n", headID, newHeadVID);
 						for (int j = 0; j < args.counts[k]; j++)
 						{
 							postingList += Helper::Serialize<int>(&localindicesInsert[localindices[first + j]], 1);
@@ -362,7 +371,9 @@ namespace SPTAG {
 							m_postingSizes.push_back(std::move(newAtomicSize));
 							*/
 							m_postingSizes.resize(m_index->GetNumSamples());
+							m_postingRadius.resize(m_index->GetNumSamples());
 							m_postingSizes[newHeadVID] = args.counts[k];
+							m_postingRadius[newHeadVID] = args.clusterDist[k];
 							m_posting_num++;
 							m_split_num++;
 						}
@@ -385,11 +396,23 @@ namespace SPTAG {
 					if (m_postingSizes[headID] + appendNum > m_postingVectorLimit){
 						Split(headID, appendNum, *appendPosting);
 					} else {
+						//LOG(Helper::LogLevel::LL_Info, "Merge: headID: %d, appendNum:%d\n", headID, appendNum);
 						db->Merge(WriteOptions(), Helper::Serialize<int>(&headID, 1), *appendPosting);
+						//LOG(Helper::LogLevel::LL_Info, "here\n");
 						m_postingSizes[headID] += appendNum;
+						//LOG(Helper::LogLevel::LL_Info, "Scan\n");
+						uint8_t* postingP = reinterpret_cast<uint8_t*>(&appendPosting->front()) + sizeof(int);
+						float r = m_postingRadius[headID];
+						for (int i = 0; i < appendNum; i++) {
+							r = std::max<float>(r, m_index->ComputeDistance(m_index->GetSample(headID), postingP));
+							postingP += m_vectorSize + sizeof(int);
+						}
+						m_postingRadius[headID] = r;
 					}
 					running[headID] = 0;
+					//LOG(Helper::LogLevel::LL_Info, "Delete\n");
 					delete appendPosting;
+					//LOG(Helper::LogLevel::LL_Info, "Finish\n");
 
 					return ErrorCode::Success;
 				}
@@ -429,8 +452,7 @@ namespace SPTAG {
 					std::vector<EdgeInsert> selections(static_cast<size_t>(m_replicaCount));
 					for (int i = 0; i < p_queryResults.GetResultNum() && replicaCount < m_replicaCount; ++i)
 					{
-						if (queryResults[i].VID == -1)
-						{
+						if (queryResults[i].VID == -1) {
 							break;
 						}
 						// LOG(Helper::LogLevel::LL_Info, "Head Vector: %d\n", queryResults[i].VID);
@@ -558,19 +580,24 @@ namespace SPTAG {
 					{
 						auto_ws = GetWs();
 						auto_ws->m_postingIDs.clear();
-						//LOG(Helper::LogLevel::LL_Info, "Adding PostingList\n");
-						int totalVectors = 0;
-						for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
-						{
+						float currentR = p_queryResults.GetResult(m_resultNum - 1)->Dist;
+						// First, add topK (resultNum) headVectors.
+						// TopK actually represents vector number to be returned,
+						// but here it acts as a bound to form a search area
+						// LOG(Helper::LogLevel::LL_Info, "m_resultNum = %d\n", m_resultNum);
+						for (int i = 0; i < m_resultNum; ++i) {
 							auto res = p_queryResults.GetResult(i);
-							if (res->VID != -1)
-							{
+							if (res->VID != -1) {
 								auto_ws->m_postingIDs.emplace_back(res->VID);
-								totalVectors += m_postingSizes[res->VID];
-								if (totalVectors > m_searchVectorLimit)
-								{
-									break;
-								}
+								currentR = res->Dist;
+							}
+						}
+						for (int i = m_resultNum; i < p_queryResults.GetResultNum(); ++i) {
+							auto res = p_queryResults.GetResult(i);
+							if (res->VID != -1 && res->Dist - m_postingRadius[res->VID] <= currentR) {
+								auto_ws->m_postingIDs.emplace_back(res->VID);
+							} else {
+								m_skipped++;
 							}
 						}
 						const uint32_t postingListCount = static_cast<uint32_t>(auto_ws->m_postingIDs.size());
@@ -699,7 +726,6 @@ namespace SPTAG {
 				void AppendAsync(const SizeType headID, int appendNum, std::string* appendPosting, std::function<void()> p_callback=nullptr)
 				{
 					AppendAsyncJob* curJob = new AppendAsyncJob(this, headID, appendNum, appendPosting, p_callback);
-
 					m_appendThreadPool->add(curJob);
 				}
 
@@ -722,6 +748,22 @@ namespace SPTAG {
 					}
 				};
 
+				class PushAsyncJob : public SPTAG::Helper::ThreadPool::Job
+				{
+				private:
+					SearchDefault* m_processor;
+					const Task& t;
+				public:
+					PushAsyncJob(SearchDefault* p_processor, const Task& t)
+						: m_processor(p_processor), t(t){}
+
+					~PushAsyncJob() {}
+
+					void exec() {
+						m_processor->ProcessAsyncPush(t);
+					}
+				};
+
 				void DeleteAsync(const SizeType& p_id, std::function<void()> p_callback=nullptr)
 				{
 					DeleteAsyncJob* curJob = new DeleteAsyncJob(this, p_id, p_callback);
@@ -735,6 +777,8 @@ namespace SPTAG {
 					LOG(Helper::LogLevel::LL_Info, "ThreadNum: %d, ResultNum: %d, AsyncCall: %d\n", p_threadNum, p_resultNum, p_asyncCall ? 1 : 0);
 
 					m_internalResultNum = p_resultNum;
+
+					m_resultNum = p_opts.m_resultNum;
 
 					m_replicaCount = p_opts.m_replicaCount;
 
@@ -829,7 +873,7 @@ namespace SPTAG {
 
 				void scanner()
 				{
-					while(true) {
+					while (true) {
 						bool noAssignment = true;
 						int currentAssignmentID = m_persistentBuffer->GetCurrentAssignmentID();
 						int scanNum = std::min<int>(appliedAssignment + 1000, currentAssignmentID);
@@ -915,7 +959,6 @@ namespace SPTAG {
 							if (running[task.id] == 0) {
 								running[task.id] = 1;
 								if (!m_index->ContainSample(task.id)) {
-									// running[task.id] = 0; actually this head will never be used again, we can not reset it
 									running[task.id] = 0;
 									std::vector<SizeType> newIDs = traceSplitRoute(task.id);
 									auto dis = [this, task](SizeType a) -> float { return m_index->ComputeDistance(m_index->GetSample(task.id), m_index->GetSample(a)); };
@@ -958,7 +1001,8 @@ namespace SPTAG {
 				{
 					m_persistentBuffer->StopPDB();
 				}
-
+				
+				std::atomic_int m_skipped;
 
 			protected:
 				void ProcessAsyncSearch(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, std::function<void()> p_callback)
@@ -1002,6 +1046,11 @@ namespace SPTAG {
 					}
 				}
 
+				void ProcessAsyncPush(const Task& t)
+				{
+					while (!currentTasks.push(t)) {}
+				}
+
 				std::shared_ptr<VectorIndex> m_index;
 
 				//std::unique_ptr<long long[]> m_vectorTranslateMap;
@@ -1031,6 +1080,8 @@ namespace SPTAG {
 				//config variable, set from beginning, will never change
 
 				int m_internalResultNum;
+
+				int m_resultNum;
 
 				int m_replicaCount;
 
@@ -1065,6 +1116,7 @@ namespace SPTAG {
 				
 				//std::vector<std::unique_ptr<std::atomic_int>> m_postingSizes;
 				std::vector<int> m_postingSizes;
+				std::vector<float> m_postingRadius;
 
 				int m_posting_num;
 

@@ -253,7 +253,7 @@ namespace SPTAG {
 
                 TimeUtils::StopW sw;
 
-                LOG(Helper::LogLevel::LL_Info, "Searching: numThread: %d, numQueries: %d.\n", p_numThreads, numQueries);
+                LOG(Helper::LogLevel::LL_Info, "Searching: numThread: %d, numQueries: %d, skipped: %d.\n", p_numThreads, numQueries, p_searcher.m_skipped.load());
 #pragma omp parallel for num_threads(p_numThreads)
                 for (int next = 0; next < numQueries; ++next)
                 {
@@ -268,10 +268,11 @@ namespace SPTAG {
                 double sendingCost = sw.getElapsedSec();
 
                 LOG(Helper::LogLevel::LL_Info,
-                    "Finish sending in %.3lf seconds, actuallQPS is %.2lf, query count %u.\n",
+                    "Finish sending in %.3lf seconds, actuallQPS is %.2lf, query count %u, skipped %u.\n",
                     sendingCost,
                     numQueries / sendingCost,
-                    static_cast<uint32_t>(numQueries));
+                    static_cast<uint32_t>(numQueries),
+                    p_searcher.m_skipped.load());
             }
 
 
@@ -540,7 +541,7 @@ namespace SPTAG {
                 int numThreads = p_opts.m_iNumberOfThreads;
                 int asyncCallQPS = p_opts.m_qpsLimit;
 
-                int internalResultNum = 2 * std::max<int>(p_opts.m_internalResultNum, 64);
+                int internalResultNum = std::max<int>(p_opts.m_internalResultNum, 64);
                 int K = std::min<int>(p_opts.m_resultNum, internalResultNum);
                 int cycle = 50;
 
@@ -553,7 +554,7 @@ namespace SPTAG {
                 LOG(Helper::LogLevel::LL_Info, "Setup index finish, start setup hint...\n");
                 searcher.SetHint(numThreads, internalResultNum, asyncCallQPS > 0, p_opts);
 
-                searcher.setSearchLimit(p_opts.m_internalResultNum);
+                // searcher.setSearchLimit(p_opts.m_internalResultNum);
 
                 searcher.LoadDeleteID(COMMON_OPTS.m_deleteID);
 
@@ -830,7 +831,7 @@ namespace SPTAG {
                 int numThreads = p_opts.m_iNumberOfThreads;
                 int asyncCallQPS = p_opts.m_qpsLimit;
 
-                int internalResultNum = 2 * std::max<int>(p_opts.m_internalResultNum, 64);
+                int internalResultNum = std::max<int>(p_opts.m_internalResultNum, 64);
                 int K = std::min<int>(p_opts.m_resultNum, internalResultNum);
 
                 int internalResultNum_insert = 64;
@@ -844,7 +845,7 @@ namespace SPTAG {
 
                 searcher.updaterSetup();
 
-                searcher.setSearchLimit(p_opts.m_internalResultNum);
+                // searcher.setSearchLimit(p_opts.m_internalResultNum);
 
                 searcher.LoadDeleteID(COMMON_OPTS.m_deleteID);
 
@@ -966,8 +967,8 @@ namespace SPTAG {
                     step/ sendingCost,
                     step / syncingCost,
                     static_cast<uint32_t>(step));
-                    searcher.calAvgPostingSize();
-                    searcher.setSearchLimit(p_opts.m_internalResultNum);
+                    // searcher.calAvgPostingSize();
+                    // searcher.setSearchLimit(p_opts.m_internalResultNum);
                     curCount += step;
                     finishedInsert += step;
                     LOG(Helper::LogLevel::LL_Info, "Total Vector num %d \n", curCount);

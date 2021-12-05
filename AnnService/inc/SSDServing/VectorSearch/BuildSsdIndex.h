@@ -202,7 +202,6 @@ namespace SPTAG {
                                     }
 
                                     ++postingListSize[queryResults[i].VID];
-
                                     selections[selectionOffset + replicaCount[fullID]].headID = queryResults[i].VID;
                                     selections[selectionOffset + replicaCount[fullID]].fullID = fullID;
                                     selections[selectionOffset + replicaCount[fullID]].distance = queryResults[i].Dist;
@@ -254,17 +253,24 @@ namespace SPTAG {
                         LOG(Helper::LogLevel::LL_Info, "Replica Count Dist: %d, %d\n", i, replicaCountDist[i]);
                     }
                 }
-
+                std::vector<float> postingListRadius(postingListSize.size());
                 for (int i = 0; i < postingListSize.size(); ++i)
                 {
-                    if (postingListSize[i] <= postingSizeLimit)
-                    {
+                    std::size_t selectIdx = std::lower_bound(selections.begin(), selections.end(), i, g_edgeComparer) - selections.begin();
+                    if (postingListSize[i] <= postingSizeLimit) {
+                        float max = 0.f;
+                        for (int j = 0; j < postingListSize[i]; j++) {
+                            max = std::max<float>(max, selections[selectIdx + j].distance);
+                        }
+                        postingListRadius[i] = max;
                         continue;
                     }
-
-                    std::size_t selectIdx = std::lower_bound(selections.begin(), selections.end(), i, g_edgeComparer) - selections.begin();
-                    for (size_t dropID = postingSizeLimit; dropID < postingListSize[i]; ++dropID)
-                    {
+                    float max = 0.f;
+                    for (int j = 0; j < postingSizeLimit; j++) {
+                        max = std::max<float>(max, selections[selectIdx + j].distance);
+                    }
+                    postingListRadius[i] = max;
+                    for (size_t dropID = postingSizeLimit; dropID < postingListSize[i]; ++dropID) {
                         int fullID = selections[selectIdx + dropID].fullID;
                         --replicaCount[fullID];
                     }
@@ -349,6 +355,14 @@ namespace SPTAG {
                 {
                     i32Val = postingListSize[id];
                     if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndexInfo File!");
+                        exit(1);
+                    }
+                }
+                for(int id = 0; id < postingListSize.size(); id++)
+                {
+                    float f32Val = postingListRadius[id];
+                    if (ptr->WriteBinary(sizeof(f32Val), reinterpret_cast<char*>(&f32Val)) != sizeof(f32Val)) {
                         LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndexInfo File!");
                         exit(1);
                     }
