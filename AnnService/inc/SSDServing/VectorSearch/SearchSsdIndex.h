@@ -912,6 +912,21 @@ namespace SPTAG {
 
                 recall = CalcRecall(results, truth, K);
                 LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
+                LOG(Helper::LogLevel::LL_Info, "\nEx Latency Distribution:\n");
+                PrintPercentiles<double, SearchStats>(stats,
+                    [](const SearchStats& ss) -> double
+                    {
+                        return ss.m_exLatency;
+                    },
+                    "%.3lf");
+
+                LOG(Helper::LogLevel::LL_Info, "\nTotal Search Latency Distribution:\n");
+                PrintPercentiles<double, SearchStats>(stats,
+                    [](const SearchStats& ss) -> double
+                    {
+                        return ss.m_totalSearchLatency;
+                    },
+                    "%.3lf");
                 searcher.setSplitZero();
 
                 for (int i = 0; i < insertCount; i++)
@@ -976,6 +991,21 @@ namespace SPTAG {
                     recall = CalcRecallIndice(results, truth, K, indices);
                     LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
                     LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times\n", finishedInsert, searcher.getSplitNum());
+                    LOG(Helper::LogLevel::LL_Info, "\nEx Latency Distribution:\n");
+                    PrintPercentiles<double, SearchStats>(stats,
+                        [](const SearchStats& ss) -> double
+                        {
+                            return ss.m_exLatency;
+                        },
+                        "%.3lf");
+
+                    LOG(Helper::LogLevel::LL_Info, "\nTotal Search Latency Distribution:\n");
+                    PrintPercentiles<double, SearchStats>(stats,
+                        [](const SearchStats& ss) -> double
+                        {
+                            return ss.m_totalSearchLatency;
+                        },
+                        "%.3lf");
                 }
                 searcher.setDispatcherStop();
                 searcher.setPersistentBufferStop();
