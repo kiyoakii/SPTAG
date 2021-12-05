@@ -922,7 +922,7 @@ namespace SPTAG {
 
                 int batch = insertCount / step;
                 int finishedInsert = 0;
-                int insertThreads = 8;
+                int insertThreads = 16;
                 for (int i = 0; i < batch; i++)
                 {
                     TimeUtils::StopW sw;

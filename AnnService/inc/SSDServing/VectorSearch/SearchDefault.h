@@ -328,7 +328,6 @@ namespace SPTAG {
 						return ErrorCode::Success;
 					}
 					
-					bool removeOrigin = true;
 					long long newHeadVID = -1;
 					int first = 0;
 					//std::vector<SizeType> fatherNodes;
@@ -344,15 +343,9 @@ namespace SPTAG {
 						newHeadVID = localindicesInsert[args.clusterIdx[k]];
 						// Notice: newHeadVID maybe a exist head vector
 
-						if (newHeadVID == *m_vectorTranslateMap[headID]) {
-							newHeadVID = headID;
-							m_postingSizes[newHeadVID] = args.counts[k];
-							removeOrigin = false;
-						} else {
-							m_index->AddHeadIndexId(smallSample[args.clusterIdx[k]], 1, COMMON_OPTS.m_dim, &begin, &end);
-							newHeadVID = begin;
-							m_split_num++;
-						}
+						m_index->AddHeadIndexId(smallSample[args.clusterIdx[k]], 1, COMMON_OPTS.m_dim, &begin, &end);
+						newHeadVID = begin;
+						m_split_num++;
 
 						// LOG(Helper::LogLevel::LL_Info, "Headid: %d split into : %d\n", selections[i].headID, newHeadVID);
 						for (int j = 0; j < args.counts[k]; j++)
@@ -362,30 +355,27 @@ namespace SPTAG {
 						}
 						db->Put(WriteOptions(), Helper::Serialize<int>(&newHeadVID, 1), postingList);
 						first += args.counts[k];
-						if (newHeadVID != headID) {
-							{
-								std::lock_guard<std::mutex> lock(m_headAddLock);
-								/*
-								std::unique_ptr<std::atomic_int> newAtomicSize(new std::atomic_int(args.counts[k]));
-								m_postingSizes.push_back(std::move(newAtomicSize));
-								*/
-								m_postingSizes.emplace_back(args.counts[k]);
-								m_posting_num++;
-							}
-							m_index->AddHeadIndexIdx(begin, end);
+
+						{
+							std::lock_guard<std::mutex> lock(m_headAddLock);
+							/*
+							std::unique_ptr<std::atomic_int> newAtomicSize(new std::atomic_int(args.counts[k]));
+							m_postingSizes.push_back(std::move(newAtomicSize));
+							*/
+							m_postingSizes.emplace_back(args.counts[k]);
+							m_posting_num++;
 						}
+						m_index->AddHeadIndexIdx(begin, end);
 					}
 					splitRoute[headID] = p;
 
-					if (removeOrigin) {
-						// delete from BKT and RNG
-						auto bktIndex = dynamic_cast<SPTAG::BKT::Index<ValueType>*>(m_index.get());
-						bktIndex->DeleteIndex(headID);
-						// delete from disk
-						db->Delete(WriteOptions(), Helper::Serialize<int>(&headID, 1));
-						//delete m_postingSizes[headID].get();
-						//m_postingSizes[headID].reset(nullptr);
-					}
+					// delete from BKT and RNG
+					auto bktIndex = dynamic_cast<SPTAG::BKT::Index<ValueType>*>(m_index.get());
+					bktIndex->DeleteIndex(headID);
+					// delete from disk
+					db->Delete(WriteOptions(), Helper::Serialize<int>(&headID, 1));
+					//delete m_postingSizes[headID].get();
+					//m_postingSizes[headID].reset(nullptr);
 					return ErrorCode::Success;
 				}
 
@@ -1083,7 +1073,7 @@ namespace SPTAG {
 				//dispatcher
 				int appliedAssignment;
 				int finishedAssignment;
-				int m_appendThreadNum = 16;
+				int m_appendThreadNum = 32;
 				int m_deleteThreadNum = 1;
 				std::atomic_flag m_dispatcher_running_flag;
 				
