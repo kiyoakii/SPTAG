@@ -54,6 +54,13 @@ namespace SPTAG {
 				Task(taskType type, SizeType id) : type(type), id(id), appendNum(0), part(nullptr) {}
 				Task(taskType type, SizeType id, uint32_t num, std::string* part) : 
 					type(type), id(id), appendNum(num), part(part) {}
+				Task(const Task &t)
+				{
+					type = t.type;
+					id = t.id;
+					appendNum = t.appendNum;
+					part = t.part;
+				}
 				taskType    type;
 				SizeType   	id;
 				uint32_t    appendNum;
@@ -65,7 +72,8 @@ namespace SPTAG {
 			{
 			public:
 				SearchDefault()
-					: m_workspaces(128), currentTasks(60000), running(new uint8_t[1000000000]), splitRoute(new std::pair<SizeType, SizeType>[1000000000])
+					: m_workspaces(128), currentTasks(60000), m_skipped(0),
+					running(new uint8_t[1000000000]), splitRoute(new std::pair<SizeType, SizeType>[1000000000])
 				{
 					m_tids = 0;
 					m_replicaCount = 4;
@@ -820,6 +828,12 @@ namespace SPTAG {
 					m_appendThreadPool->add(curJob);
 				}
 
+				void PushAsync(const Task t)
+				{
+					PushAsyncJob* curJob = new PushAsyncJob(this, t);
+					m_appendThreadPool->add(curJob);
+				}
+
 				class DeleteAsyncJob : public SPTAG::Helper::ThreadPool::Job
 				{
 				private:
@@ -843,9 +857,9 @@ namespace SPTAG {
 				{
 				private:
 					SearchDefault* m_processor;
-					const Task& t;
+					Task t;
 				public:
-					PushAsyncJob(SearchDefault* p_processor, const Task& t)
+					PushAsyncJob(SearchDefault* p_processor, Task t)
 						: m_processor(p_processor), t(t){}
 
 					~PushAsyncJob() {}
@@ -900,6 +914,8 @@ namespace SPTAG {
 					m_appendThreadPool->init(m_appendThreadNum);
 					m_deleteThreadPool.reset(new Helper::ThreadPool());
 					m_deleteThreadPool->init(m_deleteThreadNum);
+					m_pushThreadPool.reset(new Helper::ThreadPool());
+					m_pushThreadPool->init(m_pushThreadNum);
 					m_dispatcher_running_flag.test_and_set();
 					auto scanThread = std::thread(&SearchDefault::scanner, this);
 					scanThread.detach();
@@ -1036,7 +1052,7 @@ namespace SPTAG {
 				{
 					while (true) {
 						Task task;
-						while (currentTasks.pop(task) == false)
+						while (!currentTasks.pop(task))
 						{
 							// no assignment sleep
 							if (!m_dispatcher_running_flag.test_and_set()) {
@@ -1047,32 +1063,37 @@ namespace SPTAG {
 						// if (task.type == del) {
 						// 	DeleteAsync(task.id);
 						// } else {
-							if (running[task.id] == 0) {
-								running[task.id] = 1;
-								if (!m_index->ContainSample(task.id)) {
-									running[task.id] = 0;
-									std::vector<SizeType> newIDs = traceSplitRoute(task.id);
-									auto dis = [this, task](SizeType a) -> float { return m_index->ComputeDistance(m_index->GetSample(task.id), m_index->GetSample(a)); };
-									auto sortFunc = [dis](SizeType a, SizeType b) -> bool { return dis(a) < dis(b); };
-									std::sort(newIDs.begin(), newIDs.end(), sortFunc);
-									if (running[newIDs[0]] == 1) {
-										// new head is appending
-										task.id = newIDs[0];
-										if (!currentTasks.push(task)) {
-											LOG(Helper::LogLevel::LL_Error, "Lockfree queue capacity not enough!");
-										}
-									} else {
-										running[newIDs[0]] = 1;
-										AppendAsync(newIDs[0], task.appendNum, task.part);
+						if (running[task.id] == 0) {
+							running[task.id] = 1;
+							if (!m_index->ContainSample(task.id)) {
+								running[task.id] = 0;
+								std::vector<SizeType> newIDs = traceSplitRoute(task.id);
+								auto dis = [this, task](SizeType a) -> float { return m_index->ComputeDistance(m_index->GetSample(task.id), m_index->GetSample(a)); };
+								auto sortFunc = [dis](SizeType a, SizeType b) -> bool { return dis(a) < dis(b); };
+								std::sort(newIDs.begin(), newIDs.end(), sortFunc);
+								if (running[newIDs[0]] == 1) {
+									// new head is appending
+									task.id = newIDs[0];
+									if (task.id == 0) {
+										LOG(Helper::LogLevel::LL_Info, "BUG: id = 0\n");
 									}
+									// if (!currentTasks.push(task)) {
+									// 	LOG(Helper::LogLevel::LL_Error, "Lockfree queue capacity not enough!");
+									// }
+									PushAsync(task);
 								} else {
-									AppendAsync(task.id, task.appendNum, task.part);
+									running[newIDs[0]] = 1;
+									AppendAsync(newIDs[0], task.appendNum, task.part);
 								}
 							} else {
-								if (!currentTasks.push(task)) {
-									LOG(Helper::LogLevel::LL_Error, "Lockfree queue capacity not enough!");
-								}
+								AppendAsync(task.id, task.appendNum, task.part);
 							}
+						} else {
+							// if (!currentTasks.push(task)) {
+							// 	LOG(Helper::LogLevel::LL_Error, "Lockfree queue capacity not enough!");
+							// }
+							PushAsync(task);
+						}
 						// }
 					}
 				}
@@ -1144,6 +1165,9 @@ namespace SPTAG {
 
 				void ProcessAsyncPush(const Task& t)
 				{
+					// if (t.id == 0) {
+					// 	LOG(Helper::LogLevel::LL_Info, "BUG: t.id = 0\n");
+					// }
 					while (!currentTasks.push(t)) {}
 				}
 
@@ -1161,7 +1185,9 @@ namespace SPTAG {
 
 				std::unique_ptr<Helper::ThreadPool> m_threadPool;
 				std::unique_ptr<Helper::ThreadPool> m_appendThreadPool;
+				std::unique_ptr<Helper::ThreadPool> m_pushThreadPool;
 				std::unique_ptr<Helper::ThreadPool> m_deleteThreadPool;
+				std::unique_ptr<Helper::ThreadPool> m_pushPool;
 
 				std::atomic<std::int32_t> m_tids;
 
@@ -1226,6 +1252,7 @@ namespace SPTAG {
 				int finishedAssignment;
 				int m_appendThreadNum = 32;
 				int m_deleteThreadNum = 1;
+				int m_pushThreadNum = 5;
 				std::atomic_flag m_dispatcher_running_flag;
 				
 				boost::lockfree::queue<Task, boost::lockfree::fixed_sized<true>> currentTasks;
