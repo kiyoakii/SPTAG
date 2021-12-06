@@ -275,6 +275,39 @@ namespace SPTAG {
                     p_searcher.m_skipped.load());
             }
 
+            template <typename ValueType>
+            void SearchSequentialVecLimit(SearchDefault<ValueType>& p_searcher,
+                int p_numThreads,
+                std::vector<COMMON::QueryResultSet<ValueType>>& p_results,
+                std::vector<SearchStats>& p_stats,
+                int p_maxQueryCount)
+            {
+                int numQueries = min(static_cast<int>(p_results.size()), p_maxQueryCount);
+
+                TimeUtils::StopW sw;
+
+                LOG(Helper::LogLevel::LL_Info, "Searching: numThread: %d, numQueries: %d, skipped: %d.\n", p_numThreads, numQueries, p_searcher.m_skipped.load());
+#pragma omp parallel for num_threads(p_numThreads)
+                for (int next = 0; next < numQueries; ++next)
+                {
+                    if ((next & ((1 << 14) - 1)) == 0)
+                    {
+                        LOG(Helper::LogLevel::LL_Info, "Processed %.2lf%%...\n", next * 100.0 / numQueries);
+                    }
+
+                    p_searcher.Search_VecLimit(p_results[next], p_stats[next]);
+                }
+
+                double sendingCost = sw.getElapsedSec();
+
+                LOG(Helper::LogLevel::LL_Info,
+                    "Finish sending in %.3lf seconds, actuallQPS is %.2lf, query count %u, skipped %u.\n",
+                    sendingCost,
+                    numQueries / sendingCost,
+                    static_cast<uint32_t>(numQueries),
+                    p_searcher.m_skipped.load());
+            }
+
 
             template <typename ValueType>
             void SearchAsync(SearchDefault<ValueType>& p_searcher,
@@ -359,6 +392,18 @@ namespace SPTAG {
                     "Finish searching in %.3lf seconds.\n",
                     searchCost);
             }
+
+            template <typename T>
+            float calSearchedNumberAvg(std::vector<COMMON::QueryResultSet<T>>& results)
+            {
+                float totalNumber = 0;
+                for (int i = 0; i < results.size(); i++)
+                {
+                    totalNumber += results[i].GetResultNum();
+                }
+                return static_cast<float>(totalNumber)/static_cast<float>(results.size());
+            }
+
 
             template <typename ValueType>
             void TestUpdateAcc(Options& p_opts)
@@ -554,7 +599,7 @@ namespace SPTAG {
                 LOG(Helper::LogLevel::LL_Info, "Setup index finish, start setup hint...\n");
                 searcher.SetHint(numThreads, internalResultNum, asyncCallQPS > 0, p_opts);
 
-                // searcher.setSearchLimit(p_opts.m_internalResultNum);
+                searcher.setSearchLimit(p_opts.m_internalResultNum/2);
 
                 searcher.LoadDeleteID(COMMON_OPTS.m_deleteID);
 
@@ -845,7 +890,7 @@ namespace SPTAG {
 
                 searcher.updaterSetup();
 
-                // searcher.setSearchLimit(p_opts.m_internalResultNum);
+                searcher.setSearchLimit(p_opts.m_internalResultNum/2);
 
                 searcher.LoadDeleteID(COMMON_OPTS.m_deleteID);
 
@@ -928,6 +973,58 @@ namespace SPTAG {
                         return ss.m_totalSearchLatency;
                     },
                     "%.3lf");
+                LOG(Helper::LogLevel::LL_Info, "\nTotal Disk Acess Distribution:\n");
+                PrintPercentiles<int, SearchStats>(stats,
+                    [](const SearchStats& ss) -> int
+                    {
+                        return ss.m_diskAccessCount;
+                    },
+                    "%4d");
+
+                for (int i = 0; i < numQueries; ++i)
+                {
+                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                    results[i].Reset();
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "Start ANN Search...\n");
+
+                if (asyncCallQPS == 0)
+                {
+                    SearchSequentialVecLimit(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
+                }
+                else
+                {
+                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
+
+                recall = CalcRecall(results, truth, K);
+                LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
+                LOG(Helper::LogLevel::LL_Info, "\nEx Latency Distribution:\n");
+                PrintPercentiles<double, SearchStats>(stats,
+                    [](const SearchStats& ss) -> double
+                    {
+                        return ss.m_exLatency;
+                    },
+                    "%.3lf");
+
+                LOG(Helper::LogLevel::LL_Info, "\nTotal Search Latency Distribution:\n");
+                PrintPercentiles<double, SearchStats>(stats,
+                    [](const SearchStats& ss) -> double
+                    {
+                        return ss.m_totalSearchLatency;
+                    },
+                    "%.3lf");
+                LOG(Helper::LogLevel::LL_Info, "\nTotal Disk Acess Distribution:\n");
+                PrintPercentiles<int, SearchStats>(stats,
+                    [](const SearchStats& ss) -> int
+                    {
+                        return ss.m_diskAccessCount;
+                    },
+                    "%4d");
+                
                 searcher.setSplitZero();
 
                 for (int i = 0; i < insertCount; i++)
@@ -945,7 +1042,7 @@ namespace SPTAG {
                     #pragma omp parallel for num_threads(insertThreads)
                     for (int next = 0; next < step; ++next)
                     {
-                        if ((next + 1) % 10000 == 0)
+                        if ((next + 1) % 100000 == 0)
                         {
                             LOG(Helper::LogLevel::LL_Info, "inserted %d vectors\n", next + 1);
                         }
@@ -967,8 +1064,8 @@ namespace SPTAG {
                     step/ sendingCost,
                     step / syncingCost,
                     static_cast<uint32_t>(step));
-                    // searcher.calAvgPostingSize();
-                    // searcher.setSearchLimit(p_opts.m_internalResultNum);
+                    searcher.calAvgPostingSize();
+                    searcher.setSearchLimit(p_opts.m_internalResultNum/2);
                     curCount += step;
                     finishedInsert += step;
                     LOG(Helper::LogLevel::LL_Info, "Total Vector num %d \n", curCount);
@@ -1007,6 +1104,56 @@ namespace SPTAG {
                             return ss.m_totalSearchLatency;
                         },
                         "%.3lf");
+                    LOG(Helper::LogLevel::LL_Info, "\nTotal Disk Acess Distribution:\n");
+                    PrintPercentiles<int, SearchStats>(stats,
+                        [](const SearchStats& ss) -> int
+                        {
+                            return ss.m_diskAccessCount;
+                        },
+                        "%4d");
+
+                    LOG(Helper::LogLevel::LL_Info, "Start Searching\n");
+                    for (int i = 0; i < numQueries; ++i)
+                    {
+                        results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                        results[i].Reset();
+                    }
+                    if (asyncCallQPS == 0)
+                    {
+                        SearchSequentialVecLimit(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
+                    }
+                    else
+                    {
+                        SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
+                    }
+                    LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
+                    LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
+                    recall = 0;
+                    recall = CalcRecallIndice(results, truth, K, indices);
+                    LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
+                    LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times\n", finishedInsert, searcher.getSplitNum());
+                    LOG(Helper::LogLevel::LL_Info, "\nEx Latency Distribution:\n");
+                    PrintPercentiles<double, SearchStats>(stats,
+                        [](const SearchStats& ss) -> double
+                        {
+                            return ss.m_exLatency;
+                        },
+                        "%.3lf");
+
+                    LOG(Helper::LogLevel::LL_Info, "\nTotal Search Latency Distribution:\n");
+                    PrintPercentiles<double, SearchStats>(stats,
+                        [](const SearchStats& ss) -> double
+                        {
+                            return ss.m_totalSearchLatency;
+                        },
+                        "%.3lf");
+                    LOG(Helper::LogLevel::LL_Info, "\nTotal Disk Acess Distribution:\n");
+                    PrintPercentiles<int, SearchStats>(stats,
+                        [](const SearchStats& ss) -> int
+                        {
+                            return ss.m_diskAccessCount;
+                        },
+                        "%4d");
                 }
                 searcher.setDispatcherStop();
                 searcher.setPersistentBufferStop();

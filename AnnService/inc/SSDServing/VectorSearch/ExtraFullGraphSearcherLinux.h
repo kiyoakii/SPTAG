@@ -154,8 +154,8 @@ namespace SPTAG {
 
                         postingList.resize(0);
                         postingList.clear();
-
                         db->Get(ReadOptions(), Helper::Serialize<int>(&p_exWorkSpace->m_postingIDs[pi], 1), &postingList);
+                        diskRead++;
 
                         size_t totalBytes = postingList.size();
                         auto buffer = p_exWorkSpace->m_pageBuffers[pi];

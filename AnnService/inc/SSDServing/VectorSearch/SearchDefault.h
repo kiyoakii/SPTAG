@@ -176,7 +176,7 @@ namespace SPTAG {
 
 					m_vectornum_last = m_vectornum.load();
 					
-					// calAvgPostingSize();
+					calAvgPostingSize();
 
 					m_extraSearcher.reset(new ExtraFullGraphSearcher<ValueType>(extraFullGraphFile));
 
@@ -356,10 +356,16 @@ namespace SPTAG {
 						setPair(p, k+1, newHeadVID);
 
 						//LOG(Helper::LogLevel::LL_Info, "Headid: %d split into : %d\n", headID, newHeadVID);
+						float MaxClusterDist = args.clusterDist[k];
 						for (int j = 0; j < args.counts[k]; j++)
 						{
 							postingList += Helper::Serialize<int>(&localindicesInsert[localindices[first + j]], 1);
 							postingList += Helper::Serialize<ValueType>(smallSample[localindices[first + j]], COMMON_OPTS.m_dim);
+							float newDist = m_index->ComputeDistance(smallSample[args.clusterIdx[k]], smallSample[localindices[first + j]]);
+							if (newDist > MaxClusterDist)
+							{
+								MaxClusterDist = newDist;
+							}
 						}
 						db->Put(WriteOptions(), Helper::Serialize<int>(&newHeadVID, 1), postingList);
 						first += args.counts[k];
@@ -373,7 +379,7 @@ namespace SPTAG {
 							m_postingSizes.resize(m_index->GetNumSamples());
 							m_postingRadius.resize(m_index->GetNumSamples());
 							m_postingSizes[newHeadVID] = args.counts[k];
-							m_postingRadius[newHeadVID] = args.clusterDist[k];
+							m_postingRadius[newHeadVID] = MaxClusterDist;
 							m_posting_num++;
 							m_split_num++;
 						}
@@ -561,6 +567,88 @@ namespace SPTAG {
 					return ErrorCode::Success;
 				}
 
+				void Search_VecLimit(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats)
+				{
+					//LARGE_INTEGER qpcStartTime;
+					//LARGE_INTEGER qpcEndTime;
+					//QueryPerformanceCounter(&qpcStartTime);
+					TimeUtils::StopW sw;
+					double StartingTime, EndingTime, ExEndingTime;
+
+					StartingTime = sw.getElapsedMs();
+
+					m_index->SearchIndex(p_queryResults);
+
+					EndingTime = sw.getElapsedMs();
+
+					ExtraWorkSpace* auto_ws = nullptr;
+					if (nullptr != m_extraSearcher)
+					{
+						auto_ws = GetWs();
+						auto_ws->m_postingIDs.clear();
+						int totalVectors = 0;
+						for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
+						{
+							auto res = p_queryResults.GetResult(i);
+							if (res->VID != -1)
+							{
+								auto_ws->m_postingIDs.emplace_back(res->VID);
+								totalVectors += m_postingSizes[res->VID];
+								if (totalVectors > m_searchVectorLimit)
+								{
+									break;
+								}
+							}
+						}
+						const uint32_t postingListCount = static_cast<uint32_t>(auto_ws->m_postingIDs.size());
+                   		m_extraSearcher->InitWorkSpace(auto_ws, postingListCount);
+					}
+
+					if (!COMMON_OPTS.m_addHeadToPost && m_vectorTranslateMap.Name() == "Head")
+					{
+						//LOG(Helper::LogLevel::LL_Info, "Translate headvector\n");
+						for (int i = 0; i < p_queryResults.GetResultNum(); ++i)
+						{
+							auto res = p_queryResults.GetResult(i);
+							if (res->VID != -1)
+							{
+								//LOG(Helper::LogLevel::LL_Info, "head vector previous id: %d\n", res->VID);
+								res->VID = static_cast<int>(*m_vectorTranslateMap[res->VID]);
+								//LOG(Helper::LogLevel::LL_Info, "head vector normal id: %d\n", res->VID);
+								if (auto_ws->m_deduper.CheckAndSet(res->VID) || m_deletedID.Contains(res->VID))
+								{
+									//LOG(Helper::LogLevel::LL_Info, "contain\n");
+									res->VID = -1;
+									res->Dist = SPTAG::MaxDist;
+									res->Meta.Clear();
+								}
+								//LOG(Helper::LogLevel::LL_Info, "get next head vector\n");
+							}
+						}
+					} else if (COMMON_OPTS.m_addHeadToPost && m_clearHead)
+					{
+						//the head vector will be count at extraSearcher
+						p_queryResults.Reset();
+					}
+
+					if (nullptr != m_extraSearcher)
+					{
+						p_queryResults.Reverse();
+						//LOG(Helper::LogLevel::LL_Info, "Into PostingList Search\n");
+						m_extraSearcher->Search(auto_ws, p_queryResults, m_index, p_stats, m_deletedID);
+						RetWs(auto_ws);
+					}
+
+					ExEndingTime = sw.getElapsedMs();
+					//QueryPerformanceCounter(&qpcEndTime);
+					//unsigned __int32 latency = static_cast<unsigned __int32>(static_cast<double>(qpcEndTime.QuadPart - qpcStartTime.QuadPart) * 1000000 / g_systemPerfFreq.QuadPart);
+
+					p_stats.m_exLatency = ExEndingTime - EndingTime;
+					p_stats.m_totalSearchLatency = ExEndingTime - StartingTime;
+					p_stats.m_totalLatency = p_stats.m_totalSearchLatency;
+					//p_stats.m_totalLatency = latency * 1.0;
+				}
+
 				void Search(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats)
 				{
 					//LARGE_INTEGER qpcStartTime;
@@ -580,22 +668,25 @@ namespace SPTAG {
 					{
 						auto_ws = GetWs();
 						auto_ws->m_postingIDs.clear();
+						int totalVectors = 0;
 						float currentR = p_queryResults.GetResult(m_resultNum - 1)->Dist;
 						// First, add topK (resultNum) headVectors.
 						// TopK actually represents vector number to be returned,
 						// but here it acts as a bound to form a search area
 						// LOG(Helper::LogLevel::LL_Info, "m_resultNum = %d\n", m_resultNum);
-						for (int i = 0; i < m_resultNum; ++i) {
+						for (int i = 0; i < m_resultNum && totalVectors <= m_searchVectorLimit; ++i) {
 							auto res = p_queryResults.GetResult(i);
 							if (res->VID != -1) {
 								auto_ws->m_postingIDs.emplace_back(res->VID);
 								currentR = res->Dist;
+								totalVectors += m_postingSizes[res->VID];
 							}
 						}
-						for (int i = m_resultNum; i < p_queryResults.GetResultNum(); ++i) {
+						for (int i = m_resultNum; i < p_queryResults.GetResultNum() && totalVectors <= m_searchVectorLimit; ++i) {
 							auto res = p_queryResults.GetResult(i);
 							if (res->VID != -1 && res->Dist - m_postingRadius[res->VID] <= currentR) {
 								auto_ws->m_postingIDs.emplace_back(res->VID);
+								totalVectors += m_postingSizes[res->VID];
 							} else {
 								m_skipped++;
 							}
@@ -1000,6 +1091,11 @@ namespace SPTAG {
 				void setPersistentBufferStop()
 				{
 					m_persistentBuffer->StopPDB();
+				}
+
+				void setSkippedZero()
+				{
+					m_skipped.store(0);
 				}
 				
 				std::atomic_int m_skipped;
