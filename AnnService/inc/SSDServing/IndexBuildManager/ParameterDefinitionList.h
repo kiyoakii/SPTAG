@@ -34,5 +34,7 @@ DefineBasicParameter(m_ssdIndexInfo, std::string, std::string(""), "SSDIndexInfo
 DefineBasicParameter(m_deleteID, std::string, std::string(""), "DeleteID")
 DefineBasicParameter(m_extraVectorPath, std::string, std::string(""), "ExtraVectorPath")
 DefineBasicParameter(m_testInc, bool, false, "TestInc")
+DefineBasicParameter(m_testRealTime, bool, false, "TestRealTime")
+DefineBasicParameter(m_fullVectorPath, std::string, std::string(""), "FullVectorPath")
 
 #endif

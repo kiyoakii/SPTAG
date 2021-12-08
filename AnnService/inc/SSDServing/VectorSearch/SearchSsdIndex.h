@@ -59,6 +59,47 @@ namespace SPTAG {
                 return static_cast<float>(recall)/static_cast<float>(results.size() * K);
             }
 
+            template <typename T>
+            float CalcRecallVec(std::vector<COMMON::QueryResultSet<T>>& results, const std::vector<std::set<int>>& truth, std::shared_ptr<SPTAG::VectorSet> querySet, std::shared_ptr<SPTAG::VectorSet> vectorSet, std::shared_ptr<VectorIndex> index, int K)
+            {
+                float eps = 1e-6f;
+                float recall = 0;
+                std::unique_ptr<bool[]> visited(new bool[K]);
+                for (int i = 0; i < results.size(); i++)
+                {
+                    memset(visited.get(), 0, K*sizeof(bool));
+                    for (int id : truth[i])
+                    {
+                        for (int j = 0; j < K; j++)
+                        {
+                            if (visited[j]) continue;
+
+                            if (results[i].GetResult(j)->VID == id)
+                            {
+                                recall++;
+                                visited[j] = true;
+                                break;
+                            }
+                            else if (vectorSet != nullptr) {
+                                float dist = results[i].GetResult(j)->Dist;
+                                float truthDist = index->ComputeDistance(querySet->GetVector(i), vectorSet->GetVector(id));
+                                if (index->GetDistCalcMethod() == SPTAG::DistCalcMethod::Cosine && fabs(dist - truthDist) < eps) {
+                                    recall++;
+                                    visited[j] = true;
+                                    break;
+                                }
+                                else if (index->GetDistCalcMethod() == SPTAG::DistCalcMethod::L2 && fabs(dist - truthDist) < eps * (dist + eps)) {
+                                    recall++;
+                                    visited[j] = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                return static_cast<float>(recall)/static_cast<float>(results.size() * K);
+            }
+
             void LoadTruthTXT(std::string truthPath, std::vector<std::set<int>>& truth, int K, SizeType p_iTruthNumber)
             {
                 auto ptr = SPTAG::f_createIO();
@@ -403,173 +444,6 @@ namespace SPTAG {
                 }
                 return static_cast<float>(totalNumber)/static_cast<float>(results.size());
             }
-
-
-            template <typename ValueType>
-            void TestUpdateAcc(Options& p_opts)
-            {
-                std::string outputFile = p_opts.m_searchResult;
-
-                if (!p_opts.m_logFile.empty())
-                {
-                    SPTAG::g_pLogger.reset(new Helper::FileLogger(Helper::LogLevel::LL_Info, p_opts.m_logFile.c_str()));
-                }
-                int numThreads = p_opts.m_iNumberOfThreads;
-                int asyncCallQPS = p_opts.m_qpsLimit;
-
-                int internalResultNum = std::max<int>(p_opts.m_internalResultNum, 64);
-                int K = std::min<int>(p_opts.m_resultNum, internalResultNum);
-
-                SearchDefault<ValueType> searcher;
-                LOG(Helper::LogLevel::LL_Info, "Start setup index...\n");
-                searcher.Setup(p_opts);
-
-                LOG(Helper::LogLevel::LL_Info, "Setup index finish, start setup hint...\n");
-                searcher.SetHint(numThreads, internalResultNum, asyncCallQPS > 0, p_opts);
-
-                searcher.LoadDeleteID(COMMON_OPTS.m_deleteID);
-
-                LOG(Helper::LogLevel::LL_Info, "Start loading QuerySet...\n");
-                std::shared_ptr<Helper::ReaderOptions> queryOptions(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_queryType, COMMON_OPTS.m_queryDelimiter));
-                auto queryReader = Helper::VectorSetReader::CreateInstance(queryOptions);
-                LOG(Helper::LogLevel::LL_Info, "Start Reading QuerySet...\n");
-                if (ErrorCode::Success != queryReader->LoadFile(COMMON_OPTS.m_queryPath))
-                {
-                    LOG(Helper::LogLevel::LL_Error, "Failed to read query file.\n");
-                    exit(1);
-                }
-                LOG(Helper::LogLevel::LL_Info, "Start Getting QuerySet...\n");
-                auto querySet = queryReader->GetVectorSet();
-                int numQueries = querySet->Count();
-
-                std::vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
-                std::vector<SearchStats> stats(numQueries);
-                for (int i = 0; i < numQueries; ++i)
-                {
-                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
-                    results[i].Reset();
-                }
-
-
-                LOG(Helper::LogLevel::LL_Info, "Start First ANN Search...\n");
-
-                if (asyncCallQPS == 0)
-                {
-                    SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
-                }
-                else
-                {
-                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
-                }
-
-                LOG(Helper::LogLevel::LL_Info, "\nFinish First ANN Search...\n");
-                
-                LOG(Helper::LogLevel::LL_Info, "Start Checking Update\n");
-
-                LOG(Helper::LogLevel::LL_Info, "Testing Delete\n");
-
-                int deletenum = std::min<int>(K, 5);
-                std::set<int>deletedPoints;
-
-                for (int i = 0; i < results.size(); i++)
-                {
-                    for (int j = 0; j < deletenum; j++)
-                    {
-                        //deletedPoints.insert(results[i].GetResult(j)->VID);
-                        searcher.Delete(results[i].GetResult(j)->VID);
-                    }
-                }
-
-                for (int i = 0; i < numQueries; ++i)
-                {
-                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
-                    results[i].Reset();
-                }
-
-                LOG(Helper::LogLevel::LL_Info, "Start Second ANN Search...\n");
-
-                if (asyncCallQPS == 0)
-                {
-                    SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
-                }
-                else
-                {
-                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
-                }
-
-                LOG(Helper::LogLevel::LL_Info, "\nFinish Second ANN Search...\n");
-
-                LOG(Helper::LogLevel::LL_Info, "\nTesting Delete Result...\n");
-
-                for (int i = 0; i < results.size(); i++)
-                {
-                    for (int j = 0; j < results[i].GetResultNum(); j++)
-                    {
-                        if (deletedPoints.count(results[i].GetResult(j)->VID))
-                        {
-                            LOG(Helper::LogLevel::LL_Error, "Error! Find deleted point %d, query: %d\n", results[i].GetResult(j)->VID, i);
-                            exit(1);
-                        }
-                    }
-                }
-
-                LOG(Helper::LogLevel::LL_Info, "\nTesting Insert...\n");
-
-                int insertnum = std::min<int>(numQueries, 10000);
-                for (int i = 0; i < insertnum; ++i)
-                {
-                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
-                    results[i].Reset();
-                }
-                for (int i = 0; i < insertnum; i++)
-                {
-                    //searcher.Insert(results[i], stats[i]);
-                }
-
-                for (int i = 0; i < numQueries; ++i)
-                {
-                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
-                    results[i].Reset();
-                }
-
-                LOG(Helper::LogLevel::LL_Info, "Start Thrid ANN Search...\n");
-
-                if (asyncCallQPS == 0)
-                {
-                    SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
-                }
-                else
-                {
-                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
-                }
-
-                LOG(Helper::LogLevel::LL_Info, "Finish Thrid ANN Search...\n");
-                
-                LOG(Helper::LogLevel::LL_Info, "Testing Insert Result...\n");
-                bool findOne = false;
-                for (int i = 0; i < insertnum; i++)
-                {
-                    //LOG(Helper::LogLevel::LL_Info, "%d : result id: ", i);
-                    for (int j = 0; j < results[i].GetResultNum(); j++)
-                    {
-                        //LOG(Helper::LogLevel::LL_Info, "%d ", results[i].GetResult(j)->VID);
-                        if (results[i].GetResult(j)->Dist < 1e-6)
-                        {
-                            findOne = true;
-                        }
-                    }
-                    //LOG(Helper::LogLevel::LL_Info, "\n");
-                }
-                if (findOne)
-                {
-                    LOG(Helper::LogLevel::LL_Info, "Insert Successfully!\n");
-                }
-                else
-                {
-                    LOG(Helper::LogLevel::LL_Error, "Insert Error!\n");
-                    exit(1);
-                }
-            }
             
             template <typename ValueType>
             void TestUpdateSta(Options& p_opts)
@@ -598,6 +472,8 @@ namespace SPTAG {
 
                 LOG(Helper::LogLevel::LL_Info, "Setup index finish, start setup hint...\n");
                 searcher.SetHint(numThreads, internalResultNum, asyncCallQPS > 0, p_opts);
+
+                searcher.updaterSetup();
 
                 searcher.setSearchLimit(p_opts.m_internalResultNum/2);
 
@@ -643,7 +519,6 @@ namespace SPTAG {
                     results[i].Reset();
                 }
 
-
                 LOG(Helper::LogLevel::LL_Info, "Start First ANN Search...\n");
 
                 if (asyncCallQPS == 0)
@@ -661,21 +536,7 @@ namespace SPTAG {
 
                 if (!truthFile.empty())
                 {
-                    for (int k = 0; k < results.size(); k++)
-                    {
-                        for (int id : truth[k])
-                        {
-                            for (int j = 0; j < K; j++)
-                            {
-                                if (results[k].GetResult(j)->VID == id)
-                                {
-                                    recall++;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    recall = static_cast<float>(recall)/static_cast<float>(results.size() * K);
+                    recall = CalcRecallVec(results, truth, querySet, fullVectors, searcher.HeadIndex(), K);
                     LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
                 }
 
@@ -746,21 +607,11 @@ namespace SPTAG {
                                 tempIndice[k] = randid;
                             }
                         }
-                    /*
-                    for (int k = 0; k < updateVectorNum; k++) 
-                    {
-                        SizeType randid = COMMON::Utils::rand(fullVectors->Count(), 0);
-                        while (std::count(updateIndice.begin(), updateIndice.end(), randid)) {
-                            randid = COMMON::Utils::rand(fullVectors->Count(), 0);
-                        }
-                        updateIndice[k] = randid;
-                    }
-                    */
                     LOG(Helper::LogLevel::LL_Info, "cycle %d: update vector\n", i);
                     LOG(Helper::LogLevel::LL_Info, "cycle %d: delete vector\n", i);
                     for (int k = 0; k < updateVectorNum; k++) 
                     {
-                        searcher.Delete(indices[updateIndice[k]]);
+                        searcher.Updater(indices[updateIndice[k]]);
                     }
                     LOG(Helper::LogLevel::LL_Info, "cycle %d: prepare vector\n", i);
                     for (int k = 0; k < updateVectorNum; k++)
@@ -770,11 +621,18 @@ namespace SPTAG {
                         insertResult[k].Reset();
                     }
                     LOG(Helper::LogLevel::LL_Info, "cycle %d: insert vector\n", i);
+                    #pragma omp parallel for num_threads(numThreads)
                     for (int k = 0; k < updateVectorNum; k++) 
                     {
                         if ((k+1) % 10000 == 0) LOG(Helper::LogLevel::LL_Info, "cycle %d: inserted %d vectors\n", i, k+1);
-                        //searcher.Insert(insertResult[k], stats[k]);
-                        indices[updateIndice[k]] = vectorNum++;
+                        int VID;
+                        searcher.Updater(insertResult[k], stats[k], &VID);
+                        indices[updateIndice[k]] = VID;
+                    }
+                    while(!searcher.checkAllTaskesIsFinish())
+                    {
+                        LOG(Helper::LogLevel::LL_Info, "Not Finished\n");
+                        std::this_thread::sleep_for(std::chrono::milliseconds(500));
                     }
                     LOG(Helper::LogLevel::LL_Info, "cycle %d: after %d insertion, head vectors split %d times\n", i, updateVectorNum, searcher.getSplitNum());
                     searcher.setSplitZero();
@@ -786,6 +644,8 @@ namespace SPTAG {
                         results[j].Reset();
                     }
                     LOG(Helper::LogLevel::LL_Info, "cycle %d: begin searching\n", i);
+                    searcher.calAvgPostingSize();
+                    searcher.setSearchLimit(p_opts.m_internalResultNum/2);
                     if (asyncCallQPS == 0)
                     {
                         SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
@@ -800,7 +660,7 @@ namespace SPTAG {
 
                     if (!truthFile.empty())
                     {
-                        recall = CalcRecallIndice(results, truth, K, indices);
+                        recall = CalcRecallVec(results, truth, querySet, fullVectors, searcher.HeadIndex(), K);
                         LOG(Helper::LogLevel::LL_Info, "cycle %d: Recall: %f\n", i, recall);
                     }
 
@@ -1032,7 +892,7 @@ namespace SPTAG {
                     insertResults[i].SetTarget(reinterpret_cast<ValueType*>(extraVectors->GetVector(i)));
                     insertResults[i].Reset();
                 }
-
+                
                 int batch = insertCount / step;
                 int finishedInsert = 0;
                 int insertThreads = 16;
@@ -1198,19 +1058,480 @@ namespace SPTAG {
             }
 
             template <typename ValueType>
+            void SearchRequest(SearchDefault<ValueType>& p_searcher, std::shared_ptr<VectorSet>& querySet, int* stop, int threadNum, int* totalSend, int internalNum)
+            {
+                int sum = 0;
+                int numQueries = querySet->Count();
+                omp_set_num_threads(threadNum);
+                #pragma omp parallel reduction(+: sum) 
+                {
+                    while(*stop != 0)
+                    {
+                        COMMON::QueryResultSet<ValueType> result(NULL, internalNum);
+                        SearchStats stats;
+                        result.SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(rand() % numQueries)));
+                        result.Reset();
+                        p_searcher.Search(result, stats);
+                        sum++;
+                    }
+                }
+                *totalSend = sum;
+            }   
+
+            template <typename ValueType>
+            void TestRealTime(Options& p_opts)
+            {
+                LOG(Helper::LogLevel::LL_Info, "Start Real Time test\n");
+
+                std::string truthFilePrefix = p_opts.m_truthFilePrefix;
+                int step = p_opts.m_step;
+                if (step == 0)
+                {
+                    LOG(Helper::LogLevel::LL_Error, "Incremental Test Error, Need to set step.\n");
+                    exit(1);
+                }
+
+                if (!p_opts.m_logFile.empty())
+                {
+                    SPTAG::g_pLogger.reset(new Helper::FileLogger(Helper::LogLevel::LL_Info, p_opts.m_logFile.c_str()));
+                }
+                int numThreads = p_opts.m_iNumberOfThreads;
+                int asyncCallQPS = p_opts.m_qpsLimit;
+
+                int internalResultNum = std::max<int>(p_opts.m_internalResultNum, 64);
+                int K = std::min<int>(p_opts.m_resultNum, internalResultNum);
+
+                int internalResultNum_insert = 64;
+
+                SearchDefault<ValueType> searcher;
+                LOG(Helper::LogLevel::LL_Info, "Start setup index...\n");
+                searcher.Setup(p_opts);
+
+                LOG(Helper::LogLevel::LL_Info, "Setup index finish, start setup hint...\n");
+                searcher.SetHint(numThreads, internalResultNum, asyncCallQPS > 0, p_opts);
+
+                searcher.updaterSetup();
+
+                searcher.setSearchLimit(p_opts.m_internalResultNum/2);
+
+                searcher.LoadDeleteID(COMMON_OPTS.m_deleteID);
+
+                LOG(Helper::LogLevel::LL_Info, "Start loading QuerySet...\n");
+                std::shared_ptr<Helper::ReaderOptions> queryOptions(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_queryType, COMMON_OPTS.m_queryDelimiter));
+                auto queryReader = Helper::VectorSetReader::CreateInstance(queryOptions);
+                if (ErrorCode::Success != queryReader->LoadFile(COMMON_OPTS.m_queryPath))
+                {
+                    LOG(Helper::LogLevel::LL_Error, "Failed to read query file.\n");
+                    exit(1);
+                }
+
+
+                LOG(Helper::LogLevel::LL_Info, "Start loading VectorSet...\n");
+                std::shared_ptr<SPTAG::VectorSet> vectorSet;
+                if (!COMMON_OPTS.m_fullVectorPath.empty() && fileexists(COMMON_OPTS.m_fullVectorPath.c_str())) {
+                    std::shared_ptr<Helper::ReaderOptions> vectorOptions(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_vectorType, COMMON_OPTS.m_vectorDelimiter));
+                    auto vectorReader = Helper::VectorSetReader::CreateInstance(vectorOptions);
+                    if (ErrorCode::Success == vectorReader->LoadFile(COMMON_OPTS.m_fullVectorPath))
+                    {
+                        vectorSet = vectorReader->GetVectorSet();
+                        if (COMMON_OPTS.m_distCalcMethod == DistCalcMethod::Cosine) vectorSet->Normalize(p_opts.m_iNumberOfThreads);
+                        LOG(Helper::LogLevel::LL_Info, "\nLoad VectorSet(%d,%d).\n", vectorSet->Count(), vectorSet->Dimension());
+                    }
+                }
+
+                std::vector<std::set<int>> truth;
+
+                auto querySet = queryReader->GetVectorSet();
+                int numQueries = querySet->Count();
+                int curCount = searcher.getVecNum();
+                int insertCount = vectorSet->Count() - curCount;
+
+                int updateVectorNum = (curCount + insertCount) * p_opts.m_indexSize;
+                std::string truthfile;
+                std::vector<SizeType> indices;
+                indices.clear();
+                indices.resize(curCount + insertCount);
+                for (int i = 0; i < indices.size(); i++) 
+                {
+                    indices[i] = i;
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
+                LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
+
+                std::vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
+                std::vector<SearchStats> stats(numQueries);
+                std::vector<COMMON::QueryResultSet<ValueType>> insertResults(insertCount, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum_insert));
+                std::vector<COMMON::QueryResultSet<ValueType>> updateResults(updateVectorNum, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum_insert));
+                for (int i = 0; i < numQueries; ++i)
+                {
+                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                    results[i].Reset();
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "Start ANN Search...\n");
+
+                if (asyncCallQPS == 0)
+                {
+                    SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
+                }
+                else
+                {
+                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
+
+                float recall = 0;
+
+                recall = CalcRecall(results, truth, K);
+                LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
+                LOG(Helper::LogLevel::LL_Info, "\nEx Latency Distribution:\n");
+                PrintPercentiles<double, SearchStats>(stats,
+                    [](const SearchStats& ss) -> double
+                    {
+                        return ss.m_exLatency;
+                    },
+                    "%.3lf");
+
+                LOG(Helper::LogLevel::LL_Info, "\nTotal Search Latency Distribution:\n");
+                PrintPercentiles<double, SearchStats>(stats,
+                    [](const SearchStats& ss) -> double
+                    {
+                        return ss.m_totalSearchLatency;
+                    },
+                    "%.3lf");
+                LOG(Helper::LogLevel::LL_Info, "\nTotal Disk Acess Distribution:\n");
+                PrintPercentiles<int, SearchStats>(stats,
+                    [](const SearchStats& ss) -> int
+                    {
+                        return ss.m_diskAccessCount;
+                    },
+                    "%4d");
+
+                for (int i = 0; i < numQueries; ++i)
+                {
+                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                    results[i].Reset();
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "Start ANN Search...\n");
+
+                if (asyncCallQPS == 0)
+                {
+                    SearchSequentialVecLimit(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
+                }
+                else
+                {
+                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
+
+                recall = CalcRecall(results, truth, K);
+                LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
+                LOG(Helper::LogLevel::LL_Info, "\nEx Latency Distribution:\n");
+                PrintPercentiles<double, SearchStats>(stats,
+                    [](const SearchStats& ss) -> double
+                    {
+                        return ss.m_exLatency;
+                    },
+                    "%.3lf");
+
+                LOG(Helper::LogLevel::LL_Info, "\nTotal Search Latency Distribution:\n");
+                PrintPercentiles<double, SearchStats>(stats,
+                    [](const SearchStats& ss) -> double
+                    {
+                        return ss.m_totalSearchLatency;
+                    },
+                    "%.3lf");
+                LOG(Helper::LogLevel::LL_Info, "\nTotal Disk Acess Distribution:\n");
+                PrintPercentiles<int, SearchStats>(stats,
+                    [](const SearchStats& ss) -> int
+                    {
+                        return ss.m_diskAccessCount;
+                    },
+                    "%4d");
+                
+                searcher.setSplitZero();
+
+                for (int i = 0; i < insertCount; i++)
+                {
+                    insertResults[i].SetTarget(reinterpret_cast<ValueType*>(vectorSet->GetVector(curCount + i)));
+                    insertResults[i].Reset();
+                }
+
+
+                int batch = insertCount / step;
+                int finishedInsert = 0;
+                int insertThreads = 16;
+                std::vector<SizeType> updateIndice;
+                for (int i = 0; i < batch; i++)
+                {
+                    int totalNum = curCount;
+                    int section = totalNum / insertThreads;
+                    int selectionNum = updateVectorNum / insertThreads;
+                    updateIndice.clear();
+                    updateIndice.resize(updateVectorNum);
+                    LOG(Helper::LogLevel::LL_Info, "cycle %d: selecting update vector\n", i);
+                    omp_set_num_threads(numThreads);
+                    #pragma omp parallel
+                        {
+                            int tid = omp_get_thread_num();
+                            int lowerBound = tid * section;
+                            int upperBound = (tid == numThreads-1) ? totalNum : (tid + 1) * section;
+                            int selectBegin = tid * selectionNum;
+                            int select = (tid == insertThreads-1) ? (updateVectorNum- selectionNum * (insertThreads - 1)) : selectionNum;
+                            LOG(Helper::LogLevel::LL_Info, "tid: %d, select range: (%d, %d), select indice range: (%d,%d), select num: %d\n", tid, lowerBound, upperBound, selectBegin, selectBegin+select, select);
+                            std::vector<int> tempIndice;
+                            tempIndice.resize(select);
+                            for (int k = 0; k < select; k++)
+                            {
+                                SizeType randid = COMMON::Utils::rand(upperBound, lowerBound);
+                                while (std::count(tempIndice.begin(), tempIndice.end(), randid)) {
+                                    randid = COMMON::Utils::rand(upperBound, lowerBound);
+                                }
+                                updateIndice[k + selectBegin] = randid;
+                                tempIndice[k] = randid;
+                            }
+                        }
+                    LOG(Helper::LogLevel::LL_Info, "update vector\n");
+                     TimeUtils::StopW sw;
+                    int stop = 1;
+                    int totalSent = 0;
+                    LOG(Helper::LogLevel::LL_Info, "delete vector\n");
+                    #pragma omp parallel for num_threads(insertThreads)
+                    for (int k = 0; k < updateVectorNum; k++) 
+                    {
+                        searcher.Updater(indices[updateIndice[k]]);
+                    }
+                    double sendingCost = sw.getElapsedSec();
+                    double syncingCost = sw.getElapsedSec();
+                    LOG(Helper::LogLevel::LL_Info,
+                    "Finish sending deletion %.3lf seconds, syncing in %.3lf seconds, sending throughput is %.2lf ,actuall throughput is %.2lf, deletion count %u.\n",
+                    sendingCost,
+                    syncingCost,
+                    updateVectorNum/ sendingCost,
+                    updateVectorNum / syncingCost,
+                    static_cast<uint32_t>(updateVectorNum));
+                    LOG(Helper::LogLevel::LL_Info, "prepare vector\n");
+                    for (int k = 0; k < updateVectorNum; k++)
+                    {
+                        //LOG(Helper::LogLevel::LL_Info, "cycle %d: insert %d vector %d \n", i, k, updateIndice[k]);
+                        updateResults[k].SetTarget(reinterpret_cast<ValueType*>(vectorSet->GetVector(updateIndice[k])));
+                        updateResults[k].Reset();
+                    }
+                    sw.reset();
+                    std::thread searchThreads(&SearchRequest<ValueType>, std::ref(searcher), std::ref(querySet), &stop, 16, &totalSent, internalResultNum);
+                    double reinsertStart = sw.getElapsedSec();
+                    LOG(Helper::LogLevel::LL_Info, "re-insert vector\n");
+                    #pragma omp parallel for num_threads(numThreads)
+                    for (int k = 0; k < updateVectorNum; k++) 
+                    {
+                        if ((k+1) % 10000 == 0) LOG(Helper::LogLevel::LL_Info, "cycle %d: inserted %d vectors\n", i, k+1);
+                        int VID;
+                        searcher.Updater(updateResults[k], stats[k], &VID);
+                        indices[updateIndice[k]] = VID;
+                    }
+                    sendingCost = sw.getElapsedSec();
+                    while(!searcher.checkAllTaskesIsFinish())
+                    {
+                        LOG(Helper::LogLevel::LL_Info, "Not Finished\n");
+                        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                    }
+                    syncingCost = sw.getElapsedSec();
+                    LOG(Helper::LogLevel::LL_Info,
+                    "Finish sending re-insertion in %.3lf seconds, syncing in %.3lf seconds, sending throughput is %.2lf ,actuall throughput is %.2lf, insertion count %u.\n",
+                    sendingCost - reinsertStart,
+                    syncingCost - reinsertStart,
+                    updateVectorNum/ (sendingCost - reinsertStart),
+                    updateVectorNum / (syncingCost - reinsertStart),
+                    static_cast<uint32_t>(updateVectorNum));
+                    LOG(Helper::LogLevel::LL_Info, "prepare vector\n");
+                    auto insertStart = sw.getElapsedSec();
+                    #pragma omp parallel for num_threads(insertThreads)
+                    for (int next = 0; next < step; ++next)
+                    {
+                        if ((next + 1) % 100000 == 0)
+                        {
+                            LOG(Helper::LogLevel::LL_Info, "inserted %d vectors\n", next + 1);
+                        }
+                        int VID;
+                        searcher.Updater(insertResults[finishedInsert + next], stats[finishedInsert + next], &VID);
+                        indices[curCount + next] = VID;
+                    }
+                    sendingCost = sw.getElapsedSec();
+                    while(!searcher.checkAllTaskesIsFinish())
+                    {
+                        LOG(Helper::LogLevel::LL_Info, "Not Finished\n");
+                        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                    }
+                    syncingCost = sw.getElapsedSec();
+                    LOG(Helper::LogLevel::LL_Info,
+                    "Finish sending insertion new in %.3lf seconds, syncing in %.3lf seconds, sending throughput is %.2lf ,actuall throughput is %.2lf, insertion count %u.\n",
+                    sendingCost - insertStart,
+                    syncingCost - insertStart,
+                    step/ (sendingCost - insertStart),
+                    step / (syncingCost - insertStart),
+                    static_cast<uint32_t>(step));
+
+                    stop = 0;
+                    sendingCost = sw.getElapsedSec();
+                    searchThreads.join();
+                    syncingCost = sw.getElapsedSec();
+                    LOG(Helper::LogLevel::LL_Info,
+                    "Finish sending background search in %.3lf seconds, syncing in %.3lf seconds, sending throughput is %.2lf ,actuall throughput is %.2lf, search count %u.\n",
+                    sendingCost,
+                    syncingCost,
+                    totalSent/ sendingCost,
+                    totalSent / syncingCost,
+                    static_cast<uint32_t>(totalSent));
+
+                    searcher.calAvgPostingSize();
+                    searcher.setSearchLimit(p_opts.m_internalResultNum/2);
+                    curCount += step;
+                    finishedInsert += step;
+                    LOG(Helper::LogLevel::LL_Info, "Total Vector num %d \n", curCount);
+                    LOG(Helper::LogLevel::LL_Info, "Start Searching\n");
+                    for (int i = 0; i < numQueries; ++i)
+                    {
+                        results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                        results[i].Reset();
+                    }
+                    if (asyncCallQPS == 0)
+                    {
+                        SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
+                    }
+                    else
+                    {
+                        SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
+                    }
+                    LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
+                    LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
+                    recall = CalcRecallVec(results, truth, querySet, vectorSet, searcher.HeadIndex(), K);
+                    LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
+                    LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times\n", finishedInsert, searcher.getSplitNum());
+                    LOG(Helper::LogLevel::LL_Info, "\nEx Latency Distribution:\n");
+                    PrintPercentiles<double, SearchStats>(stats,
+                        [](const SearchStats& ss) -> double
+                        {
+                            return ss.m_exLatency;
+                        },
+                        "%.3lf");
+
+                    LOG(Helper::LogLevel::LL_Info, "\nTotal Search Latency Distribution:\n");
+                    PrintPercentiles<double, SearchStats>(stats,
+                        [](const SearchStats& ss) -> double
+                        {
+                            return ss.m_totalSearchLatency;
+                        },
+                        "%.3lf");
+                    LOG(Helper::LogLevel::LL_Info, "\nTotal Disk Acess Distribution:\n");
+                    PrintPercentiles<int, SearchStats>(stats,
+                        [](const SearchStats& ss) -> int
+                        {
+                            return ss.m_diskAccessCount;
+                        },
+                        "%4d");
+
+                    LOG(Helper::LogLevel::LL_Info, "Start Searching without distance cutting\n");
+                    for (int i = 0; i < numQueries; ++i)
+                    {
+                        results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                        results[i].Reset();
+                    }
+                    if (asyncCallQPS == 0)
+                    {
+                        SearchSequentialVecLimit(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
+                    }
+                    else
+                    {
+                        SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
+                    }
+                    LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
+                    LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
+                    recall = CalcRecallVec(results, truth, querySet, vectorSet, searcher.HeadIndex(), K);
+                    LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
+                    LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times\n", finishedInsert, searcher.getSplitNum());
+                    LOG(Helper::LogLevel::LL_Info, "\nEx Latency Distribution:\n");
+                    PrintPercentiles<double, SearchStats>(stats,
+                        [](const SearchStats& ss) -> double
+                        {
+                            return ss.m_exLatency;
+                        },
+                        "%.3lf");
+
+                    LOG(Helper::LogLevel::LL_Info, "\nTotal Search Latency Distribution:\n");
+                    PrintPercentiles<double, SearchStats>(stats,
+                        [](const SearchStats& ss) -> double
+                        {
+                            return ss.m_totalSearchLatency;
+                        },
+                        "%.3lf");
+                    LOG(Helper::LogLevel::LL_Info, "\nTotal Disk Acess Distribution:\n");
+                    PrintPercentiles<int, SearchStats>(stats,
+                        [](const SearchStats& ss) -> int
+                        {
+                            return ss.m_diskAccessCount;
+                        },
+                        "%4d");
+                }
+                searcher.setDispatcherStop();
+                searcher.setPersistentBufferStop();
+
+                LOG(Helper::LogLevel::LL_Info, "Insert finished, split %d time\n", searcher.getSplitNum());
+
+                //searcher.setSplitZero();
+
+                //searcher.SplitLongPosting();
+
+                //LOG(Helper::LogLevel::LL_Info, "spliting in the end, split %d time\n", searcher.getSplitNum());
+
+                // searcher.Rebuild();
+
+                for (int i = 0; i < numQueries; ++i)
+                {
+                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                    results[i].Reset();
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "Start ANN Search...\n");
+
+                if (asyncCallQPS == 0)
+                {
+                    SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
+                }
+                else
+                {
+                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
+
+                std::string storeFileCurr = p_opts.m_SSDVectorDistPath;
+                if (!storeFileCurr.empty())
+                    searcher.CalDBDist(storeFileCurr);
+
+                LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
+                LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
+                recall = CalcRecallIndice(results, truth, K, indices);
+                LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
+            }
+
+            template <typename ValueType>
             void Search(Options& p_opts)
             {
-                if (COMMON_OPTS.m_testUpdateAcc)
-                {
-                    TestUpdateAcc<ValueType>(p_opts);
-                    return;
-                } else if (COMMON_OPTS.m_testUpdateSta)
+                if (COMMON_OPTS.m_testUpdateSta)
                 {
                     TestUpdateSta<ValueType>(p_opts);
                     return;
                 } else if (COMMON_OPTS.m_testInc)
                 {
                     TestIncremental<ValueType>(p_opts);
+                    return;
+                } else if (COMMON_OPTS.m_testRealTime)
+                {
+                    TestRealTime<ValueType>(p_opts);
                     return;
                 }
                 std::string outputFile = p_opts.m_searchResult;

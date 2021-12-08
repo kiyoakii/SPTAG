@@ -391,7 +391,7 @@ namespace SPTAG {
 					auto bktIndex = dynamic_cast<SPTAG::BKT::Index<ValueType>*>(m_index.get());
 					bktIndex->DeleteIndex(headID);
 					// delete from disk
-					db->Delete(WriteOptions(), Helper::Serialize<int>(&headID, 1));
+					//db->Delete(WriteOptions(), Helper::Serialize<int>(&headID, 1));
 					//delete m_postingSizes[headID].get();
 					//m_postingSizes[headID].reset(nullptr);
 					return ErrorCode::Success;
@@ -399,6 +399,9 @@ namespace SPTAG {
 
 				ErrorCode Append(const SizeType headID, int appendNum, std::string* appendPosting)
 				{
+					if (appendNum == 0) {
+						LOG(Helper::LogLevel::LL_Info, "Error!, headID :%d, appendNum:%d", headID, appendNum);
+					}
 					if (m_postingSizes[headID] + appendNum > m_postingVectorLimit){
 						Split(headID, appendNum, *appendPosting);
 					} else {
@@ -502,7 +505,7 @@ namespace SPTAG {
 				}
 
 				//delete updater
-				ErrorCode Updater(const SizeType& p_id)
+				ErrorCode Updater(const SizeType p_id)
 				{
 					char deleteCode = 1;
 					int VID = p_id;
@@ -898,8 +901,6 @@ namespace SPTAG {
 					finishedAssignment = 0;
 					m_appendThreadPool.reset(new Helper::ThreadPool());
 					m_appendThreadPool->init(m_appendThreadNum);
-					m_deleteThreadPool.reset(new Helper::ThreadPool());
-					m_deleteThreadPool->init(m_deleteThreadNum);
 					m_dispatcher_running_flag.test_and_set();
 					auto scanThread = std::thread(&SearchDefault::scanner, this);
 					scanThread.detach();
@@ -976,11 +977,24 @@ namespace SPTAG {
 
 						std::map<SizeType, std::string*> newPart;
 						std::set<SizeType> deletedVector;
-						for (int i = appliedAssignment; i < scanNum; i++) {
+						newPart.clear();
+						deletedVector.clear();
+						int i;
+						for (i = appliedAssignment; i < scanNum; i++) {
 							std::string assignment;
 							m_persistentBuffer->GetAssignment(i, &assignment);
+							if(assignment.size() == 0) break;
 							uint8_t* postingP = reinterpret_cast<uint8_t*>(&assignment.front());
 							char code = *(reinterpret_cast<char*>(postingP));
+							if (assignment.size() == 0)
+							{
+								uint8_t* headPointer = postingP + sizeof(char);
+								int32_t headID = *(reinterpret_cast<int*>(headPointer));
+								LOG(Helper::LogLevel::LL_Info, "Error\n");
+								LOG(Helper::LogLevel::LL_Info, "code: %d, headID: %d, assignment size: %d\n", code, *(reinterpret_cast<int*>(headPointer)), assignment.size());
+								LOG(Helper::LogLevel::LL_Info, "ScanNum: %d, AppliedNum: %d, CurrentAssignNum: %d, ProcessingAssignment: %d\n", scanNum, appliedAssignment, currentAssignmentID, i);
+								exit(1);
+							}
 							if (code == 0) {
 								// insert
 								uint8_t* headPointer = postingP + sizeof(char);
@@ -994,6 +1008,7 @@ namespace SPTAG {
 								// delete
 								uint8_t* vectorPointer = postingP + sizeof(char);
 								int VID = *(reinterpret_cast<int*>(vectorPointer));
+								//LOG(Helper::LogLevel::LL_Info, "Scanner: delete: %d\n", VID);
 								deletedVector.insert(VID);
 							}
 						}
@@ -1007,7 +1022,7 @@ namespace SPTAG {
 							m_deletedID.Insert(*iter);
 						}
 						
-						appliedAssignment = scanNum;
+						appliedAssignment = i;
 						if (noAssignment) {
 							std::this_thread::sleep_for(std::chrono::milliseconds(100));
 						} else {
@@ -1036,7 +1051,7 @@ namespace SPTAG {
 				{
 					while (true) {
 						Task task;
-						while (currentTasks.pop(task) == false)
+						while (!currentTasks.pop(task))
 						{
 							// no assignment sleep
 							if (!m_dispatcher_running_flag.test_and_set()) {
@@ -1049,6 +1064,13 @@ namespace SPTAG {
 						// } else {
 							if (running[task.id] == 0) {
 								running[task.id] = 1;
+								
+								if(task.id >= m_index->GetNumSamples())
+								{
+									LOG(Helper::LogLevel::LL_Info, "Dispatcher: Task id: %d, total head: %d\n", task.id, m_index->GetNumSamples());
+									LOG(Helper::LogLevel::LL_Error, "forget delete persistent buffer?");
+									exit(1);
+								}
 								if (!m_index->ContainSample(task.id)) {
 									running[task.id] = 0;
 									std::vector<SizeType> newIDs = traceSplitRoute(task.id);
@@ -1225,7 +1247,6 @@ namespace SPTAG {
 				int appliedAssignment;
 				int finishedAssignment;
 				int m_appendThreadNum = 32;
-				int m_deleteThreadNum = 1;
 				std::atomic_flag m_dispatcher_running_flag;
 				
 				boost::lockfree::queue<Task, boost::lockfree::fixed_sized<true>> currentTasks;

@@ -38,7 +38,9 @@ namespace SPTAG {
                 bool m_testUpdateAcc;
                 bool m_testUpdateSta;
                 bool m_testInc;
+                bool m_testRealTime;
                 std::string m_extraVectorPath;
+                std::string m_fullVectorPath;
 
                 BaseOptions() {
 #define DefineBasicParameter(VarName, VarType, DefaultValue, RepresentStr) \

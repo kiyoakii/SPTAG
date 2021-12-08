@@ -18,7 +18,7 @@ namespace SPTAG {
                         pdbOptions.create_if_missing = true;
                         ROCKSDB_NAMESPACE::Status ps = ROCKSDB_NAMESPACE::DB::Open(pdbOptions, pDBpath, &pDB);
                         assert(ps.op());
-                        m_updateID = 0;
+                        m_updateID.store(0);
                     }
 
                     int GetNewAssignmentID()
@@ -40,12 +40,13 @@ namespace SPTAG {
 
                     int GetCurrentAssignmentID()
                     {
-                        return m_updateID;
+                        return m_updateID.load();
                     }
 
                     void StopPDB()
                     {
                         pDB->Close();
+                        ROCKSDB_NAMESPACE::DestroyDB(pDBpath, pdbOptions);
                         delete pDB;
                     }
 
