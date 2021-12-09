@@ -795,6 +795,7 @@ namespace SPTAG {
                 std::vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
                 std::vector<SearchStats> stats(numQueries);
                 std::vector<COMMON::QueryResultSet<ValueType>> insertResults(insertCount, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum_insert));
+                std::vector<SearchStats> insertStats(insertCount);
                 for (int i = 0; i < numQueries; ++i)
                 {
                     results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
@@ -895,7 +896,7 @@ namespace SPTAG {
                 
                 int batch = insertCount / step;
                 int finishedInsert = 0;
-                int insertThreads = 32;
+                int insertThreads = p_opts.m_insertThreadNum;
                 for (int i = 0; i < batch; i++)
                 {
                     TimeUtils::StopW sw;
@@ -907,14 +908,13 @@ namespace SPTAG {
                             LOG(Helper::LogLevel::LL_Info, "inserted %d vectors\n", next + 1);
                         }
                         int VID;
-                        searcher.Updater(insertResults[finishedInsert + next], stats[finishedInsert + next], &VID);
+                        searcher.Updater(insertResults[finishedInsert + next], insertStats[finishedInsert + next], &VID);
                         indices[curCount + next] = VID;
                     }
                     double sendingCost = sw.getElapsedSec();
                     while(!searcher.checkAllTaskesIsFinish())
                     {
-                        LOG(Helper::LogLevel::LL_Info, "Not Finished\n");
-                        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
                     }
                     double syncingCost = sw.getElapsedSec();
                     LOG(Helper::LogLevel::LL_Info,
@@ -1162,7 +1162,10 @@ namespace SPTAG {
                 std::vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum));
                 std::vector<SearchStats> stats(numQueries);
                 std::vector<COMMON::QueryResultSet<ValueType>> insertResults(insertCount, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum_insert));
+                std::vector<SearchStats> insertStats(insertCount);
                 std::vector<COMMON::QueryResultSet<ValueType>> updateResults(updateVectorNum, COMMON::QueryResultSet<ValueType>(NULL, internalResultNum_insert));
+                std::vector<SearchStats> updateStats(updateVectorNum);
+
                 for (int i = 0; i < numQueries; ++i)
                 {
                     results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
@@ -1330,7 +1333,7 @@ namespace SPTAG {
                     {
                         if ((k+1) % 10000 == 0) LOG(Helper::LogLevel::LL_Info, "cycle %d: inserted %d vectors\n", i, k+1);
                         int VID;
-                        searcher.Updater(updateResults[k], stats[k], &VID);
+                        searcher.Updater(updateResults[k], updateStats[k], &VID);
                         indices[updateIndice[k]] = VID;
                     }
                     sendingCost = sw.getElapsedSec();
@@ -1357,7 +1360,7 @@ namespace SPTAG {
                             LOG(Helper::LogLevel::LL_Info, "inserted %d vectors\n", next + 1);
                         }
                         int VID;
-                        searcher.Updater(insertResults[finishedInsert + next], stats[finishedInsert + next], &VID);
+                        searcher.Updater(insertResults[finishedInsert + next], insertStats[finishedInsert + next], &VID);
                         indices[curCount + next] = VID;
                     }
                     sendingCost = sw.getElapsedSec();

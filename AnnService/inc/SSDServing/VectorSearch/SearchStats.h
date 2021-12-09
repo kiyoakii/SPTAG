@@ -56,6 +56,12 @@ namespace SPTAG {
                 std::chrono::steady_clock::time_point m_searchRequestTime;
 
                 int m_threadID;
+
+                double m_updateTotalLatency;
+
+                double m_updateMSLatency;
+
+                double m_updatePWLatency;
             };
         }
     }

@@ -444,12 +444,19 @@ namespace SPTAG {
 
 				SizeType Updater(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, int* VID)
 				{
+					TimeUtils::StopW sw;
 					*VID = m_vectornum.fetch_add(1);
 					{
 						std::lock_guard<std::mutex> lock(m_dataAddLock);
 						m_deletedID.AddBatch(1);
 					}
+
+					auto startMSTime = sw.getElapsedMs();
+
 					m_index->SearchIndex(p_queryResults);
+
+					auto endMSTime = sw.getElapsedMs();
+
 					if (COMMON_OPTS.m_indexAlgoType != IndexAlgoType::BKT) {
 						LOG(Helper::LogLevel::LL_Error, "Only Support BKT Update");
 						return -1;
@@ -490,6 +497,9 @@ namespace SPTAG {
 					}
 					char insertCode = 0;
 					SizeType assignID = 0;
+
+					auto startPWTime = sw.getElapsedMs();
+
 					for (int i = 0; i < replicaCount; i++)
 					{
 						std::string assignment;
@@ -499,6 +509,13 @@ namespace SPTAG {
 						assignment += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
 						assignID = m_persistentBuffer->PutAssignment(assignment);
 					}
+
+					auto endPWTime = sw.getElapsedMs();
+
+					p_stats.m_updateTotalLatency = sw.getElapsedMs();
+					p_stats.m_updateMSLatency = endMSTime - startMSTime;
+					p_stats.m_updatePWLatency = endPWTime - startPWTime;
+
 					return assignID;
 				}
 
@@ -875,6 +892,8 @@ namespace SPTAG {
 					m_k = p_opts.m_k;
 
 					m_searchVectorLimit = p_opts.m_searchVectorLimit;
+
+					m_appendThreadNum = p_opts.m_appendThreadNum;
 
 					if (p_asyncCall)
 					{

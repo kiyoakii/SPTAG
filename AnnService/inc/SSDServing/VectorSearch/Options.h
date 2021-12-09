@@ -38,11 +38,16 @@ namespace SPTAG {
 				bool m_randomDisabled;
 				std::string m_SSDVectorDistPath;
 				bool m_storeSearchDetail;
+
 				// Incremental Time-line
 				std::string m_truthFilePrefix;
 				int m_step;
+				int m_insertThreadNum;
+
+				// SPFresh Parameters
 				int m_k;
 				int m_searchVectorLimit;
+				int m_appendThreadNum;
 
 				// Persistent Buffer
 				std::string m_persistentBufferPath;
