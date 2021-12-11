@@ -966,9 +966,7 @@ namespace SPTAG {
 						}
 
 						std::map<SizeType, std::string*> newPart;
-						std::set<SizeType> deletedVector;
 						newPart.clear();
-						deletedVector.clear();
 						int i;
 						for (i = appliedAssignment; i < scanNum; i++) {
 							std::string assignment;
@@ -998,7 +996,7 @@ namespace SPTAG {
 								uint8_t* vectorPointer = postingP + sizeof(char);
 								int VID = *(reinterpret_cast<int*>(vectorPointer));
 								//LOG(Helper::LogLevel::LL_Info, "Scanner: delete: %d\n", VID);
-								deletedVector.insert(VID);
+								m_deletedID.Insert(VID);
 							}
 						}
 
