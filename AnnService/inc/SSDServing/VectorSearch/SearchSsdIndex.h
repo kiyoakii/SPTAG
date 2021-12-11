@@ -577,7 +577,7 @@ namespace SPTAG {
                     indices[i] = i;
                 }
 
-                int vectorNum = fullVectors->Count();
+                // int vectorNum = fullVectors->Count();
                 int totalNum = fullVectors->Count();
                 int section = totalNum / numThreads;
                 int selectionNum = updateVectorNum / numThreads;
