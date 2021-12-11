@@ -303,7 +303,7 @@ namespace SPTAG {
 							r = std::max<float>(r, dist);
 						}
 						m_postingSizes[headID].store(realVectorNum);
-						m_postingRadius[headID] = r;
+						// m_postingRadius[headID] = r;
 						db->Put(WriteOptions(), Helper::Serialize<int>(&headID, 1), postingList);
 						return ErrorCode::Success;
 					}
@@ -402,13 +402,13 @@ namespace SPTAG {
 						//LOG(Helper::LogLevel::LL_Info, "Merge: headID: %d, appendNum:%d\n", headID, appendNum);
 						db->Merge(WriteOptions(), Helper::Serialize<int>(&headID, 1), *appendPosting);
 						m_postingSizes[headID] += appendNum;
-						uint8_t* postingP = reinterpret_cast<uint8_t*>(&appendPosting->front()) + sizeof(int);
-						float r = m_postingRadius[headID];
-						for (int i = 0; i < appendNum; i++) {
-							r = std::max<float>(r, m_index->ComputeDistance(m_index->GetSample(headID), postingP));
-							postingP += m_vectorSize + sizeof(int);
-						}
-						m_postingRadius[headID] = r;
+						// uint8_t* postingP = reinterpret_cast<uint8_t*>(&appendPosting->front()) + sizeof(int);
+						// float r = m_postingRadius[headID];
+						// for (int i = 0; i < appendNum; i++) {
+						// 	r = std::max<float>(r, m_index->ComputeDistance(m_index->GetSample(headID), postingP));
+						// 	postingP += m_vectorSize + sizeof(int);
+						// }
+						// m_postingRadius[headID] = r;
 					}
 					delete appendPosting;
 					return ErrorCode::Success;
@@ -659,27 +659,33 @@ namespace SPTAG {
 					{
 						auto_ws = GetWs();
 						auto_ws->m_postingIDs.clear();
-						int totalVectors = 0;
-						float currentR = p_queryResults.GetResult(m_resultNum - 1)->Dist;
+						// int totalVectors = 0;
+						// float currentR = p_queryResults.GetResult(m_resultNum - 1)->Dist;
 						// First, add topK (resultNum) headVectors.
 						// TopK actually represents vector number to be returned,
 						// but here it acts as a bound to form a search area
 						// LOG(Helper::LogLevel::LL_Info, "m_resultNum = %d\n", m_resultNum);
-						for (int i = 0; i < m_resultNum && totalVectors <= m_searchVectorLimit; ++i) {
+						// for (int i = 0; i < m_resultNum && totalVectors <= m_searchVectorLimit; ++i) {
+						// 	auto res = p_queryResults.GetResult(i);
+						// 	if (res->VID != -1) {
+						// 		auto_ws->m_postingIDs.emplace_back(res->VID);
+						// 		currentR = res->Dist;
+						// 		totalVectors += m_postingSizes[res->VID];
+						// 	}
+						// }
+						// for (int i = m_resultNum; i < p_queryResults.GetResultNum() && totalVectors <= m_searchVectorLimit; ++i) {
+						// 	auto res = p_queryResults.GetResult(i);
+						// 	if (res->VID != -1 && res->Dist - m_postingRadius[res->VID] <= currentR) {
+						// 		auto_ws->m_postingIDs.emplace_back(res->VID);
+						// 		totalVectors += m_postingSizes[res->VID];
+						// 	} else {
+						// 		m_skipped++;
+						// 	}
+						// }
+						for (int i = 0; i < m_resultNum; i++) {
 							auto res = p_queryResults.GetResult(i);
 							if (res->VID != -1) {
 								auto_ws->m_postingIDs.emplace_back(res->VID);
-								currentR = res->Dist;
-								totalVectors += m_postingSizes[res->VID];
-							}
-						}
-						for (int i = m_resultNum; i < p_queryResults.GetResultNum() && totalVectors <= m_searchVectorLimit; ++i) {
-							auto res = p_queryResults.GetResult(i);
-							if (res->VID != -1 && res->Dist - m_postingRadius[res->VID] <= currentR) {
-								auto_ws->m_postingIDs.emplace_back(res->VID);
-								totalVectors += m_postingSizes[res->VID];
-							} else {
-								m_skipped++;
 							}
 						}
 						const uint32_t postingListCount = static_cast<uint32_t>(auto_ws->m_postingIDs.size());
