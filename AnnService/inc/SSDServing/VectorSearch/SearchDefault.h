@@ -54,7 +54,7 @@ namespace SPTAG {
 				SearchDefault()
 					: m_workspaces(128), m_skipped(0),
 					rwlock(new std::shared_mutex[1000000000]), splitRoute(new std::pair<SizeType, SizeType>[1000000000]), 
-					m_postingSizes(new std::atomic_uint32_t[1000000000])
+					m_postingSizes(new std::atomic_uint32_t[1000000000]), m_postingRadius(new std::atomic<float>[1000000000])
 				{
 					m_tids = 0;
 					m_replicaCount = 4;
@@ -62,6 +62,7 @@ namespace SPTAG {
 					for (int i = 0; i < 1000000000; i++) {
 						m_postingSizes[i] = 0;
 						splitRoute[i] = std::make_pair<SizeType, SizeType>(0, 0);
+						m_postingRadius[i] = 0.f;
 					}
 				}
 
@@ -156,15 +157,19 @@ namespace SPTAG {
 
 					LOG(Helper::LogLevel::LL_Info, "Current posting num: %d.\n", m_postingNum.load());
 
-					m_postingRadius.resize(m_postingNum.load());
-
 					for (int idx = 0; idx < m_postingNum.load(); idx++) {
 						uint32_t tmp;
 						input.read(reinterpret_cast<char*>(&tmp), sizeof(uint32_t));
 						m_postingSizes[idx].store(tmp);
 					}
+
+					for (int idx = 0; idx < m_postingNum; idx++) {
+						float_t tmp;
+						input.read(reinterpret_cast<char*>(&tmp), sizeof(float_t));
+						m_postingRadius[idx].store(tmp);
+					}
 					// input.read(reinterpret_cast<char*>(m_postingSizes), sizeof(uint32_t) * m_postingNum);
-					input.read(reinterpret_cast<char*>(m_postingRadius.data()), sizeof(float) * m_postingNum.load());
+					// input.read(reinterpret_cast<char*>(m_postingRadius.data()), sizeof(float) * m_postingNum.load());
 
 					input.close();
 
@@ -260,7 +265,7 @@ namespace SPTAG {
 					std::unique_lock<std::shared_mutex> lock(rwlock[headID]);
 					//int father = m_index->GetFatherID(headID);
 					//LOG(Helper::LogLevel::LL_Info, "headID: %d, fatherID: %d\n", headID, father);
-					if (m_postingSizes[headID].load() + appendNum < m_postingVectorLimit) {
+					if (m_postingSizes[headID] + appendNum < m_postingVectorLimit) {
 						return ErrorCode::Success;
 					}
 					std::string postingList;
@@ -303,7 +308,11 @@ namespace SPTAG {
 							r = std::max<float>(r, dist);
 						}
 						m_postingSizes[headID].store(realVectorNum);
+<<<<<<< HEAD
 						// m_postingRadius[headID] = r;
+=======
+						m_postingRadius[headID].store(r);
+>>>>>>> 9a29b9f (Modify postingRadius)
 						db->Put(WriteOptions(), Helper::Serialize<int>(&headID, 1), postingList);
 						return ErrorCode::Success;
 					}
@@ -321,16 +330,16 @@ namespace SPTAG {
 					if (numClusters <= 1)
 					{
 						postingList.clear();
-						// float r = 0.f;
+						float r = 0.f;
 						for (int j = 0; j < realVectorNum; j++)
 						{
 							postingList += Helper::Serialize<int>(&localindicesInsert[j], 1);
 							postingList += Helper::Serialize<ValueType>(vectorBuffer.get() + j * m_vectorSize, COMMON_OPTS.m_dim);
-							// auto dist = m_index->ComputeDistance(vectorBuffer.get() + j * m_vectorSize, m_index->GetSample(headID));
-							// r = std::max<float>(r, dist);
+							auto dist = m_index->ComputeDistance(vectorBuffer.get() + j * m_vectorSize, m_index->GetSample(headID));
+							r = std::max<float>(r, dist);
 						}
-						m_postingSizes[headID].store(realVectorNum);
-						// m_postingRadius[headID] = args.clusterDist[0];
+						m_postingSizes[headID] = realVectorNum;
+						m_postingRadius[headID] = r;
 						db->Put(WriteOptions(), Helper::Serialize<int>(&headID, 1), postingList);
 						return ErrorCode::Success;
 					}
@@ -368,7 +377,7 @@ namespace SPTAG {
 						db->Put(WriteOptions(), Helper::Serialize<int>(&newHeadVID, 1), postingList);
 						first += args.counts[k];
 						
-						m_postingSizes[newHeadVID].store(args.counts[k]);
+						m_postingSizes[newHeadVID] = MaxClusterDist;
 						m_postingNum++;
 						m_index->AddHeadIndexIdx(begin, end);
 					}
@@ -379,7 +388,8 @@ namespace SPTAG {
 					bktIndex->DeleteIndex(headID);
 					// delete from disk
 					// db->Delete(WriteOptions(), Helper::Serialize<int>(&headID, 1));
-					m_postingSizes[headID].store(0);
+					m_postingSizes[headID] = 0;
+					m_postingRadius[headID] = 0.f;
 					return ErrorCode::Success;
 				}
 
@@ -395,13 +405,13 @@ namespace SPTAG {
 						std::sort(newIDs.begin(), newIDs.end(), sortFunc);
 						headID = newIDs[0];
 					}
-					if (m_postingSizes[headID] + appendNum > m_postingVectorLimit){
+					if (m_postingSizes[headID].load() + appendNum > m_postingVectorLimit) {
 						Split(headID, appendNum, *appendPosting);
 					} else {
 						std::shared_lock<std::shared_mutex> lock(rwlock[headID]);
 						//LOG(Helper::LogLevel::LL_Info, "Merge: headID: %d, appendNum:%d\n", headID, appendNum);
 						db->Merge(WriteOptions(), Helper::Serialize<int>(&headID, 1), *appendPosting);
-						m_postingSizes[headID] += appendNum;
+						m_postingSizes[headID].fetch_add(appendNum, std::memory_order_relaxed);
 						// uint8_t* postingP = reinterpret_cast<uint8_t*>(&appendPosting->front()) + sizeof(int);
 						// float r = m_postingRadius[headID];
 						// for (int i = 0; i < appendNum; i++) {
@@ -1041,7 +1051,7 @@ namespace SPTAG {
 					m_skipped.store(0);
 				}
 				
-				std::atomic_int m_skipped;
+				std::atomic_int m_skipped = 0;
 
 			protected:
 				void ProcessAsyncSearch(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, std::function<void()> p_callback)
@@ -1072,8 +1082,6 @@ namespace SPTAG {
 					if (p_callback != nullptr) {
 						p_callback();
 					}
-					//clear running bit
-					// running[headID] = 0;
 				}
 
 				void ProcessAsyncDelete(const SizeType& p_id, std::function<void()> p_callback)
@@ -1152,7 +1160,7 @@ namespace SPTAG {
 				
 				//std::vector<std::unique_ptr<std::atomic_int>> m_postingSizes;
 				std::atomic_uint32_t *m_postingSizes;
-				std::vector<float> m_postingRadius;
+				std::atomic<float> *m_postingRadius;
 				// SPTAG::COMMON::Dataset<uint32_t> m_postingSizes;
 				// SPTAG::COMMON::Dataset<float> m_postingRadius;
 
