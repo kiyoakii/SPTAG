@@ -37,6 +37,7 @@ DefineErrorCode(DimensionSizeMismatch, 0x0017)
 DefineErrorCode(ExternalAbort, 0x0018)
 DefineErrorCode(EmptyDiskIO, 0x0019)
 DefineErrorCode(DiskIOFail, 0x0020)
+DefineErrorCode(FailSplit, 0x0021)
 
 // 0x1000 ~ 0x1FFF  Index Build Status
 

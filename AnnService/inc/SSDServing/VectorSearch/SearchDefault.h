@@ -52,18 +52,11 @@ namespace SPTAG {
 			{
 			public:
 				SearchDefault()
-					: m_workspaces(128), m_skipped(0),
-					rwlock(new std::shared_mutex[1000000000]), splitRoute(new std::pair<SizeType, SizeType>[1000000000]), 
-					m_postingSizes(new std::atomic_uint32_t[1000000000]), m_postingRadius(new std::atomic<float>[1000000000])
+					: m_workspaces(128), m_skipped(0)
 				{
 					m_tids = 0;
 					m_replicaCount = 4;
 					//QueryPerformanceFrequency(&g_systemPerfFreq);
-					for (int i = 0; i < 1000000000; i++) {
-						m_postingSizes[i] = 0;
-						splitRoute[i] = std::make_pair<SizeType, SizeType>(0, 0);
-						m_postingRadius[i] = 0.f;
-					}
 				}
 
 				~SearchDefault()
@@ -73,8 +66,6 @@ namespace SPTAG {
 					{
 						delete context;
 					}
-					delete rwlock;
-					delete splitRoute;
 				}
 
 				void LoadHeadIndex(Options& p_opts) {
@@ -119,8 +110,19 @@ namespace SPTAG {
 					}
 					*/
 					//m_vectorTranslateMap.reserve(m_index->GetNumSamples() * 2);
+					
+					// Note: no free! I don't know where to free, leave it for now
+					rwlock = new std::shared_mutex[1000000000];
+					splitRoute = new std::pair<SizeType, SizeType>[1000000000];
+					m_postingSizes = new std::atomic_uint32_t[1000000000];
+					m_postingRadius = new std::atomic<float>[1000000000];
+					for (int i = 0; i < 1000000000; i++) {
+						m_postingSizes[i] = 0;
+						splitRoute[i] = std::make_pair<SizeType, SizeType>(0, 0);
+						m_postingRadius[i] = 0.f;
+					}
 
-					std::unique_ptr<long long[]> tempMap;
+					std::unique_ptr<long long[]> tempMap;	
 					tempMap.reset(new long long[m_index->GetNumSamples()]);
 
 					auto ptr = f_createIO();
@@ -163,7 +165,7 @@ namespace SPTAG {
 						m_postingSizes[idx].store(tmp);
 					}
 
-					for (int idx = 0; idx < m_postingNum; idx++) {
+					for (int idx = 0; idx < m_postingNum.load(); idx++) {
 						float_t tmp;
 						input.read(reinterpret_cast<char*>(&tmp), sizeof(float_t));
 						m_postingRadius[idx].store(tmp);
@@ -265,8 +267,8 @@ namespace SPTAG {
 					std::unique_lock<std::shared_mutex> lock(rwlock[headID]);
 					//int father = m_index->GetFatherID(headID);
 					//LOG(Helper::LogLevel::LL_Info, "headID: %d, fatherID: %d\n", headID, father);
-					if (m_postingSizes[headID] + appendNum < m_postingVectorLimit) {
-						return ErrorCode::Success;
+					if (m_postingSizes[headID].load() + appendNum < m_postingVectorLimit) {
+						return ErrorCode::FailSplit;
 					}
 					std::string postingList;
 					db->Get(ReadOptions(), Helper::Serialize<int>(&headID, 1), &postingList);
@@ -299,20 +301,16 @@ namespace SPTAG {
 					if (realVectorNum < postVectorNum * 0.9)
 					{
 						postingList.clear();
-						float r = 0.f;
+						// float r = 0.f;
 						for (int j = 0; j < realVectorNum; j++)
 						{
 							postingList += Helper::Serialize<int>(&localindicesInsert[j], 1);
 							postingList += Helper::Serialize<ValueType>(vectorBuffer.get() + j * m_vectorSize, COMMON_OPTS.m_dim);
-							auto dist = m_index->ComputeDistance(vectorBuffer.get() + j * m_vectorSize, m_index->GetSample(headID));
-							r = std::max<float>(r, dist);
+						// 	auto dist = m_index->ComputeDistance(vectorBuffer.get() + j * m_vectorSize, m_index->GetSample(headID));
+						// 	r = std::max<float>(r, dist);
 						}
 						m_postingSizes[headID].store(realVectorNum);
-<<<<<<< HEAD
-						// m_postingRadius[headID] = r;
-=======
-						m_postingRadius[headID].store(r);
->>>>>>> 9a29b9f (Modify postingRadius)
+						// m_postingRadius[headID].store(r);
 						db->Put(WriteOptions(), Helper::Serialize<int>(&headID, 1), postingList);
 						return ErrorCode::Success;
 					}
@@ -330,16 +328,16 @@ namespace SPTAG {
 					if (numClusters <= 1)
 					{
 						postingList.clear();
-						float r = 0.f;
+						// float r = 0.f;
 						for (int j = 0; j < realVectorNum; j++)
 						{
 							postingList += Helper::Serialize<int>(&localindicesInsert[j], 1);
 							postingList += Helper::Serialize<ValueType>(vectorBuffer.get() + j * m_vectorSize, COMMON_OPTS.m_dim);
-							auto dist = m_index->ComputeDistance(vectorBuffer.get() + j * m_vectorSize, m_index->GetSample(headID));
-							r = std::max<float>(r, dist);
+							// auto dist = m_index->ComputeDistance(vectorBuffer.get() + j * m_vectorSize, m_index->GetSample(headID));
+							// r = std::max<float>(r, dist);
 						}
 						m_postingSizes[headID] = realVectorNum;
-						m_postingRadius[headID] = r;
+						// m_postingRadius[headID].store(r);
 						db->Put(WriteOptions(), Helper::Serialize<int>(&headID, 1), postingList);
 						return ErrorCode::Success;
 					}
@@ -377,7 +375,7 @@ namespace SPTAG {
 						db->Put(WriteOptions(), Helper::Serialize<int>(&newHeadVID, 1), postingList);
 						first += args.counts[k];
 						
-						m_postingSizes[newHeadVID] = MaxClusterDist;
+						m_postingSizes[newHeadVID] = args.counts[k];
 						m_postingNum++;
 						m_index->AddHeadIndexIdx(begin, end);
 					}
@@ -398,6 +396,7 @@ namespace SPTAG {
 					if (appendNum == 0) {
 						LOG(Helper::LogLevel::LL_Info, "Error!, headID :%d, appendNum:%d", headID, appendNum);
 					}
+				checkDeleted:
 					if (!m_index->ContainSample(headID)) {
 						std::vector<SizeType> newIDs = traceSplitRoute(headID);
 						auto dis = [this, headID](SizeType a) -> float { return m_index->ComputeDistance(m_index->GetSample(headID), m_index->GetSample(a)); };
@@ -406,7 +405,9 @@ namespace SPTAG {
 						headID = newIDs[0];
 					}
 					if (m_postingSizes[headID].load() + appendNum > m_postingVectorLimit) {
-						Split(headID, appendNum, *appendPosting);
+						if (Split(headID, appendNum, *appendPosting) == ErrorCode::FailSplit) {
+							goto checkDeleted;
+						}
 					} else {
 						std::shared_lock<std::shared_mutex> lock(rwlock[headID]);
 						//LOG(Helper::LogLevel::LL_Info, "Merge: headID: %d, appendNum:%d\n", headID, appendNum);
