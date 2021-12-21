@@ -274,7 +274,7 @@ namespace SPTAG {
 					db->Get(ReadOptions(), Helper::Serialize<int>(&headID, 1), &postingList);
 					postingList += appendPosting;
 					uint8_t* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
-					int postVectorNum =  postingList.size() / (m_vectorSize + sizeof(int));
+					int postVectorNum = postingList.size() / (m_vectorSize + sizeof(int));
 					// reinterpret postingList to vectors and IDs
 					COMMON::Dataset<ValueType> smallSample;  // smallSample[i] -> VID
 					std::shared_ptr<uint8_t> vectorBuffer(new uint8_t[m_vectorSize * postVectorNum], std::default_delete<uint8_t[]>());
@@ -301,16 +301,16 @@ namespace SPTAG {
 					if (realVectorNum < postVectorNum * 0.9)
 					{
 						postingList.clear();
-						// float r = 0.f;
+						float r = 0.f;
 						for (int j = 0; j < realVectorNum; j++)
 						{
 							postingList += Helper::Serialize<int>(&localindicesInsert[j], 1);
 							postingList += Helper::Serialize<ValueType>(vectorBuffer.get() + j * m_vectorSize, COMMON_OPTS.m_dim);
-						// 	auto dist = m_index->ComputeDistance(vectorBuffer.get() + j * m_vectorSize, m_index->GetSample(headID));
-						// 	r = std::max<float>(r, dist);
+							auto dist = m_index->ComputeDistance(vectorBuffer.get() + j * m_vectorSize, m_index->GetSample(headID));
+							r = std::max<float>(r, dist);
 						}
 						m_postingSizes[headID].store(realVectorNum);
-						// m_postingRadius[headID].store(r);
+						m_postingRadius[headID].store(r);
 						db->Put(WriteOptions(), Helper::Serialize<int>(&headID, 1), postingList);
 						return ErrorCode::Success;
 					}
@@ -328,16 +328,16 @@ namespace SPTAG {
 					if (numClusters <= 1)
 					{
 						postingList.clear();
-						// float r = 0.f;
+						float r = 0.f;
 						for (int j = 0; j < realVectorNum; j++)
 						{
 							postingList += Helper::Serialize<int>(&localindicesInsert[j], 1);
 							postingList += Helper::Serialize<ValueType>(vectorBuffer.get() + j * m_vectorSize, COMMON_OPTS.m_dim);
-							// auto dist = m_index->ComputeDistance(vectorBuffer.get() + j * m_vectorSize, m_index->GetSample(headID));
-							// r = std::max<float>(r, dist);
+							auto dist = m_index->ComputeDistance(vectorBuffer.get() + j * m_vectorSize, m_index->GetSample(headID));
+							r = std::max<float>(r, dist);
 						}
-						m_postingSizes[headID] = realVectorNum;
-						// m_postingRadius[headID].store(r);
+						m_postingSizes[headID].store(realVectorNum);
+						m_postingRadius[headID].store(r);
 						db->Put(WriteOptions(), Helper::Serialize<int>(&headID, 1), postingList);
 						return ErrorCode::Success;
 					}
@@ -361,21 +361,19 @@ namespace SPTAG {
 						setPair(p, k+1, newHeadVID);
 
 						//LOG(Helper::LogLevel::LL_Info, "Headid: %d split into : %d\n", headID, newHeadVID);
-						float MaxClusterDist = args.clusterDist[k];
+						float maxClusterDist = 0.f;
 						for (int j = 0; j < args.counts[k]; j++)
 						{
 							postingList += Helper::Serialize<int>(&localindicesInsert[localindices[first + j]], 1);
 							postingList += Helper::Serialize<ValueType>(smallSample[localindices[first + j]], COMMON_OPTS.m_dim);
 							float newDist = m_index->ComputeDistance(smallSample[args.clusterIdx[k]], smallSample[localindices[first + j]]);
-							if (newDist > MaxClusterDist)
-							{
-								MaxClusterDist = newDist;
-							}
+							maxClusterDist = std::max<float>(newDist, maxClusterDist);
 						}
 						db->Put(WriteOptions(), Helper::Serialize<int>(&newHeadVID, 1), postingList);
 						first += args.counts[k];
 						
 						m_postingSizes[newHeadVID] = args.counts[k];
+						m_postingRadius[newHeadVID] = maxClusterDist;
 						m_postingNum++;
 						m_index->AddHeadIndexIdx(begin, end);
 					}
@@ -388,6 +386,7 @@ namespace SPTAG {
 					// db->Delete(WriteOptions(), Helper::Serialize<int>(&headID, 1));
 					m_postingSizes[headID] = 0;
 					m_postingRadius[headID] = 0.f;
+					m_split_num++;
 					return ErrorCode::Success;
 				}
 
@@ -413,13 +412,13 @@ namespace SPTAG {
 						//LOG(Helper::LogLevel::LL_Info, "Merge: headID: %d, appendNum:%d\n", headID, appendNum);
 						db->Merge(WriteOptions(), Helper::Serialize<int>(&headID, 1), *appendPosting);
 						m_postingSizes[headID].fetch_add(appendNum, std::memory_order_relaxed);
-						// uint8_t* postingP = reinterpret_cast<uint8_t*>(&appendPosting->front()) + sizeof(int);
-						// float r = m_postingRadius[headID];
-						// for (int i = 0; i < appendNum; i++) {
-						// 	r = std::max<float>(r, m_index->ComputeDistance(m_index->GetSample(headID), postingP));
-						// 	postingP += m_vectorSize + sizeof(int);
-						// }
-						// m_postingRadius[headID] = r;
+						uint8_t* postingP = reinterpret_cast<uint8_t*>(&appendPosting->front()) + sizeof(int);
+						float r = m_postingRadius[headID];
+						for (int i = 0; i < appendNum; i++) {
+							r = std::max<float>(r, m_index->ComputeDistance(m_index->GetSample(headID), postingP));
+							postingP += m_vectorSize + sizeof(int);
+						}
+						m_postingRadius[headID] = r;
 					}
 					delete appendPosting;
 					return ErrorCode::Success;
@@ -670,35 +669,35 @@ namespace SPTAG {
 					{
 						auto_ws = GetWs();
 						auto_ws->m_postingIDs.clear();
-						// int totalVectors = 0;
-						// float currentR = p_queryResults.GetResult(m_resultNum - 1)->Dist;
+						int totalVectors = 0;
+						float currentR = p_queryResults.GetResult(m_resultNum - 1)->Dist;
 						// First, add topK (resultNum) headVectors.
 						// TopK actually represents vector number to be returned,
 						// but here it acts as a bound to form a search area
 						// LOG(Helper::LogLevel::LL_Info, "m_resultNum = %d\n", m_resultNum);
-						// for (int i = 0; i < m_resultNum && totalVectors <= m_searchVectorLimit; ++i) {
-						// 	auto res = p_queryResults.GetResult(i);
-						// 	if (res->VID != -1) {
-						// 		auto_ws->m_postingIDs.emplace_back(res->VID);
-						// 		currentR = res->Dist;
-						// 		totalVectors += m_postingSizes[res->VID];
-						// 	}
-						// }
-						// for (int i = m_resultNum; i < p_queryResults.GetResultNum() && totalVectors <= m_searchVectorLimit; ++i) {
-						// 	auto res = p_queryResults.GetResult(i);
-						// 	if (res->VID != -1 && res->Dist - m_postingRadius[res->VID] <= currentR) {
-						// 		auto_ws->m_postingIDs.emplace_back(res->VID);
-						// 		totalVectors += m_postingSizes[res->VID];
-						// 	} else {
-						// 		m_skipped++;
-						// 	}
-						// }
-						for (int i = 0; i < m_resultNum; i++) {
+						for (int i = 0; i < m_resultNum && totalVectors <= m_searchVectorLimit; ++i) {
 							auto res = p_queryResults.GetResult(i);
 							if (res->VID != -1) {
 								auto_ws->m_postingIDs.emplace_back(res->VID);
+								currentR = res->Dist;
+								totalVectors += m_postingSizes[res->VID].load();
 							}
 						}
+						for (int i = m_resultNum; i < p_queryResults.GetResultNum() && totalVectors <= m_searchVectorLimit; ++i) {
+							auto res = p_queryResults.GetResult(i);
+							if (res->VID != -1 && res->Dist - m_postingRadius[res->VID].load() <= currentR) {
+								auto_ws->m_postingIDs.emplace_back(res->VID);
+								totalVectors += m_postingSizes[res->VID].load();
+							} else {
+								m_skipped++;
+							}
+						}
+						// for (int i = 0; i < m_resultNum; i++) {
+						// 	auto res = p_queryResults.GetResult(i);
+						// 	if (res->VID != -1) {
+						// 		auto_ws->m_postingIDs.emplace_back(res->VID);
+						// 	}
+						// }
 						const uint32_t postingListCount = static_cast<uint32_t>(auto_ws->m_postingIDs.size());
                    		m_extraSearcher->InitWorkSpace(auto_ws, postingListCount);
 					}
