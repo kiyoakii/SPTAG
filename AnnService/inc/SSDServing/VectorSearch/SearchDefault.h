@@ -176,8 +176,6 @@ namespace SPTAG {
 					input.close();
 
 					m_vectornum_last = m_vectornum.load();
-					
-					calAvgPostingSize();
 
 					m_extraSearcher.reset(new ExtraFullGraphSearcher<ValueType>(extraFullGraphFile));
 
@@ -661,6 +659,7 @@ namespace SPTAG {
 					//QueryPerformanceCounter(&qpcEndTime);
 					//unsigned __int32 latency = static_cast<unsigned __int32>(static_cast<double>(qpcEndTime.QuadPart - qpcStartTime.QuadPart) * 1000000 / g_systemPerfFreq.QuadPart);
 
+					p_stats.m_memoryLatency = EndingTime - StartingTime;
 					p_stats.m_exLatency = ExEndingTime - EndingTime;
 					p_stats.m_totalSearchLatency = ExEndingTime - StartingTime;
 					p_stats.m_totalLatency = p_stats.m_totalSearchLatency;
@@ -758,6 +757,7 @@ namespace SPTAG {
 					//QueryPerformanceCounter(&qpcEndTime);
 					//unsigned __int32 latency = static_cast<unsigned __int32>(static_cast<double>(qpcEndTime.QuadPart - qpcStartTime.QuadPart) * 1000000 / g_systemPerfFreq.QuadPart);
 
+					p_stats.m_memoryLatency = EndingTime - StartingTime;
 					p_stats.m_exLatency = ExEndingTime - EndingTime;
 					p_stats.m_totalSearchLatency = ExEndingTime - StartingTime;
 					p_stats.m_totalLatency = p_stats.m_totalSearchLatency;
@@ -900,6 +900,7 @@ namespace SPTAG {
 						m_threadPool.reset(new Helper::ThreadPool());
 						m_threadPool->init(p_threadNum);
 					}
+					calAvgPostingSize();
 				}
 
 				void updaterSetup()
@@ -941,7 +942,19 @@ namespace SPTAG {
 						if (m_index->ContainSample(i)) total += m_postingSizes[i].load();
 						else deleted++;
 					}
-					m_postingSize_avg = total / (m_postingNum.load() - deleted);
+					m_postingSize_avg = total / (m_posting_num.load() - deleted);
+					LOG(Helper::LogLevel::LL_Info, "Avg Posting size: vector num: %d, size: %dB\n", m_postingSize_avg, m_postingSize_avg * (m_vectorSize + sizeof(int)));
+				}
+
+				void forceCompaction()
+				{
+					LOG(Helper::LogLevel::LL_Info, "Start Compaction\n");
+					int begin = 0;
+					int end = m_index->GetNumSamples() - 1;
+					Slice begin_key(Helper::Serialize<int>(&begin, 1));
+					Slice end_key(Helper::Serialize<int>(&end, 1));
+					db->CompactRange(CompactRangeOptions(), &begin_key, &end_key);
+					LOG(Helper::LogLevel::LL_Info, "Finish Compaction\n");
 				}
 
 				void setSearchLimit(int topK)

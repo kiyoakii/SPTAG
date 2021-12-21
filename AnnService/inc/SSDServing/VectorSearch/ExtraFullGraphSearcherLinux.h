@@ -1,6 +1,7 @@
 #pragma once
 #include "inc/SSDServing/VectorSearch/IExtraSearcherLinux.h"
 #include "inc/SSDServing/VectorSearch/SearchStats.h"
+#include "inc/SSDServing/VectorSearch/TimeUtils.h"
 #include "inc/Core/Common/Labelset.h"
 
 #include <fstream>
@@ -147,21 +148,28 @@ namespace SPTAG {
 
                     std::atomic<std::int32_t> diskRead(0);
                     int curCheck = 0;
+                    int totalListElementCount = 0;
                     std::string postingList;
+                    double diskaccessLatency = 0;
+                    double computationLatency = 0;
 
+                    TimeUtils::StopW sw;
                     for (uint32_t pi = 0; pi < postingListCount; ++pi)
                     {
 
                         postingList.resize(0);
                         postingList.clear();
+                        double getStart = sw.getElapsedMs();
                         db->Get(ReadOptions(), Helper::Serialize<int>(&p_exWorkSpace->m_postingIDs[pi], 1), &postingList);
+                        diskaccessLatency += (sw.getElapsedMs() - getStart);
                         diskRead++;
-
+                        double compStart = sw.getElapsedMs();
                         size_t totalBytes = postingList.size();
                         auto buffer = p_exWorkSpace->m_pageBuffers[pi];
                         buffer.ReservePageBuffer(totalBytes);
                         void* bufferVoidPtr = reinterpret_cast<void*>(buffer.GetBuffer());
                         int vectorNum = postingList.size() * sizeof(char) / (COMMON_OPTS.m_dim * sizeof(ValueType) + sizeof(int));
+                        totalListElementCount += vectorNum;
 
                         memcpy(bufferVoidPtr, postingList.data(), totalBytes);
 
@@ -186,12 +194,17 @@ namespace SPTAG {
                                 vectorInfo);
 
                             p_queryResults.AddPoint(vectorID, distance2leaf);
+                            curCheck++;
 
                         }
+                        computationLatency += (sw.getElapsedMs() - compStart);
                     }
 
+                    p_stats.m_totalListElementsCount = totalListElementCount;
                     p_stats.m_exCheck = curCheck;
                     p_stats.m_diskAccessCount = diskRead;
+                    p_stats.m_diskaccessLatency = diskaccessLatency;
+                    p_stats.m_computationLatency = computationLatency;
 
                     p_queryResults.SortResult();
                 }

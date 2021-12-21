@@ -62,6 +62,12 @@ namespace SPTAG {
                 double m_updateMSLatency;
 
                 double m_updatePWLatency;
+
+                double m_computationLatency;
+
+                double m_diskaccessLatency;
+
+                double m_memoryLatency;
             };
         }
     }
