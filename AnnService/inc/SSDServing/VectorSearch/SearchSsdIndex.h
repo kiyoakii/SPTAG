@@ -817,14 +817,17 @@ namespace SPTAG {
                 searcher.LoadDeleteID(COMMON_OPTS.m_deleteID);
 
                 LOG(Helper::LogLevel::LL_Info, "Start loading VectorSet...\n");
-                std::shared_ptr<Helper::ReaderOptions> vectorOptions(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_vectorType, COMMON_OPTS.m_vectorDelimiter));
-                auto vectorReader = Helper::VectorSetReader::CreateInstance(vectorOptions);
-                if (ErrorCode::Success != vectorReader->LoadFile(COMMON_OPTS.m_extraVectorPath))
-                {
-                    LOG(Helper::LogLevel::LL_Error, "Failed to read extra vector file.\n");
-                    exit(1);
+                std::shared_ptr<SPTAG::VectorSet> vectorSet;
+                if (!COMMON_OPTS.m_fullVectorPath.empty() && fileexists(COMMON_OPTS.m_fullVectorPath.c_str())) {
+                    std::shared_ptr<Helper::ReaderOptions> vectorOptions(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_vectorType, COMMON_OPTS.m_vectorDelimiter));
+                    auto vectorReader = Helper::VectorSetReader::CreateInstance(vectorOptions);
+                    if (ErrorCode::Success == vectorReader->LoadFile(COMMON_OPTS.m_fullVectorPath))
+                    {
+                        vectorSet = vectorReader->GetVectorSet();
+                        if (COMMON_OPTS.m_distCalcMethod == DistCalcMethod::Cosine) vectorSet->Normalize(p_opts.m_iNumberOfThreads);
+                        LOG(Helper::LogLevel::LL_Info, "\nLoad VectorSet(%d,%d).\n", vectorSet->Count(), vectorSet->Dimension());
+                    }
                 }
-                auto extraVectors = vectorReader->GetVectorSet();
 
                 LOG(Helper::LogLevel::LL_Info, "Start loading QuerySet...\n");
                 std::shared_ptr<Helper::ReaderOptions> queryOptions(new Helper::ReaderOptions(COMMON_OPTS.m_valueType, COMMON_OPTS.m_dim, COMMON_OPTS.m_queryType, COMMON_OPTS.m_queryDelimiter));
@@ -839,8 +842,8 @@ namespace SPTAG {
 
                 auto querySet = queryReader->GetVectorSet();
                 int numQueries = querySet->Count();
-                int insertCount = extraVectors->Count();
                 int curCount = searcher.getVecNum();
+                int insertCount = vectorSet->Count() - curCount;
 
                 std::string truthfile;
                 std::vector<SizeType> indices;
@@ -911,7 +914,7 @@ namespace SPTAG {
 
                 for (int i = 0; i < insertCount; i++)
                 {
-                    insertResults[i].SetTarget(reinterpret_cast<ValueType*>(extraVectors->GetVector(i)));
+                    insertResults[i].SetTarget(reinterpret_cast<ValueType*>(vectorSet->GetVector(curCount + i)));
                     insertResults[i].Reset();
                 }
                 
@@ -967,7 +970,7 @@ namespace SPTAG {
                     LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
                     LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
 
-                    recall = CalcRecallIndice(results, truth, K, indices);
+                    recall = CalcRecallVec(results, truth, querySet, vectorSet, searcher.HeadIndex(), K);
                     LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
 
                     PrintStats<ValueType>(stats);
@@ -990,7 +993,7 @@ namespace SPTAG {
                     LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
 
 
-                    recall = CalcRecallIndice(results, truth, K, indices);
+                    recall = CalcRecallVec(results, truth, querySet, vectorSet, searcher.HeadIndex(), K);
                     LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
 
                     PrintStats<ValueType>(stats);
@@ -1020,7 +1023,7 @@ namespace SPTAG {
                 LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
                 LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
 
-                recall = CalcRecallIndice(results, truth, K, indices);
+                recall = CalcRecallVec(results, truth, querySet, vectorSet, searcher.HeadIndex(), K);
                 LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
 
                 PrintStats<ValueType>(stats);
@@ -1045,7 +1048,7 @@ namespace SPTAG {
                 LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
                 LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
 
-                recall = CalcRecallIndice(results, truth, K, indices);
+                recall = CalcRecallVec(results, truth, querySet, vectorSet, searcher.HeadIndex(), K);
                 LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
 
                 PrintStats<ValueType>(stats);
