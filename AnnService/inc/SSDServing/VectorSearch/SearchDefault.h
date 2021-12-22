@@ -122,6 +122,8 @@ namespace SPTAG {
 						m_postingRadius[i] = 0.f;
 					}
 
+					m_currerntTaskNum.store(0);
+
 					std::unique_ptr<long long[]> tempMap;	
 					tempMap.reset(new long long[m_index->GetNumSamples()]);
 
@@ -900,7 +902,7 @@ namespace SPTAG {
 						m_threadPool.reset(new Helper::ThreadPool());
 						m_threadPool->init(p_threadNum);
 					}
-					calAvgPostingSize();
+					if (m_clearHead) calAvgPostingSize();
 				}
 
 				void updaterSetup()
@@ -942,7 +944,7 @@ namespace SPTAG {
 						if (m_index->ContainSample(i)) total += m_postingSizes[i].load();
 						else deleted++;
 					}
-					m_postingSize_avg = total / (m_posting_num.load() - deleted);
+					m_postingSize_avg = total / (m_postingNum.load() - deleted);
 					LOG(Helper::LogLevel::LL_Info, "Avg Posting size: vector num: %d, size: %dB\n", m_postingSize_avg, m_postingSize_avg * (m_vectorSize + sizeof(int)));
 				}
 
@@ -1050,6 +1052,7 @@ namespace SPTAG {
 
 						for (auto iter = newPart.begin(); iter != newPart.end(); iter++) {
 							int appendNum = (*iter->second).size() / (m_vectorSize + sizeof(int));
+							m_currerntTaskNum++;
 							AppendAsync(iter->first, appendNum, iter->second);
 						}
 						
@@ -1065,7 +1068,7 @@ namespace SPTAG {
 				bool checkAllTaskesIsFinish()
 				{
 				 	int currentAssignmentID = m_persistentBuffer->GetCurrentAssignmentID();
-					return currentAssignmentID == appliedAssignment;
+					return (currentAssignmentID == appliedAssignment) && (m_currerntTaskNum.load() == 0);
 				}
 
 				void setDispatcherStop()
@@ -1110,6 +1113,8 @@ namespace SPTAG {
 				void ProcessAsyncAppend(const SizeType headID, int appendNum, std::string* appendPosting, std::function<void()> p_callback)
 				{
 					Append(headID, appendNum, appendPosting);
+
+					m_currerntTaskNum--;
 
 					if (p_callback != nullptr) {
 						p_callback();
@@ -1198,6 +1203,8 @@ namespace SPTAG {
 
 				std::shared_mutex *rwlock;
 				std::atomic_uint32_t m_postingNum;
+
+				std::atomic_uint32_t m_currerntTaskNum;
 
 				//actually useless in AddHeadToPost = true
 				SPTAG::COMMON::Dataset<long long> m_vectorTranslateMap;
