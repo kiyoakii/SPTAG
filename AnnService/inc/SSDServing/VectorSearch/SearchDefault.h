@@ -345,7 +345,7 @@ namespace SPTAG {
 					long long newHeadVID = -1;
 					int first = 0;
 					std::pair<SizeType, SizeType> p;
-					std::vector<ValueType> reAssignVectors;
+					std::vector<ValueType*> reAssignVectors;
 					std::vector<SizeType> reAssignVectorsID;
 					for (int k = 0; k < m_k; k++) {
 						int begin, end = 0;
@@ -368,7 +368,7 @@ namespace SPTAG {
 							float newDist = m_index->ComputeDistance(smallSample[args.clusterIdx[k]], smallSample[localindices[first + j]]);
 							float oldDist = m_index->ComputeDistance(smallSample[localindices[first + j]], m_index->GetSample(headID));
 							if (oldDist < newDist) {
-								reAssignVectors.push_back(*smallSample[localindices[first + j]]);
+								reAssignVectors.push_back(smallSample[localindices[first + j]]);
 								reAssignVectorsID.push_back(localindicesInsert[localindices[first + j]]);
 							}
 							// maxClusterDist = std::max<float>(newDist, maxClusterDist);
@@ -402,7 +402,7 @@ namespace SPTAG {
 					std::vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, m_internalResultNum));
 					auto oldVID = m_vectornum.fetch_add(numQueries);
 					for (int i = 0; i < numQueries; ++i) {
-						results[i].SetTarget(&reAssignVectors[i]);
+						results[i].SetTarget(reAssignVectors[i]);
 						results[i].Reset();
 					}
 
@@ -413,7 +413,7 @@ namespace SPTAG {
 
 					// 2. Build selections with RNG rule, then insert
 					for (int i = 0; i < numQueries; ++i) {
-						SyncUpdater(results[i], oldVID + 1);
+						SyncUpdater(results[i], oldVID + i);
 					}
 
 					// 3. Delete original vector
