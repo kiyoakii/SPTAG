@@ -52,7 +52,7 @@ namespace SPTAG {
 			{
 			public:
 				SearchDefault()
-					: m_workspaces(128), m_skipped(0)
+					: m_workspaces(128), m_skipped(0), m_reassigned(0)
 				{
 					m_tids = 0;
 					m_replicaCount = 4;
@@ -115,11 +115,11 @@ namespace SPTAG {
 					rwlock = new std::shared_mutex[1000000000];
 					splitRoute = new std::pair<SizeType, SizeType>[1000000000];
 					m_postingSizes = new std::atomic_uint32_t[1000000000];
-					m_postingRadius = new std::atomic<float>[1000000000];
+					// m_postingRadius = new std::atomic<float>[1000000000];
 					for (int i = 0; i < 1000000000; i++) {
 						m_postingSizes[i] = 0;
 						splitRoute[i] = std::make_pair<SizeType, SizeType>(0, 0);
-						m_postingRadius[i] = 0.f;
+						// m_postingRadius[i] = 0.f;
 					}
 
 					m_currerntTaskNum.store(0);
@@ -167,11 +167,11 @@ namespace SPTAG {
 						m_postingSizes[idx].store(tmp);
 					}
 
-					for (int idx = 0; idx < m_postingNum.load(); idx++) {
-						float_t tmp;
-						input.read(reinterpret_cast<char*>(&tmp), sizeof(float_t));
-						m_postingRadius[idx].store(tmp);
-					}
+					// for (int idx = 0; idx < m_postingNum.load(); idx++) {
+					// 	float_t tmp;
+					// 	input.read(reinterpret_cast<char*>(&tmp), sizeof(float_t));
+					// 	m_postingRadius[idx].store(tmp);
+					// }
 					// input.read(reinterpret_cast<char*>(m_postingSizes), sizeof(uint32_t) * m_postingNum);
 					// input.read(reinterpret_cast<char*>(m_postingRadius.data()), sizeof(float) * m_postingNum.load());
 
@@ -301,16 +301,16 @@ namespace SPTAG {
 					if (realVectorNum < postVectorNum * 0.9)
 					{
 						postingList.clear();
-						float r = 0.f;
+						// float r = 0.f;
 						for (int j = 0; j < realVectorNum; j++)
 						{
 							postingList += Helper::Serialize<int>(&localindicesInsert[j], 1);
 							postingList += Helper::Serialize<ValueType>(vectorBuffer.get() + j * m_vectorSize, COMMON_OPTS.m_dim);
-							auto dist = m_index->ComputeDistance(vectorBuffer.get() + j * m_vectorSize, m_index->GetSample(headID));
-							r = std::max<float>(r, dist);
+							// auto dist = m_index->ComputeDistance(vectorBuffer.get() + j * m_vectorSize, m_index->GetSample(headID));
+							// r = std::max<float>(r, dist);
 						}
 						m_postingSizes[headID].store(realVectorNum);
-						m_postingRadius[headID].store(r);
+						// m_postingRadius[headID].store(r);
 						db->Put(WriteOptions(), Helper::Serialize<int>(&headID, 1), postingList);
 						return ErrorCode::Success;
 					}
@@ -337,18 +337,17 @@ namespace SPTAG {
 							r = std::max<float>(r, dist);
 						}
 						m_postingSizes[headID].store(realVectorNum);
-						m_postingRadius[headID].store(r);
+						// m_postingRadius[headID].store(r);
 						db->Put(WriteOptions(), Helper::Serialize<int>(&headID, 1), postingList);
 						return ErrorCode::Success;
 					}
 					
 					long long newHeadVID = -1;
 					int first = 0;
-					//std::vector<SizeType> fatherNodes;
-					//fatherNodes.emplace_back(father);
 					std::pair<SizeType, SizeType> p;
-					for (int k = 0; k < m_k; k++) 
-					{
+					std::vector<ValueType> reAssignVectors;
+					std::vector<SizeType> reAssignVectorsID;
+					for (int k = 0; k < m_k; k++) {
 						int begin, end = 0;
 						std::string postingList;
 						if (args.counts[k] == 0)	continue;
@@ -361,19 +360,24 @@ namespace SPTAG {
 						setPair(p, k+1, newHeadVID);
 
 						//LOG(Helper::LogLevel::LL_Info, "Headid: %d split into : %d\n", headID, newHeadVID);
-						float maxClusterDist = 0.f;
+						// float maxClusterDist = 0.f;
 						for (int j = 0; j < args.counts[k]; j++)
 						{
-							postingList += Helper::Serialize<int>(&localindicesInsert[localindices[first + j]], 1);
+							postingList += Helper::Serialize<SizeType>(&localindicesInsert[localindices[first + j]], 1);
 							postingList += Helper::Serialize<ValueType>(smallSample[localindices[first + j]], COMMON_OPTS.m_dim);
 							float newDist = m_index->ComputeDistance(smallSample[args.clusterIdx[k]], smallSample[localindices[first + j]]);
-							maxClusterDist = std::max<float>(newDist, maxClusterDist);
+							float oldDist = m_index->ComputeDistance(smallSample[localindices[first + j]], m_index->GetSample(headID));
+							if (oldDist < newDist) {
+								reAssignVectors.push_back(*smallSample[localindices[first + j]]);
+								reAssignVectorsID.push_back(localindicesInsert[localindices[first + j]]);
+							}
+							// maxClusterDist = std::max<float>(newDist, maxClusterDist);
 						}
 						db->Put(WriteOptions(), Helper::Serialize<int>(&newHeadVID, 1), postingList);
 						first += args.counts[k];
 						
 						m_postingSizes[newHeadVID] = args.counts[k];
-						m_postingRadius[newHeadVID] = maxClusterDist;
+						// m_postingRadius[newHeadVID] = maxClusterDist;
 						m_postingNum++;
 						m_index->AddHeadIndexIdx(begin, end);
 					}
@@ -385,8 +389,40 @@ namespace SPTAG {
 					// delete from disk
 					// db->Delete(WriteOptions(), Helper::Serialize<int>(&headID, 1));
 					m_postingSizes[headID] = 0;
-					m_postingRadius[headID] = 0.f;
+					// m_postingRadius[headID] = 0.f;
 					m_split_num++;
+
+					if (reAssignVectors.empty()) {
+						return ErrorCode::Success;
+					}
+
+					// Re-assign
+					// 1. Search Index
+					auto numQueries = reAssignVectors.size();
+					std::vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, m_internalResultNum));
+					auto oldVID = m_vectornum.fetch_add(numQueries);
+					for (int i = 0; i < numQueries; ++i) {
+						results[i].SetTarget(&reAssignVectors[i]);
+						results[i].Reset();
+					}
+
+					{
+						std::lock_guard<std::mutex> lock(m_dataAddLock);
+						m_deletedID.AddBatch(numQueries);
+					}
+
+					// 2. Build selections with RNG rule, then insert
+					for (int i = 0; i < numQueries; ++i) {
+						SyncUpdater(results[i], oldVID + 1);
+					}
+
+					// 3. Delete original vector
+					for (int i = 0; i < numQueries; ++i) {
+						std::lock_guard<std::mutex> lock(m_dataAddLock);
+						m_deletedID.Insert(reAssignVectorsID[i]);
+					}
+
+					m_reassigned += numQueries;
 					return ErrorCode::Success;
 				}
 
@@ -412,13 +448,13 @@ namespace SPTAG {
 						//LOG(Helper::LogLevel::LL_Info, "Merge: headID: %d, appendNum:%d\n", headID, appendNum);
 						db->Merge(WriteOptions(), Helper::Serialize<int>(&headID, 1), *appendPosting);
 						m_postingSizes[headID].fetch_add(appendNum, std::memory_order_relaxed);
-						uint8_t* postingP = reinterpret_cast<uint8_t*>(&appendPosting->front()) + sizeof(int);
-						float r = m_postingRadius[headID];
-						for (int i = 0; i < appendNum; i++) {
-							r = std::max<float>(r, m_index->ComputeDistance(m_index->GetSample(headID), postingP));
-							postingP += m_vectorSize + sizeof(int);
-						}
-						m_postingRadius[headID] = r;
+						// uint8_t* postingP = reinterpret_cast<uint8_t*>(&appendPosting->front()) + sizeof(int);
+						// float r = m_postingRadius[headID];
+						// for (int i = 0; i < appendNum; i++) {
+						// 	r = std::max<float>(r, m_index->ComputeDistance(m_index->GetSample(headID), postingP));
+						// 	postingP += m_vectorSize + sizeof(int);
+						// }
+						// m_postingRadius[headID] = r;
 					}
 					delete appendPosting;
 					return ErrorCode::Success;
@@ -441,6 +477,67 @@ namespace SPTAG {
             		}
             		return ErrorCode::Success;
         		}
+
+				// Used by Split
+				void SyncUpdater(COMMON::QueryResultSet<ValueType>& p_queryResults, SizeType VID)
+				{
+					// int VID = m_vectornum.fetch_add(1);
+					// {
+					// 	std::lock_guard<std::mutex> lock(m_dataAddLock);
+					// 	m_deletedID.AddBatch(1);
+					// }
+					m_index->SearchIndex(p_queryResults);
+					if (COMMON_OPTS.m_indexAlgoType != IndexAlgoType::BKT) {
+						LOG(Helper::LogLevel::LL_Error, "Only Support BKT Update");
+						return;
+					}
+					int replicaCount = 0;
+					BasicResult* queryResults = p_queryResults.GetResults();
+					std::vector<EdgeInsert> selections(static_cast<size_t>(m_replicaCount));
+					for (int i = 0; i < p_queryResults.GetResultNum() && replicaCount < m_replicaCount; ++i) {
+						if (queryResults[i].VID == -1) {
+							break;
+						}
+						// RNG Check.
+						bool rngAccpeted = true;
+						for (int j = 0; j < replicaCount; ++j) {
+							float nnDist = m_index->ComputeDistance(
+														m_index->GetSample(queryResults[i].VID),
+														m_index->GetSample(selections[j].headID));
+							if (nnDist <= queryResults[i].Dist) {
+								rngAccpeted = false;
+								break;
+							}
+						}
+						if (!rngAccpeted)
+							continue;
+
+						selections[replicaCount].headID = queryResults[i].VID;
+						selections[replicaCount].fullID = VID;
+						selections[replicaCount].distance = queryResults[i].Dist;
+						selections[replicaCount].order = (char)replicaCount;
+						++replicaCount;
+					}
+					
+					for (int i = 0; i < replicaCount; i++) {
+						std::string newPart;
+						newPart += Helper::Serialize<int>(&VID, 1);
+						newPart += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
+						
+						auto headID = selections[i].headID;
+						{
+							std::shared_lock<std::shared_mutex> lock(rwlock[headID]);
+							db->Merge(WriteOptions(), Helper::Serialize<int>(&headID, 1), newPart);
+						}
+						m_postingSizes[headID].fetch_add(1, std::memory_order_relaxed);
+						
+						// uint8_t* vectorP = reinterpret_cast<uint8_t*>(p_queryResults.GetTarget());
+						// float r = m_index->ComputeDistance(m_index->GetSample(headID), vectorP);
+						// if (r > m_postingRadius[headID].load()) {}
+						// r = std::max<float>(r, );
+						// m_postingRadius[headID] = r;
+					}
+				}
 
 				SizeType Updater(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, int* VID)
 				{
@@ -688,34 +785,34 @@ namespace SPTAG {
 						auto_ws = GetWs();
 						auto_ws->m_postingIDs.clear();
 						int totalVectors = 0;
-						float currentR = p_queryResults.GetResult(m_resultNum - 1)->Dist;
+						// float currentR = p_queryResults.GetResult(m_resultNum - 1)->Dist;
 						// First, add topK (resultNum) headVectors.
 						// TopK actually represents vector number to be returned,
 						// but here it acts as a bound to form a search area
 						// LOG(Helper::LogLevel::LL_Info, "m_resultNum = %d\n", m_resultNum);
-						for (int i = 0; i < m_resultNum && totalVectors <= m_searchVectorLimit; ++i) {
-							auto res = p_queryResults.GetResult(i);
-							if (res->VID != -1) {
-								auto_ws->m_postingIDs.emplace_back(res->VID);
-								currentR = res->Dist;
-								totalVectors += m_postingSizes[res->VID].load();
-							}
-						}
-						for (int i = m_resultNum; i < p_queryResults.GetResultNum() && totalVectors <= m_searchVectorLimit; ++i) {
-							auto res = p_queryResults.GetResult(i);
-							if (res->VID != -1 && res->Dist - m_postingRadius[res->VID].load() <= currentR) {
-								auto_ws->m_postingIDs.emplace_back(res->VID);
-								totalVectors += m_postingSizes[res->VID].load();
-							} else {
-								m_skipped++;
-							}
-						}
-						// for (int i = 0; i < m_resultNum; i++) {
+						// for (int i = 0; i < m_resultNum && totalVectors <= m_searchVectorLimit; ++i) {
 						// 	auto res = p_queryResults.GetResult(i);
 						// 	if (res->VID != -1) {
 						// 		auto_ws->m_postingIDs.emplace_back(res->VID);
+						// 		currentR = res->Dist;
+						// 		totalVectors += m_postingSizes[res->VID].load();
 						// 	}
 						// }
+						// for (int i = m_resultNum; i < p_queryResults.GetResultNum() && totalVectors <= m_searchVectorLimit; ++i) {
+						// 	auto res = p_queryResults.GetResult(i);
+						// 	if (res->VID != -1 && res->Dist - m_postingRadius[res->VID].load() <= currentR) {
+						// 		auto_ws->m_postingIDs.emplace_back(res->VID);
+						// 		totalVectors += m_postingSizes[res->VID].load();
+						// 	} else {
+						// 		m_skipped++;
+						// 	}
+						// }
+						for (int i = 0; i < m_resultNum; i++) {
+							auto res = p_queryResults.GetResult(i);
+							if (res->VID != -1) {
+								auto_ws->m_postingIDs.emplace_back(res->VID);
+							}
+						}
 						const uint32_t postingListCount = static_cast<uint32_t>(auto_ws->m_postingIDs.size());
                    		m_extraSearcher->InitWorkSpace(auto_ws, postingListCount);
 					}
@@ -1190,6 +1287,7 @@ namespace SPTAG {
 
 				//insert information
 				int m_split_num;
+				int m_reassigned;
 
 				//can't be atomic when append new entry, so need to set lock
 
@@ -1197,7 +1295,7 @@ namespace SPTAG {
 				
 				//std::vector<std::unique_ptr<std::atomic_int>> m_postingSizes;
 				std::atomic_uint32_t *m_postingSizes;
-				std::atomic<float> *m_postingRadius;
+				// std::atomic<float> *m_postingRadius;
 				// SPTAG::COMMON::Dataset<uint32_t> m_postingSizes;
 				// SPTAG::COMMON::Dataset<float> m_postingRadius;
 
