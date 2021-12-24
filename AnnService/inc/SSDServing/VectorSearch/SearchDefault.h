@@ -367,7 +367,7 @@ namespace SPTAG {
 							postingList += Helper::Serialize<ValueType>(smallSample[localindices[first + j]], COMMON_OPTS.m_dim);
 							float newDist = m_index->ComputeDistance(smallSample[args.clusterIdx[k]], smallSample[localindices[first + j]]);
 							float oldDist = m_index->ComputeDistance(smallSample[localindices[first + j]], m_index->GetSample(headID));
-							if (oldDist < newDist) {
+							if (true) {
 								reAssignVectors.push_back(smallSample[localindices[first + j]]);
 								reAssignVectorsID.push_back(localindicesInsert[localindices[first + j]]);
 							}
