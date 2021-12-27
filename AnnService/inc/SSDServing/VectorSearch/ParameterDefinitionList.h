@@ -40,6 +40,7 @@ DefineSSDParameter(m_insertThreadNum, int, 16, "InsertThreadNum")
 DefineSSDParameter(m_k, int, 2, "ClusterNum")
 DefineSSDParameter(m_searchVectorLimit, int, INT_MAX, "SearchVectorLimit")
 DefineSSDParameter(m_appendThreadNum, int, 16, "AppendThreadNum")
+DefineSSDParameter(m_reassignK, int, 0, "ReassignK")
 
 // Persisient Buffer
 DefineSSDParameter(m_persistentBufferPath, std::string, std::string(""), "PersistentBufferPath")

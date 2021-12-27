@@ -48,6 +48,7 @@ namespace SPTAG {
 				int m_k;
 				int m_searchVectorLimit;
 				int m_appendThreadNum;
+				int m_reassignK;
 
 				// Persistent Buffer
 				std::string m_persistentBufferPath;

@@ -28,6 +28,7 @@
 #include <shared_mutex>
 #include <chrono>
 #include <thread>
+#include <set>
 
 namespace SPTAG {
 	namespace SSDServing {
@@ -345,8 +346,10 @@ namespace SPTAG {
 					long long newHeadVID = -1;
 					int first = 0;
 					std::pair<SizeType, SizeType> p;
-					std::vector<ValueType*> reAssignVectors;
-					std::vector<SizeType> reAssignVectorsID;
+					std::vector<std::string> newPostingLists;
+					std::set<SizeType> newHeadsID;
+					// std::vector<ValueType*> reAssignVectors;
+					// std::vector<SizeType> reAssignVectorsID;
 					for (int k = 0; k < m_k; k++) {
 						int begin, end = 0;
 						std::string postingList;
@@ -354,26 +357,27 @@ namespace SPTAG {
 
 						// LOG(Helper::LogLevel::LL_Info, "Insert new head vector\n");
 						// Notice: newHeadVID maybe a exist head vector
-
 						m_index->AddHeadIndexId(smallSample[args.clusterIdx[k]], 1, COMMON_OPTS.m_dim, &begin, &end);
 						newHeadVID = begin;
+						newHeadsID.insert(newHeadVID);
 						setPair(p, k+1, newHeadVID);
-
 						//LOG(Helper::LogLevel::LL_Info, "Headid: %d split into : %d\n", headID, newHeadVID);
+						
 						// float maxClusterDist = 0.f;
 						for (int j = 0; j < args.counts[k]; j++)
 						{
 							postingList += Helper::Serialize<SizeType>(&localindicesInsert[localindices[first + j]], 1);
 							postingList += Helper::Serialize<ValueType>(smallSample[localindices[first + j]], COMMON_OPTS.m_dim);
-							float newDist = m_index->ComputeDistance(smallSample[args.clusterIdx[k]], smallSample[localindices[first + j]]);
-							float oldDist = m_index->ComputeDistance(smallSample[localindices[first + j]], m_index->GetSample(headID));
-							if (true) {
-								reAssignVectors.push_back(smallSample[localindices[first + j]]);
-								reAssignVectorsID.push_back(localindicesInsert[localindices[first + j]]);
-							}
+							// float newDist = m_index->ComputeDistance(smallSample[args.clusterIdx[k]], smallSample[localindices[first + j]]);
+							// float oldDist = m_index->ComputeDistance(smallSample[localindices[first + j]], m_index->GetSample(headID));
+							// if (true) {
+							// 	reAssignVectors.push_back(smallSample[localindices[first + j]]);
+							// 	reAssignVectorsID.push_back(localindicesInsert[localindices[first + j]]);
+							// }
 							// maxClusterDist = std::max<float>(newDist, maxClusterDist);
 						}
 						db->Put(WriteOptions(), Helper::Serialize<int>(&newHeadVID, 1), postingList);
+						newPostingLists.push_back(postingList);
 						first += args.counts[k];
 						
 						m_postingSizes[newHeadVID] = args.counts[k];
@@ -391,39 +395,120 @@ namespace SPTAG {
 					m_postingSizes[headID] = 0;
 					// m_postingRadius[headID] = 0.f;
 					m_split_num++;
+					
+					return ReAssign(headID, newPostingLists, newHeadsID);
+				}
 
-					if (reAssignVectors.empty()) {
-						return ErrorCode::Success;
+				ErrorCode ReAssign(SizeType headID, std::vector<std::string>& postingLists, std::set<SizeType>& nearbyHeadsID) {
+					auto headVector = reinterpret_cast<const ValueType*>(m_index->GetSample(headID));
+					COMMON::QueryResultSet<ValueType> nearbyHeads(NULL, m_reassignK);
+					nearbyHeads.SetTarget(headVector);
+					nearbyHeads.Reset();
+					m_index->SearchIndex(nearbyHeads);
+					if (COMMON_OPTS.m_indexAlgoType != IndexAlgoType::BKT) {
+						LOG(Helper::LogLevel::LL_Error, "Only Support BKT Update");
+						return ErrorCode::Fail;
+					}
+					
+					BasicResult* queryResults = nearbyHeads.GetResults();
+					postingLists.resize(nearbyHeads.GetResultNum() + postingLists.size());
+					for (int i = 0; i < nearbyHeads.GetResultNum(); i++) {
+						if (queryResults[i].VID == -1) {
+							break;
+						}
+						nearbyHeadsID.insert(queryResults[i].VID);
+					    db->Get(ReadOptions(), Helper::Serialize<int>(&queryResults[i].VID, 1), &postingLists[i]);
+						db->Put(WriteOptions(), Helper::Serialize<int>(&queryResults[i].VID, 1), "");
+						m_postingSizes[queryResults[i].VID] = 0;
+					}
+
+					std::map<SizeType, ValueType*> reAssignVectors;
+					for (auto &postingList : postingLists) {
+						int postVectorNum = postingList.size() / (m_vectorSize + sizeof(int));
+						uint8_t* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
+						for (int j = 0; j < postVectorNum; j++) {
+							uint8_t* vectorId = postingP + j * (m_vectorSize + sizeof(int));
+							SizeType vid = *(reinterpret_cast<SizeType*>(vectorId));
+							if (reAssignVectors.find(vid) == reAssignVectors.end() && !m_deletedID.Contains(vid)) {
+								reAssignVectors[vid] = reinterpret_cast<ValueType*>(vectorId + sizeof(int));
+							}
+						}
 					}
 
 					// Re-assign
-					// 1. Search Index
 					auto numQueries = reAssignVectors.size();
-					std::vector<COMMON::QueryResultSet<ValueType>> results(numQueries, COMMON::QueryResultSet<ValueType>(NULL, m_internalResultNum));
-					auto oldVID = m_vectornum.fetch_add(numQueries);
-					for (int i = 0; i < numQueries; ++i) {
-						results[i].SetTarget(reAssignVectors[i]);
-						results[i].Reset();
+					std::vector<COMMON::QueryResultSet<ValueType>> results;
+					for (auto it = reAssignVectors.begin(); it != reAssignVectors.end(); ++it) {
+						COMMON::QueryResultSet<ValueType> result(NULL, m_internalResultNum);
+						result.SetTarget(it->second);
+						result.Reset();
+						results.push_back(result);
 					}
 
-					{
-						std::lock_guard<std::mutex> lock(m_dataAddLock);
-						m_deletedID.AddBatch(numQueries);
-					}
-
-					// 2. Build selections with RNG rule, then insert
+					// Build selections with RNG rule, then insert
+					auto iter = reAssignVectors.begin();
 					for (int i = 0; i < numQueries; ++i) {
-						SyncUpdater(results[i], oldVID + i);
-					}
-
-					// 3. Delete original vector
-					for (int i = 0; i < numQueries; ++i) {
-						std::lock_guard<std::mutex> lock(m_dataAddLock);
-						m_deletedID.Insert(reAssignVectorsID[i]);
+						ReAssignUpdate(results[i], iter->first, nearbyHeadsID);
+						iter++;
 					}
 
 					m_reassigned += numQueries;
 					return ErrorCode::Success;
+				}
+
+				void ReAssignUpdate(COMMON::QueryResultSet<ValueType>& p_queryResults, SizeType VID, std::set<SizeType>& nearbyHeadsID)
+				{
+					m_index->SearchIndex(p_queryResults);
+					if (COMMON_OPTS.m_indexAlgoType != IndexAlgoType::BKT) {
+						LOG(Helper::LogLevel::LL_Error, "Only Support BKT Update");
+						return;
+					}
+					int replicaCount = 0;
+					BasicResult* queryResults = p_queryResults.GetResults();
+					std::vector<EdgeInsert> selections(static_cast<size_t>(m_replicaCount));
+					for (int i = 0; i < p_queryResults.GetResultNum() && replicaCount < m_replicaCount; ++i) {
+						if (queryResults[i].VID == -1 || nearbyHeadsID.find(queryResults[i].VID) == nearbyHeadsID.end()) {
+							break;
+						}
+						// RNG Check.
+						bool rngAccpeted = true;
+						for (int j = 0; j < replicaCount; ++j) {
+							float nnDist = m_index->ComputeDistance(
+														m_index->GetSample(queryResults[i].VID),
+														m_index->GetSample(selections[j].headID));
+							if (nnDist <= queryResults[i].Dist) {
+								rngAccpeted = false;
+								break;
+							}
+						}
+						if (!rngAccpeted)
+							continue;
+
+						selections[replicaCount].headID = queryResults[i].VID;
+						selections[replicaCount].fullID = VID;
+						selections[replicaCount].distance = queryResults[i].Dist;
+						selections[replicaCount].order = (char)replicaCount;
+						++replicaCount;
+					}
+					
+					for (int i = 0; i < replicaCount; i++) {
+						std::string newPart;
+						newPart += Helper::Serialize<int>(&VID, 1);
+						newPart += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
+						
+						auto headID = selections[i].headID;
+						{
+							std::shared_lock<std::shared_mutex> lock(rwlock[headID]);
+							db->Merge(WriteOptions(), Helper::Serialize<int>(&headID, 1), newPart);
+						}
+						m_postingSizes[headID].fetch_add(1, std::memory_order_relaxed);
+						
+						// uint8_t* vectorP = reinterpret_cast<uint8_t*>(p_queryResults.GetTarget());
+						// float r = m_index->ComputeDistance(m_index->GetSample(headID), vectorP);
+						// if (r > m_postingRadius[headID].load()) {}
+						// r = std::max<float>(r, );
+						// m_postingRadius[headID] = r;
+					}
 				}
 
 				ErrorCode Append(SizeType headID, int appendNum, std::string* appendPosting)
@@ -477,67 +562,6 @@ namespace SPTAG {
             		}
             		return ErrorCode::Success;
         		}
-
-				// Used by Split
-				void SyncUpdater(COMMON::QueryResultSet<ValueType>& p_queryResults, SizeType VID)
-				{
-					// int VID = m_vectornum.fetch_add(1);
-					// {
-					// 	std::lock_guard<std::mutex> lock(m_dataAddLock);
-					// 	m_deletedID.AddBatch(1);
-					// }
-					m_index->SearchIndex(p_queryResults);
-					if (COMMON_OPTS.m_indexAlgoType != IndexAlgoType::BKT) {
-						LOG(Helper::LogLevel::LL_Error, "Only Support BKT Update");
-						return;
-					}
-					int replicaCount = 0;
-					BasicResult* queryResults = p_queryResults.GetResults();
-					std::vector<EdgeInsert> selections(static_cast<size_t>(m_replicaCount));
-					for (int i = 0; i < p_queryResults.GetResultNum() && replicaCount < m_replicaCount; ++i) {
-						if (queryResults[i].VID == -1) {
-							break;
-						}
-						// RNG Check.
-						bool rngAccpeted = true;
-						for (int j = 0; j < replicaCount; ++j) {
-							float nnDist = m_index->ComputeDistance(
-														m_index->GetSample(queryResults[i].VID),
-														m_index->GetSample(selections[j].headID));
-							if (nnDist <= queryResults[i].Dist) {
-								rngAccpeted = false;
-								break;
-							}
-						}
-						if (!rngAccpeted)
-							continue;
-
-						selections[replicaCount].headID = queryResults[i].VID;
-						selections[replicaCount].fullID = VID;
-						selections[replicaCount].distance = queryResults[i].Dist;
-						selections[replicaCount].order = (char)replicaCount;
-						++replicaCount;
-					}
-					
-					for (int i = 0; i < replicaCount; i++) {
-						std::string newPart;
-						newPart += Helper::Serialize<int>(&VID, 1);
-						newPart += Helper::Serialize<ValueType>(p_queryResults.GetTarget(), COMMON_OPTS.m_dim);
-						
-						auto headID = selections[i].headID;
-						{
-							std::shared_lock<std::shared_mutex> lock(rwlock[headID]);
-							db->Merge(WriteOptions(), Helper::Serialize<int>(&headID, 1), newPart);
-						}
-						m_postingSizes[headID].fetch_add(1, std::memory_order_relaxed);
-						
-						// uint8_t* vectorP = reinterpret_cast<uint8_t*>(p_queryResults.GetTarget());
-						// float r = m_index->ComputeDistance(m_index->GetSample(headID), vectorP);
-						// if (r > m_postingRadius[headID].load()) {}
-						// r = std::max<float>(r, );
-						// m_postingRadius[headID] = r;
-					}
-				}
 
 				SizeType Updater(COMMON::QueryResultSet<ValueType>& p_queryResults, SearchStats& p_stats, int* VID)
 				{
@@ -974,6 +998,8 @@ namespace SPTAG {
 				{
 					LOG(Helper::LogLevel::LL_Info, "ThreadNum: %d, ResultNum: %d, AsyncCall: %d\n", p_threadNum, p_resultNum, p_asyncCall ? 1 : 0);
 
+					m_reassignK = p_opts.m_reassignK;
+
 					m_internalResultNum = p_resultNum;
 
 					m_resultNum = p_opts.m_resultNum;
@@ -1272,6 +1298,8 @@ namespace SPTAG {
 				int m_k = 2;
 
 				bool m_clearHead = true;
+
+				int m_reassignK = 0;
 
 				//atomic variable: m_vectornum for giving inserted vector a new id;
 
