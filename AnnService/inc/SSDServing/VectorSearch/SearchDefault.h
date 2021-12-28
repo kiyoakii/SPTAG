@@ -401,25 +401,22 @@ namespace SPTAG {
 
 				ErrorCode ReAssign(SizeType headID, std::vector<std::string>& postingLists, std::set<SizeType>& nearbyHeadsID) {
 					auto headVector = reinterpret_cast<const ValueType*>(m_index->GetSample(headID));
-					COMMON::QueryResultSet<ValueType> nearbyHeads(NULL, m_reassignK);
-					nearbyHeads.SetTarget(headVector);
-					nearbyHeads.Reset();
-					m_index->SearchIndex(nearbyHeads);
-					if (COMMON_OPTS.m_indexAlgoType != IndexAlgoType::BKT) {
-						LOG(Helper::LogLevel::LL_Error, "Only Support BKT Update");
-						return ErrorCode::Fail;
-					}
-					
-					BasicResult* queryResults = nearbyHeads.GetResults();
-					postingLists.resize(nearbyHeads.GetResultNum() + postingLists.size());
-					for (int i = 0; i < nearbyHeads.GetResultNum(); i++) {
-						if (queryResults[i].VID == -1) {
-							break;
+					if (m_reassignK != 0) {
+						COMMON::QueryResultSet<ValueType> nearbyHeads(NULL, m_reassignK);
+						nearbyHeads.SetTarget(headVector);
+						nearbyHeads.Reset();
+						m_index->SearchIndex(nearbyHeads);
+						BasicResult* queryResults = nearbyHeads.GetResults();
+						postingLists.resize(nearbyHeads.GetResultNum() + postingLists.size());
+						for (int i = 0; i < nearbyHeads.GetResultNum(); i++) {
+							if (queryResults[i].VID == -1) {
+								break;
+							}
+							nearbyHeadsID.insert(queryResults[i].VID);
+							db->Get(ReadOptions(), Helper::Serialize<int>(&queryResults[i].VID, 1), &postingLists[i]);
+							// db->Put(WriteOptions(), Helper::Serialize<int>(&queryResults[i].VID, 1), "");
+							// m_postingSizes[queryResults[i].VID] = 0;
 						}
-						nearbyHeadsID.insert(queryResults[i].VID);
-					    db->Get(ReadOptions(), Helper::Serialize<int>(&queryResults[i].VID, 1), &postingLists[i]);
-						db->Put(WriteOptions(), Helper::Serialize<int>(&queryResults[i].VID, 1), "");
-						m_postingSizes[queryResults[i].VID] = 0;
 					}
 
 					std::map<SizeType, ValueType*> reAssignVectors;
@@ -437,6 +434,7 @@ namespace SPTAG {
 
 					// Re-assign
 					auto numQueries = reAssignVectors.size();
+					auto oldVID = m_vectornum.fetch_add(numQueries);
 					std::vector<COMMON::QueryResultSet<ValueType>> results;
 					for (auto it = reAssignVectors.begin(); it != reAssignVectors.end(); ++it) {
 						COMMON::QueryResultSet<ValueType> result(NULL, m_internalResultNum);
@@ -444,11 +442,15 @@ namespace SPTAG {
 						result.Reset();
 						results.push_back(result);
 					}
-
+					{
+						std::lock_guard<std::mutex> lock(m_dataAddLock);
+						m_deletedID.AddBatch(numQueries);
+					}
 					// Build selections with RNG rule, then insert
 					auto iter = reAssignVectors.begin();
 					for (int i = 0; i < numQueries; ++i) {
-						ReAssignUpdate(results[i], iter->first, nearbyHeadsID);
+						m_deletedID.Insert(iter->first);
+						ReAssignUpdate(results[i], oldVID + i);
 						iter++;
 					}
 
@@ -456,18 +458,14 @@ namespace SPTAG {
 					return ErrorCode::Success;
 				}
 
-				void ReAssignUpdate(COMMON::QueryResultSet<ValueType>& p_queryResults, SizeType VID, std::set<SizeType>& nearbyHeadsID)
+				void ReAssignUpdate(COMMON::QueryResultSet<ValueType>& p_queryResults, SizeType VID)
 				{
 					m_index->SearchIndex(p_queryResults);
-					if (COMMON_OPTS.m_indexAlgoType != IndexAlgoType::BKT) {
-						LOG(Helper::LogLevel::LL_Error, "Only Support BKT Update");
-						return;
-					}
 					int replicaCount = 0;
 					BasicResult* queryResults = p_queryResults.GetResults();
 					std::vector<EdgeInsert> selections(static_cast<size_t>(m_replicaCount));
 					for (int i = 0; i < p_queryResults.GetResultNum() && replicaCount < m_replicaCount; ++i) {
-						if (queryResults[i].VID == -1 || nearbyHeadsID.find(queryResults[i].VID) == nearbyHeadsID.end()) {
+						if (queryResults[i].VID == -1) {
 							break;
 						}
 						// RNG Check.
