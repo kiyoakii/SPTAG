@@ -871,31 +871,6 @@ namespace SPTAG {
 
                 if (asyncCallQPS == 0)
                 {
-                    SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
-                }
-                else
-                {
-                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
-                }
-
-                LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
-
-                float recall = 0;
-                recall = CalcRecall(results, truth, K);
-                LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
-                
-                PrintStats<ValueType>(stats);
-
-                for (int i = 0; i < numQueries; ++i)
-                {
-                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
-                    results[i].Reset();
-                }
-
-                LOG(Helper::LogLevel::LL_Info, "Start ANN Search...\n");
-
-                if (asyncCallQPS == 0)
-                {
                     SearchSequentialVecLimit(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
                 }
                 else
@@ -905,7 +880,7 @@ namespace SPTAG {
 
                 LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
 
-                recall = CalcRecall(results, truth, K);
+                float recall = CalcRecall(results, truth, K);
                 LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
 
                 PrintStats<ValueType>(stats);
@@ -953,27 +928,27 @@ namespace SPTAG {
                     curCount += step;
                     finishedInsert += step;
                     LOG(Helper::LogLevel::LL_Info, "Total Vector num %d \n", curCount);
-                    LOG(Helper::LogLevel::LL_Info, "Start Searching with R\n");
-                    for (int i = 0; i < numQueries; ++i)
-                    {
-                        results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
-                        results[i].Reset();
-                    }
-                    if (asyncCallQPS == 0)
-                    {
-                        SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
-                    }
-                    else
-                    {
-                        SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
-                    }
-                    LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
-                    LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
+                    // LOG(Helper::LogLevel::LL_Info, "Start Searching with R\n");
+                    // for (int i = 0; i < numQueries; ++i)
+                    // {
+                    //     results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
+                    //     results[i].Reset();
+                    // }
+                    // if (asyncCallQPS == 0)
+                    // {
+                    //     SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
+                    // }
+                    // else
+                    // {
+                    //     SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
+                    // }
+                    // LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
+                    // LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
 
-                    recall = CalcRecallVec(results, truth, querySet, vectorSet, searcher.HeadIndex(), K);
-                    LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
+                    // recall = CalcRecallVec(results, truth, querySet, vectorSet, searcher.HeadIndex(), K);
+                    // LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
 
-                    PrintStats<ValueType>(stats);
+                    // PrintStats<ValueType>(stats);
                     
                     LOG(Helper::LogLevel::LL_Info, "Start VectorLimit Searching\n");
                     for (int i = 0; i < numQueries; ++i)
