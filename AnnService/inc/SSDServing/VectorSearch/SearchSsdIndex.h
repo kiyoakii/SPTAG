@@ -1013,6 +1013,7 @@ namespace SPTAG {
 
                     LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times\n", finishedInsert, searcher.getSplitNum());
                     
+                    searcher.QuantifyAssumptionBrokenTotally();
                     
                 }
                 searcher.setDispatcherStop();

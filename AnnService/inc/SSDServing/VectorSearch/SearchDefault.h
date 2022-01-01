@@ -390,7 +390,12 @@ namespace SPTAG {
 
 					QuantifySplit(headID, newPostingLists, newHeadsID);
 					
-					return ReAssign(headID, newPostingLists, newHeadsID);
+					ReAssign(headID, newPostingLists, newHeadsID);
+
+					LOG(Helper::LogLevel::LL_Info, "After ReAssign\n");
+
+					QuantifySplit(headID, newPostingLists, newHeadsID);
+					return ErrorCode::Success;
 				}
 
 				//headCandidates: search data structrue for "vid" vector
@@ -435,9 +440,11 @@ namespace SPTAG {
 					int assumptionBrokenNum = 0;
 					int postVectorNum = postingList.size() / (m_vectorSize + sizeof(int));
 					uint8_t* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
+					#pragma omp parallel for num_threads(32)
 					for (int j = 0; j < postVectorNum; j++) {
 						uint8_t* vectorId = postingP + j * (m_vectorSize + sizeof(int));
 						SizeType vid = *(reinterpret_cast<SizeType*>(vectorId));
+						if (m_deletedID.Contains(vid)) continue;
 						COMMON::QueryResultSet<ValueType> headCandidates(NULL, 64);
 						headCandidates.SetTarget(reinterpret_cast<ValueType*>(vectorId + sizeof(int)));
 						headCandidates.Reset();
@@ -489,6 +496,73 @@ namespace SPTAG {
 					LOG(Helper::LogLevel::LL_Info, "Split Quantify: %d\n", m_split_num);
 					QuantifySplitCaseA(newHeads, postingLists);
 					QuantifySplitCaseB(headID, newHeads);
+				}
+
+				void QuantifyAssumptionBrokenTotally()
+				{
+					std::atomic_int assumptionBrokenNum = 0;
+					std::atomic_int deleted = 0;
+					std::vector<std::set<SizeType>> vectorHeadMap(m_vectornum.load());
+					std::vector<bool> vectorFoundMap(m_vectornum.load());
+					std::vector<std::string> vectorIdValueMap(m_vectornum.load());
+					for (int i = 0; i < m_index->GetNumSamples(); i++) {
+						std::string postingList;
+						if (!m_index->ContainSample(i)) continue;
+						db->Get(ReadOptions(), Helper::Serialize<int>(&i, 1), &postingList);
+						int postVectorNum = postingList.size() / (m_vectorSize + sizeof(int));
+						uint8_t* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
+						for (int j = 0; j < postVectorNum; j++) {
+							uint8_t* vectorId = postingP + j * (m_vectorSize + sizeof(int));
+							SizeType vid = *(reinterpret_cast<SizeType*>(vectorId));
+							if (m_deletedID.Contains(vid)) continue;
+							vectorHeadMap[vid].insert(i);
+							if (vectorFoundMap[vid]) continue;
+							vectorFoundMap[vid] = true;
+							vectorIdValueMap[vid] = Helper::Serialize<uint8_t>(vectorId + sizeof(int), m_vectorSize);
+						}
+					}
+					#pragma omp parallel for num_threads(32)
+					for (int vid = 0; vid < m_vectornum.load(); vid++) {
+						if (m_deletedID.Contains(vid)) {
+							deleted++;
+							continue;
+						}
+						COMMON::QueryResultSet<ValueType> headCandidates(NULL, 64);
+						headCandidates.SetTarget(reinterpret_cast<ValueType*>(&vectorIdValueMap[vid].front()));
+						headCandidates.Reset();
+						m_index->SearchIndex(headCandidates);
+						int replicaCount = 0;
+						BasicResult* queryResults = headCandidates.GetResults();
+						std::vector<EdgeInsert> selections(static_cast<size_t>(m_replicaCount));
+						for (int i = 0; i < headCandidates.GetResultNum() && replicaCount < m_replicaCount; ++i) {
+							if (queryResults[i].VID == -1) {
+								break;
+							}
+							// RNG Check.
+							bool rngAccpeted = true;
+							for (int j = 0; j < replicaCount; ++j) {
+								float nnDist = m_index->ComputeDistance(
+															m_index->GetSample(queryResults[i].VID),
+															m_index->GetSample(selections[j].headID));
+								if (nnDist <= queryResults[i].Dist) {
+									rngAccpeted = false;
+									break;
+								}
+							}
+							if (!rngAccpeted)
+								continue;
+
+							selections[replicaCount].headID = queryResults[i].VID;
+							++replicaCount;
+						}
+						for (int i = 0; i < replicaCount; i++) {
+							if (!vectorHeadMap[vid].count(selections[i].headID)) {
+								assumptionBrokenNum++;
+								break;
+							}
+						}
+					}
+					LOG(Helper::LogLevel::LL_Info, "After Split %d times, %d total vectors, %d assumption broken vectors\n", m_split_num, m_vectornum.load() - deleted.load(), assumptionBrokenNum.load());
 				}
 
 				ErrorCode ReAssign(SizeType headID, std::vector<std::string>& postingLists, std::pair<SizeType, SizeType> newHeadsID) {
