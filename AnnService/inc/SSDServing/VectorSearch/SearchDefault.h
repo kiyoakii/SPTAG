@@ -299,7 +299,7 @@ namespace SPTAG {
 							vectorBuf += m_vectorSize;
 						}
 					}
-					if (realVectorNum < postVectorNum * 0.9)
+					if (realVectorNum < m_postingVectorLimit)
 					{
 						postingList.clear();
 						// float r = 0.f;
@@ -345,11 +345,8 @@ namespace SPTAG {
 					
 					long long newHeadVID = -1;
 					int first = 0;
-					std::pair<SizeType, SizeType> p;
+					std::pair<SizeType, SizeType> newHeadsID;
 					std::vector<std::string> newPostingLists;
-					std::set<SizeType> newHeadsID;
-					// std::vector<ValueType*> reAssignVectors;
-					// std::vector<SizeType> reAssignVectorsID;
 					for (int k = 0; k < m_k; k++) {
 						int begin, end = 0;
 						std::string postingList;
@@ -359,8 +356,7 @@ namespace SPTAG {
 						// Notice: newHeadVID maybe a exist head vector
 						m_index->AddHeadIndexId(smallSample[args.clusterIdx[k]], 1, COMMON_OPTS.m_dim, &begin, &end);
 						newHeadVID = begin;
-						newHeadsID.insert(newHeadVID);
-						setPair(p, k+1, newHeadVID);
+						setPair(newHeadsID, k+1, newHeadVID);
 						//LOG(Helper::LogLevel::LL_Info, "Headid: %d split into : %d\n", headID, newHeadVID);
 						
 						// float maxClusterDist = 0.f;
@@ -370,10 +366,6 @@ namespace SPTAG {
 							postingList += Helper::Serialize<ValueType>(smallSample[localindices[first + j]], COMMON_OPTS.m_dim);
 							// float newDist = m_index->ComputeDistance(smallSample[args.clusterIdx[k]], smallSample[localindices[first + j]]);
 							// float oldDist = m_index->ComputeDistance(smallSample[localindices[first + j]], m_index->GetSample(headID));
-							// if (true) {
-							// 	reAssignVectors.push_back(smallSample[localindices[first + j]]);
-							// 	reAssignVectorsID.push_back(localindicesInsert[localindices[first + j]]);
-							// }
 							// maxClusterDist = std::max<float>(newDist, maxClusterDist);
 						}
 						db->Put(WriteOptions(), Helper::Serialize<int>(&newHeadVID, 1), postingList);
@@ -385,13 +377,13 @@ namespace SPTAG {
 						m_postingNum++;
 						m_index->AddHeadIndexIdx(begin, end);
 					}
-					splitRoute[headID] = p;
+					splitRoute[headID] = newHeadsID;
 
 					// delete from BKT and RNG
 					auto bktIndex = dynamic_cast<SPTAG::BKT::Index<ValueType>*>(m_index.get());
 					bktIndex->DeleteIndex(headID);
 					// delete from disk
-					// db->Delete(WriteOptions(), Helper::Serialize<int>(&headID, 1));
+					db->Delete(WriteOptions(), Helper::Serialize<int>(&headID, 1));
 					m_postingSizes[headID] = 0;
 					// m_postingRadius[headID] = 0.f;
 					m_split_num++;
@@ -399,7 +391,7 @@ namespace SPTAG {
 					return ReAssign(headID, newPostingLists, newHeadsID);
 				}
 
-				ErrorCode ReAssign(SizeType headID, std::vector<std::string>& postingLists, std::set<SizeType>& nearbyHeadsID) {
+				ErrorCode ReAssign(SizeType headID, std::vector<std::string>& postingLists, std::pair<SizeType, SizeType> newHeadsID) {
 					auto headVector = reinterpret_cast<const ValueType*>(m_index->GetSample(headID));
 					if (m_reassignK != 0) {
 						COMMON::QueryResultSet<ValueType> nearbyHeads(NULL, m_reassignK);
@@ -409,61 +401,106 @@ namespace SPTAG {
 						BasicResult* queryResults = nearbyHeads.GetResults();
 						postingLists.resize(nearbyHeads.GetResultNum() + postingLists.size());
 						for (int i = 0; i < nearbyHeads.GetResultNum(); i++) {
-							if (queryResults[i].VID == -1) {
+							auto vid = queryResults[i].VID;
+							if (vid == -1) {
 								break;
 							}
-							nearbyHeadsID.insert(queryResults[i].VID);
-							db->Get(ReadOptions(), Helper::Serialize<int>(&queryResults[i].VID, 1), &postingLists[i]);
-							// db->Put(WriteOptions(), Helper::Serialize<int>(&queryResults[i].VID, 1), "");
-							// m_postingSizes[queryResults[i].VID] = 0;
+							if (vid != newHeadsID.first && vid != newHeadsID.second) {
+								db->Get(ReadOptions(), Helper::Serialize<int>(&vid, 1), &postingLists[i + 2]);
+							}
 						}
 					}
 
-					std::map<SizeType, ValueType*> reAssignVectors;
-					for (auto &postingList : postingLists) {
+					std::map<SizeType, ValueType*> reAssignVectorsTop0;
+					std::map<SizeType, ValueType*> reAssignVectorsTopK;
+					for (int i = 0; i < postingLists.size(); i++) {
+						auto& postingList = postingLists[i];
 						int postVectorNum = postingList.size() / (m_vectorSize + sizeof(int));
 						uint8_t* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
 						for (int j = 0; j < postVectorNum; j++) {
 							uint8_t* vectorId = postingP + j * (m_vectorSize + sizeof(int));
 							SizeType vid = *(reinterpret_cast<SizeType*>(vectorId));
-							if (reAssignVectors.find(vid) == reAssignVectors.end() && !m_deletedID.Contains(vid)) {
-								reAssignVectors[vid] = reinterpret_cast<ValueType*>(vectorId + sizeof(int));
+							if (i <= 1) {
+								if (reAssignVectorsTop0.find(vid) == reAssignVectorsTop0.end() && !m_deletedID.Contains(vid))
+									reAssignVectorsTop0[vid] = reinterpret_cast<ValueType*>(vectorId + sizeof(int));
+							} else {
+								if (reAssignVectorsTopK.find(vid) == reAssignVectorsTopK.end() && !m_deletedID.Contains(vid))
+									reAssignVectorsTopK[vid] = reinterpret_cast<ValueType*>(vectorId + sizeof(int));
 							}
 						}
 					}
 
-					// Re-assign
-					auto numQueries = reAssignVectors.size();
-					auto oldVID = m_vectornum.fetch_add(numQueries);
-					std::vector<COMMON::QueryResultSet<ValueType>> results;
-					for (auto it = reAssignVectors.begin(); it != reAssignVectors.end(); ++it) {
-						COMMON::QueryResultSet<ValueType> result(NULL, m_internalResultNum);
-						result.SetTarget(it->second);
-						result.Reset();
-						results.push_back(result);
-					}
-					{
-						std::lock_guard<std::mutex> lock(m_dataAddLock);
-						m_deletedID.AddBatch(numQueries);
-					}
-					// Build selections with RNG rule, then insert
-					auto iter = reAssignVectors.begin();
-					for (int i = 0; i < numQueries; ++i) {
-						m_deletedID.Insert(iter->first);
-						ReAssignUpdate(results[i], oldVID + i);
-						iter++;
-					}
-
-					m_reassigned += numQueries;
+					ReAssignVectors(reAssignVectorsTop0, newHeadsID);
+					ReAssignVectors(reAssignVectorsTopK, newHeadsID, true);
 					return ErrorCode::Success;
 				}
 
-				void ReAssignUpdate(COMMON::QueryResultSet<ValueType>& p_queryResults, SizeType VID)
+				void ReAssignVectors(std::map<SizeType, ValueType*>& reAssignVectors, 
+									std::pair<SizeType, SizeType> newHeadsID, bool check = false)
+				{
+					auto numQueries = reAssignVectors.size();
+					std::vector<COMMON::QueryResultSet<ValueType>> results;
+					std::vector<SizeType> vids;
+					for (auto it = reAssignVectors.begin(); it != reAssignVectors.end(); ++it) {
+						COMMON::QueryResultSet<ValueType> result(NULL, m_internalResultNum);
+						result.SetTarget(it->second);
+						vids.push_back(it->first);
+						result.Reset();
+						results.push_back(result);
+					}
+					if (!check) {
+						{
+							std::lock_guard<std::mutex> lock(m_dataAddLock);
+							m_deletedID.AddBatch(numQueries);
+						}
+						for (auto iter = reAssignVectors.begin(); iter != reAssignVectors.end(); iter++) {
+							m_deletedID.Insert(iter->first);
+						}
+						auto oldVID = m_vectornum.fetch_add(numQueries);
+
+						#pragma omp parallel for num_threads(32)
+						for (int i = 0; i < numQueries; ++i) {						
+							ReAssignUpdate(results[i], oldVID + i, newHeadsID);
+						}
+
+						m_reassigned += numQueries;
+					} else {
+						#pragma omp parallel for num_threads(32)
+						for (int i = 0; i < numQueries; ++i) {						
+							ReAssignUpdate(results[i], 0, newHeadsID, true, vids[i]);
+						}
+					}
+				}
+
+				void ReAssignUpdate(COMMON::QueryResultSet<ValueType>& p_queryResults, SizeType VID,
+									std::pair<SizeType, SizeType> newHeads, bool check = false, SizeType headID = 0)
 				{
 					m_index->SearchIndex(p_queryResults);
 					int replicaCount = 0;
 					BasicResult* queryResults = p_queryResults.GetResults();
 					std::vector<EdgeInsert> selections(static_cast<size_t>(m_replicaCount));
+					if (check) {
+						bool reassign = false;
+						for (int i = 0; i < p_queryResults.GetResultNum(); i++) {
+							auto vid = queryResults[i].VID;
+							if (vid == newHeads.first || vid == newHeads.second) {
+								reassign = true;
+								break;
+							} else if (vid == -1) {
+								break;
+							}
+						}
+						if (!reassign) {
+							return;
+						}
+						VID = m_vectornum.fetch_add(1);
+						{
+							std::lock_guard<std::mutex> lock(m_dataAddLock);
+							m_deletedID.AddBatch(1);
+						}
+						m_deletedID.Insert(headID);
+					}
+
 					for (int i = 0; i < p_queryResults.GetResultNum() && replicaCount < m_replicaCount; ++i) {
 						if (queryResults[i].VID == -1) {
 							break;
@@ -506,6 +543,10 @@ namespace SPTAG {
 						// if (r > m_postingRadius[headID].load()) {}
 						// r = std::max<float>(r, );
 						// m_postingRadius[headID] = r;
+					}
+
+					if (check) {
+						m_reassigned++;
 					}
 				}
 
@@ -829,10 +870,11 @@ namespace SPTAG {
 						// 		m_skipped++;
 						// 	}
 						// }
-						for (int i = 0; i < m_resultNum; i++) {
+						for (int i = 0; i < m_resultNum && totalVectors <= m_searchVectorLimit; i++) {
 							auto res = p_queryResults.GetResult(i);
 							if (res->VID != -1) {
 								auto_ws->m_postingIDs.emplace_back(res->VID);
+								totalVectors += m_postingSizes[res->VID].load();
 							}
 						}
 						const uint32_t postingListCount = static_cast<uint32_t>(auto_ws->m_postingIDs.size());
