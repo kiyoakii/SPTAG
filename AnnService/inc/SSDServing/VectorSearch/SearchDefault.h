@@ -387,8 +387,108 @@ namespace SPTAG {
 					m_postingSizes[headID] = 0;
 					// m_postingRadius[headID] = 0.f;
 					m_split_num++;
+
+					QuantifySplit(headID, newPostingLists, newHeadsID);
 					
 					return ReAssign(headID, newPostingLists, newHeadsID);
+				}
+
+				//headCandidates: search data structrue for "vid" vector
+				//headID: the head vector that stands for vid
+				bool IsAssumptionBroken(SizeType headID, COMMON::QueryResultSet<ValueType>& headCandidates, SizeType vid)
+				{
+					m_index->SearchIndex(headCandidates);
+					int replicaCount = 0;
+					BasicResult* queryResults = headCandidates.GetResults();
+					std::vector<EdgeInsert> selections(static_cast<size_t>(m_replicaCount));
+					for (int i = 0; i < headCandidates.GetResultNum() && replicaCount < m_replicaCount; ++i) {
+						if (queryResults[i].VID == -1) {
+							break;
+						}
+						// RNG Check.
+						bool rngAccpeted = true;
+						for (int j = 0; j < replicaCount; ++j) {
+							float nnDist = m_index->ComputeDistance(
+														m_index->GetSample(queryResults[i].VID),
+														m_index->GetSample(selections[j].headID));
+							if (nnDist <= queryResults[i].Dist) {
+								rngAccpeted = false;
+								break;
+							}
+						}
+						if (!rngAccpeted)
+							continue;
+
+						selections[replicaCount].headID = queryResults[i].VID;
+						if (selections[replicaCount].headID == headID) return false;
+						selections[replicaCount].fullID = vid;
+						selections[replicaCount].distance = queryResults[i].Dist;
+						selections[replicaCount].order = (char)replicaCount;
+						++replicaCount;
+					}
+					return true;
+				}
+
+				//Measure that in "headID" posting list, how many vectors break their assumption
+				int QuantifyAssumptionBroken(SizeType headID, std::string& postingList)
+				{
+					int assumptionBrokenNum = 0;
+					int postVectorNum = postingList.size() / (m_vectorSize + sizeof(int));
+					uint8_t* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
+					for (int j = 0; j < postVectorNum; j++) {
+						uint8_t* vectorId = postingP + j * (m_vectorSize + sizeof(int));
+						SizeType vid = *(reinterpret_cast<SizeType*>(vectorId));
+						COMMON::QueryResultSet<ValueType> headCandidates(NULL, 64);
+						headCandidates.SetTarget(reinterpret_cast<ValueType*>(vectorId + sizeof(int)));
+						headCandidates.Reset();
+						if (IsAssumptionBroken(headID, headCandidates, vid)) assumptionBrokenNum++;
+					}
+					return assumptionBrokenNum;
+				}
+
+				void QuantifySplitCaseA(std::pair<SizeType, SizeType> newHeads, std::vector<std::string>& postingLists)
+				{
+					int assumptionBrokenNum = 0;
+					assumptionBrokenNum += QuantifyAssumptionBroken(newHeads.first, postingLists[0]);
+					assumptionBrokenNum += QuantifyAssumptionBroken(newHeads.second, postingLists[1]);
+					LOG(Helper::LogLevel::LL_Info, "After Split, Top0 nearby posting lists, caseA : %d\n", assumptionBrokenNum);
+				}
+
+				//Measure that around "headID", how many vectors break their assumption
+				//"headID" is the head vector before split
+				void QuantifySplitCaseB(SizeType headID, std::pair<SizeType, SizeType> newHeads)
+				{
+					auto headVector = reinterpret_cast<const ValueType*>(m_index->GetSample(headID));
+					COMMON::QueryResultSet<ValueType> nearbyHeads(NULL, 64);
+					nearbyHeads.SetTarget(headVector);
+					nearbyHeads.Reset();
+					std::vector<std::string> postingLists;
+					m_index->SearchIndex(nearbyHeads);
+					std::string postingList;
+					BasicResult* queryResults = nearbyHeads.GetResults();
+					int topk = 8;
+					int assumptionBrokenNum = 0;
+					int i;
+					for (i = 0; i < nearbyHeads.GetResultNum(); i++) {
+						if (queryResults[i].VID == -1) {
+							break;
+						}
+						if (i == topk) {
+							LOG(Helper::LogLevel::LL_Info, "After Split, Top%d nearby posting lists, caseB : %d\n", topk, assumptionBrokenNum);
+							topk *= 2;
+						}
+						if (queryResults[i].VID == newHeads.first || queryResults[i].VID == newHeads.second) continue;
+						db->Get(ReadOptions(), Helper::Serialize<int>(&queryResults[i].VID, 1), &postingList);
+						assumptionBrokenNum += QuantifyAssumptionBroken(queryResults[i].VID, postingList);
+					}
+					LOG(Helper::LogLevel::LL_Info, "After Split, Top%d nearby posting lists, caseB : %d\n", i, assumptionBrokenNum);
+				}
+
+				void QuantifySplit(SizeType headID, std::vector<std::string>& postingLists, std::pair<SizeType, SizeType> newHeads)
+				{
+					LOG(Helper::LogLevel::LL_Info, "Split Quantify: %d\n", m_split_num);
+					QuantifySplitCaseA(newHeads, postingLists);
+					QuantifySplitCaseB(headID, newHeads);
 				}
 
 				ErrorCode ReAssign(SizeType headID, std::vector<std::string>& postingLists, std::pair<SizeType, SizeType> newHeadsID) {

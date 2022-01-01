@@ -100,6 +100,65 @@ namespace SPTAG {
                 return static_cast<float>(recall)/static_cast<float>(results.size() * K);
             }
 
+            template <typename T>
+            float CalcRecallVecDistribution(std::vector<COMMON::QueryResultSet<T>>& results, const std::vector<std::set<int>>& truth, std::shared_ptr<SPTAG::VectorSet> querySet, std::shared_ptr<SPTAG::VectorSet> vectorSet, std::shared_ptr<VectorIndex> index, int K)
+            {
+                float eps = 1e-6f;
+                float recall = 0;
+                std::vector<int> recallDistribution;
+                recallDistribution.resize(K+1);
+                for (int i = 0; i <= K; i++)
+                {
+                    recallDistribution[i] = 0;
+                }
+                std::unique_ptr<bool[]> visited(new bool[K]);
+                for (int i = 0; i < results.size(); i++)
+                {
+                    memset(visited.get(), 0, K*sizeof(bool));
+                    int hit = 0;
+                    for (int id : truth[i])
+                    {
+                        for (int j = 0; j < K; j++)
+                        {
+                            if (visited[j]) continue;
+
+                            if (results[i].GetResult(j)->VID == id)
+                            {
+                                recall++;
+                                hit++;
+                                visited[j] = true;
+                                break;
+                            }
+                            else if (vectorSet != nullptr) {
+                                float dist = results[i].GetResult(j)->Dist;
+                                float truthDist = index->ComputeDistance(querySet->GetVector(i), vectorSet->GetVector(id));
+                                if (index->GetDistCalcMethod() == SPTAG::DistCalcMethod::Cosine && fabs(dist - truthDist) < eps) {
+                                    recall++;
+                                    hit++;
+                                    visited[j] = true;
+                                    break;
+                                }
+                                else if (index->GetDistCalcMethod() == SPTAG::DistCalcMethod::L2 && fabs(dist - truthDist) < eps * (dist + eps)) {
+                                    recall++;
+                                    hit++;
+                                    visited[j] = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    recallDistribution[hit]++;
+                }
+                LOG(Helper::LogLevel::LL_Info, "Recall Distribution:\n");
+                for (int i = 0; i <= K; i++)
+                {
+                    LOG(Helper::LogLevel::LL_Info, "hit %d: %d\t", i, recallDistribution[i]);
+                }
+                LOG(Helper::LogLevel::LL_Info, "\n");
+
+                return static_cast<float>(recall)/static_cast<float>(results.size() * K);
+            }
+
             void LoadTruthTXT(std::string truthPath, std::vector<std::set<int>>& truth, int K, SizeType p_iTruthNumber)
             {
                 auto ptr = SPTAG::f_createIO();
@@ -880,7 +939,7 @@ namespace SPTAG {
 
                 LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
 
-                float recall = CalcRecall(results, truth, K);
+                float recall = CalcRecallVecDistribution(results, truth, querySet, vectorSet, searcher.HeadIndex(), K);
                 LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
 
                 PrintStats<ValueType>(stats);
@@ -928,28 +987,7 @@ namespace SPTAG {
                     curCount += step;
                     finishedInsert += step;
                     LOG(Helper::LogLevel::LL_Info, "Total Vector num %d \n", curCount);
-                    // LOG(Helper::LogLevel::LL_Info, "Start Searching with R\n");
-                    // for (int i = 0; i < numQueries; ++i)
-                    // {
-                    //     results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
-                    //     results[i].Reset();
-                    // }
-                    // if (asyncCallQPS == 0)
-                    // {
-                    //     SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
-                    // }
-                    // else
-                    // {
-                    //     SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
-                    // }
-                    // LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
-                    // LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
-
-                    // recall = CalcRecallVec(results, truth, querySet, vectorSet, searcher.HeadIndex(), K);
-                    // LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
-
-                    // PrintStats<ValueType>(stats);
-                    
+                    searcher.forceCompaction();
                     LOG(Helper::LogLevel::LL_Info, "Start VectorLimit Searching\n");
                     for (int i = 0; i < numQueries; ++i)
                     {
@@ -968,7 +1006,7 @@ namespace SPTAG {
                     LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
 
 
-                    recall = CalcRecallVec(results, truth, querySet, vectorSet, searcher.HeadIndex(), K);
+                    recall = CalcRecallVecDistribution(results, truth, querySet, vectorSet, searcher.HeadIndex(), K);
                     LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
 
                     PrintStats<ValueType>(stats);
@@ -981,53 +1019,6 @@ namespace SPTAG {
                 searcher.setPersistentBufferStop();
 
                 LOG(Helper::LogLevel::LL_Info, "Total Vector num %d \n", curCount);
-                LOG(Helper::LogLevel::LL_Info, "Start Searching with R\n");
-                for (int i = 0; i < numQueries; ++i)
-                {
-                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
-                    results[i].Reset();
-                }
-                if (asyncCallQPS == 0)
-                {
-                    SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
-                }
-                else
-                {
-                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
-                }
-                LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
-                LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
-
-                recall = CalcRecallVec(results, truth, querySet, vectorSet, searcher.HeadIndex(), K);
-                LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
-
-                PrintStats<ValueType>(stats);
-
-                searcher.forceCompaction();
-
-                LOG(Helper::LogLevel::LL_Info, "Total Vector num %d \n", curCount);
-                LOG(Helper::LogLevel::LL_Info, "Start Searching with R\n");
-                for (int i = 0; i < numQueries; ++i)
-                {
-                    results[i].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(i)));
-                    results[i].Reset();
-                }
-                if (asyncCallQPS == 0)
-                {
-                    SearchSequential(searcher, numThreads, results, stats, p_opts.m_queryCountLimit);
-                }
-                else
-                {
-                    SearchAsync(searcher, asyncCallQPS, results, stats, p_opts.m_queryCountLimit);
-                }
-                LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
-                LoadTruth(GetTruthFileName(truthFilePrefix, curCount), truth, numQueries, K);
-
-                recall = CalcRecallVec(results, truth, querySet, vectorSet, searcher.HeadIndex(), K);
-                LOG(Helper::LogLevel::LL_Info, "Recall: %f\n", recall);
-
-                PrintStats<ValueType>(stats);
-
                 LOG(Helper::LogLevel::LL_Info, "Insert finished, split %d time\n", searcher.getSplitNum());
             }
 
