@@ -11,6 +11,51 @@
 namespace SPTAG {
 	namespace SSDServing {
 		namespace VectorSearch {
+            template<typename T, typename V>
+            void PrintPercentiles(const std::vector<V>& p_values, std::function<T(const V&)> p_get, const char* p_format, bool reverse=false)
+            {
+                double sum = 0;
+                std::vector<T> collects;
+                collects.reserve(p_values.size());
+                for (const auto& v : p_values)
+                {
+                    T tmp = p_get(v);
+                    sum += tmp;
+                    collects.push_back(tmp);
+                }
+                if (reverse) {
+                    std::sort(collects.begin(), collects.end(), std::greater<int>());
+                }
+                else {
+                    std::sort(collects.begin(), collects.end());
+                }
+                if (reverse) {
+                    LOG(Helper::LogLevel::LL_Info, "Avg\t50tiles\t90tiles\t95tiles\t99tiles\t99.9tiles\tMin\n");
+                }
+                else {
+                    LOG(Helper::LogLevel::LL_Info, "Avg\t50tiles\t90tiles\t95tiles\t99tiles\t99.9tiles\tMax\n");
+                }
+
+                std::string formatStr("%.3lf");
+                for (int i = 1; i < 7; ++i)
+                {
+                    formatStr += '\t';
+                    formatStr += p_format;
+                }
+
+                formatStr += '\n';
+
+                LOG(Helper::LogLevel::LL_Info,
+                    formatStr.c_str(),
+                    sum / collects.size(),
+                    collects[static_cast<size_t>(collects.size() * 0.50)],
+                    collects[static_cast<size_t>(collects.size() * 0.90)],
+                    collects[static_cast<size_t>(collects.size() * 0.95)],
+                    collects[static_cast<size_t>(collects.size() * 0.99)],
+                    collects[static_cast<size_t>(collects.size() * 0.999)],
+                    collects[static_cast<size_t>(collects.size() - 1)]);
+            }
+
             template <typename T>
             float CalcRecall(std::vector<COMMON::QueryResultSet<T>>& results, const std::vector<std::set<int>>& truth, int K)
             {
@@ -105,8 +150,10 @@ namespace SPTAG {
             {
                 float eps = 1e-6f;
                 float recall = 0;
+                std::vector<int> recallCollection;
                 std::vector<int> recallDistribution;
                 recallDistribution.resize(K+1);
+                recallCollection.resize(results.size());
                 for (int i = 0; i <= K; i++)
                 {
                     recallDistribution[i] = 0;
@@ -147,6 +194,7 @@ namespace SPTAG {
                             }
                         }
                     }
+                    recallCollection[i] = hit;
                     recallDistribution[hit]++;
                 }
                 LOG(Helper::LogLevel::LL_Info, "Recall Distribution:\n");
@@ -155,6 +203,12 @@ namespace SPTAG {
                     LOG(Helper::LogLevel::LL_Info, "hit %d: %d\t", i, recallDistribution[i]);
                 }
                 LOG(Helper::LogLevel::LL_Info, "\n");
+                PrintPercentiles<int, int>(recallCollection,
+                    [](const int& recall) -> int
+                    {
+                        return recall;
+                    },
+                    "%3d", true);
 
                 return static_cast<float>(recall)/static_cast<float>(results.size() * K);
             }
@@ -302,43 +356,6 @@ namespace SPTAG {
                         }
                     }
                 }
-            }
-
-            template<typename T, typename V>
-            void PrintPercentiles(const std::vector<V>& p_values, std::function<T(const V&)> p_get, const char* p_format)
-            {
-                double sum = 0;
-                std::vector<T> collects;
-                collects.reserve(p_values.size());
-                for (const auto& v : p_values)
-                {
-                    T tmp = p_get(v);
-                    sum += tmp;
-                    collects.push_back(tmp);
-                }
-
-                std::sort(collects.begin(), collects.end());
-
-                LOG(Helper::LogLevel::LL_Info, "Avg\t50tiles\t90tiles\t95tiles\t99tiles\t99.9tiles\tMax\n");
-
-                std::string formatStr("%.3lf");
-                for (int i = 1; i < 7; ++i)
-                {
-                    formatStr += '\t';
-                    formatStr += p_format;
-                }
-
-                formatStr += '\n';
-
-                LOG(Helper::LogLevel::LL_Info,
-                    formatStr.c_str(),
-                    sum / collects.size(),
-                    collects[static_cast<size_t>(collects.size() * 0.50)],
-                    collects[static_cast<size_t>(collects.size() * 0.90)],
-                    collects[static_cast<size_t>(collects.size() * 0.95)],
-                    collects[static_cast<size_t>(collects.size() * 0.99)],
-                    collects[static_cast<size_t>(collects.size() * 0.999)],
-                    collects[static_cast<size_t>(collects.size() - 1)]);
             }
 
             template <typename ValueType>
