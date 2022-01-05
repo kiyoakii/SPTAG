@@ -370,7 +370,6 @@ namespace SPTAG {
 					m_split_num++;
 
 					// QuantifySplit(headID, newPostingLists, newHeadsID);
-					
 					ReAssign(headID, newPostingLists, newHeadsID);
 
 					// LOG(Helper::LogLevel::LL_Info, "After ReAssign\n");
@@ -440,9 +439,6 @@ namespace SPTAG {
 						{
 							std::lock_guard<std::mutex> lock(m_dataAddLock);
 							m_deletedID.AddBatch(numQueries);
-						}
-						for (auto iter = reAssignVectors.begin(); iter != reAssignVectors.end(); iter++) {
-							m_deletedID.Insert(iter->first);
 						}
 						auto oldVID = m_vectornum.fetch_add(numQueries);
 
@@ -533,6 +529,7 @@ namespace SPTAG {
 					}
 
 					if (check) {
+						m_deletedID.Insert(headID);
 						m_reassigned++;
 					}
 				}
