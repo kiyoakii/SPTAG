@@ -366,6 +366,7 @@ namespace SPTAG {
 					// delete from disk
 					db->Delete(WriteOptions(), Helper::Serialize<int>(&headID, 1));
 					m_postingSizes[headID] = 0;
+					lock.unlock();
 					m_split_num++;
 
 					// QuantifySplit(headID, newPostingLists, newHeadsID);
