@@ -108,6 +108,18 @@ if (MPI_FOUND)
     target_link_libraries(balanceddatapartition SPTAGLibStatic ${Boost_LIBRARIES} ${MPI_CXX_LIBRARIES})
 endif()
 
+find_package(RocksDB)
+if (RocksDB_FOUND)
+    include_directories (${RocksDB_INCLUDE_DIR})
+    link_directories (${RocksDB_LIBRARY_DIR})
+    message (STATUS "Found RocksDB.")
+    message (STATUS "Include Path: ${RocksDB_INCLUDE_DIRS}")
+    message (STATUS "Library Path: ${RocksDB_LIBRARY_DIRS}")
+    message (STATUS "Library: ${RocksDB_LIBRARIES}")
+else()
+    message (FATAL_ERROR "Could not find RocksDB!")
+endif()
+
 install(TARGETS ssdservingLib ssdserving
   RUNTIME DESTINATION bin
   ARCHIVE DESTINATION lib
