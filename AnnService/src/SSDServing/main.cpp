@@ -20,6 +20,10 @@ using namespace SPTAG;
 namespace SPTAG {
 	namespace SSDServing {
 
+		std::string kDBPath;
+        ROCKSDB_NAMESPACE::DB* db;
+        ROCKSDB_NAMESPACE::Options dbOptions;
+
 		int BootProgram(bool forANNIndexTestTool, 
 			std::map<std::string, std::map<std::string, std::string>>* config_map, 
 			const char* configurationPath, 
