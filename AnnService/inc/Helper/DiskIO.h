@@ -257,6 +257,9 @@ namespace SPTAG
             std::unique_ptr<streambuf> m_handle;
         };
 
+        namespace FRESH {
+        using namespace ROCKSDB_NAMESPACE;
+        
         class RocksDBIO: public DiskPriorityIO
         {
         public:
@@ -271,23 +274,62 @@ namespace SPTAG
                 std::uint32_t maxWriteRetries = 2,
                 std::uint16_t threadPoolSize = 4)
             {
-                using namespace ROCKSDB_NAMESPACE;
                 dbOptions.IncreaseParallelism();
                 dbOptions.OptimizeLevelStyleCompaction();
                 dbOptions.create_if_missing = true;
+                dbPath = std::move(std::string(filePath));
                 // dbOptions.merge_operator.reset(new AnnMergeOperator);
-                Status s = DB::Open(dbOptions, std::string(filePath), &db);
+                Status s = DB::Open(dbOptions, dbPath, &db);
                 return s == Status::OK();
             }
 
             virtual void ShutDown() {
                 db->Close();
+                DestroyDB(dbPath, dbOptions);
             }
 
+            ErrorCode Get(std::string& key, std::string* value) {
+                auto s = db->Get(ReadOptions(), key, value);
+                if (s == Status::OK()) {
+                    return ErrorCode::Success;
+                } else {
+                    return ErrorCode::Fail;
+                }
+            }
+
+            ErrorCode Get(int key, std::string* value) {
+                auto s = db->Get(ReadOptions(), Helper::Convert::Serialize<int>(&key, 1), value);
+                if (s == Status::OK()) {
+                    return ErrorCode::Success;
+                } else {
+                    return ErrorCode::Fail;
+                }
+            }
+            
+            ErrorCode Put(int key, std::string& value) {
+                auto s = db->Put(WriteOptions(), Helper::Convert::Serialize<int>(&key, 1), value);
+                if (s == Status::OK()) {
+                    return ErrorCode::Success;
+                } else {
+                    return ErrorCode::Fail;
+                }
+            }
+
+            ErrorCode Put(std::string& key, std::string& value) {
+                auto s = db->Put(WriteOptions(), key, value);
+                if (s == Status::OK()) {
+                    return ErrorCode::Success;
+                } else {
+                    return ErrorCode::Fail;
+                }
+            }
+            
         private:
-            ROCKSDB_NAMESPACE::DB* db;
-            ROCKSDB_NAMESPACE::Options dbOptions;
-        }
+            std::string dbPath;
+            DB* db;
+            Options dbOptions;
+        };
+        } // namespace FRESH
     } // namespace Helper
 } // namespace SPTAG
 
