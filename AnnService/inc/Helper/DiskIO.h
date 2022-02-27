@@ -4,6 +4,10 @@
 #ifndef _SPTAG_HELPER_DISKIO_H_
 #define _SPTAG_HELPER_DISKIO_H_
 
+#include "rocksdb/db.h"
+#include "rocksdb/slice.h"
+#include "rocksdb/options.h"
+
 #include <functional>
 #include <fstream>
 #include <string.h>
@@ -252,6 +256,38 @@ namespace SPTAG
         private:
             std::unique_ptr<streambuf> m_handle;
         };
+
+        class RocksDBIO: public DiskPriorityIO
+        {
+        public:
+            RocksDBIO(DiskIOScenario scenario = DiskIOScenario::DIS_UserRead) {}
+
+            virtual ~RocksDBIO() { ShutDown(); }
+
+            virtual bool Initialize(const char* filePath, int openMode,
+                // Max read/write buffer size.
+                std::uint64_t maxIOSize = (1 << 20),
+                std::uint32_t maxReadRetries = 2,
+                std::uint32_t maxWriteRetries = 2,
+                std::uint16_t threadPoolSize = 4)
+            {
+                using namespace ROCKSDB_NAMESPACE;
+                dbOptions.IncreaseParallelism();
+                dbOptions.OptimizeLevelStyleCompaction();
+                dbOptions.create_if_missing = true;
+                // dbOptions.merge_operator.reset(new AnnMergeOperator);
+                Status s = DB::Open(dbOptions, std::string(filePath), &db);
+                return s == Status::OK();
+            }
+
+            virtual void ShutDown() {
+                db->Close();
+            }
+
+        private:
+            ROCKSDB_NAMESPACE::DB* db;
+            ROCKSDB_NAMESPACE::Options dbOptions;
+        }
     } // namespace Helper
 } // namespace SPTAG
 
