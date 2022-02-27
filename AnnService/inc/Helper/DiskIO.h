@@ -290,8 +290,8 @@ namespace SPTAG
                 }
             }
 
-            ErrorCode Get(int key, std::string* value) {
-                auto s = db->Get(rocksdb::ReadOptions(), Helper::Convert::Serialize<int>(&key, 1), value);
+            ErrorCode Get(SizeType key, std::string* value) {
+                auto s = db->Get(rocksdb::ReadOptions(), Helper::Convert::Serialize<SizeType>(&key), value);
                 if (s == rocksdb::Status::OK()) {
                     return ErrorCode::Success;
                 } else {
@@ -299,8 +299,8 @@ namespace SPTAG
                 }
             }
             
-            ErrorCode Put(int key, std::string& value) {
-                auto s = db->Put(rocksdb::WriteOptions(), Helper::Convert::Serialize<int>(&key, 1), value);
+            ErrorCode Put(SizeType key, std::string& value) {
+                auto s = db->Put(rocksdb::WriteOptions(), Helper::Convert::Serialize<SizeType>(&key), value);
                 if (s == rocksdb::Status::OK()) {
                     return ErrorCode::Success;
                 } else {
@@ -315,6 +315,12 @@ namespace SPTAG
                 } else {
                     return ErrorCode::Fail;
                 }
+            }
+
+            ErrorCode Put(SizeType key, SizeType id, const void* vector, SizeType dim) {
+                using Helper::Convert::Serialize;
+                std::string posting(std::move(Serialize<SizeType>(&id) + Serialize<SizeType>(vector, dim)));
+                return Put(key, posting);
             }
         
         // TODO: add merge interfaces

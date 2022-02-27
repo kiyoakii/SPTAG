@@ -22,7 +22,7 @@ namespace Convert
 {
 
 template <typename T>
-std::string Serialize(const void* data, std::size_t len)
+std::string Serialize(const void* data, std::size_t len = 1)
 {
     std::string d(sizeof(T) * len, L'\0');
     memcpy(&d[0], data, d.length());
