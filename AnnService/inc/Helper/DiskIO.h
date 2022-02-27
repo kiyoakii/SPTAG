@@ -257,40 +257,33 @@ namespace SPTAG
             std::unique_ptr<streambuf> m_handle;
         };
 
-        namespace FRESH {
-        using namespace ROCKSDB_NAMESPACE;
-        
-        class RocksDBIO: public DiskPriorityIO
+        class RocksDBIO
         {
         public:
-            RocksDBIO(DiskIOScenario scenario = DiskIOScenario::DIS_UserRead) {}
+            RocksDBIO() {}
 
-            virtual ~RocksDBIO() { ShutDown(); }
+            ~RocksDBIO() { ShutDown(); }
 
-            virtual bool Initialize(const char* filePath, int openMode,
-                // Max read/write buffer size.
-                std::uint64_t maxIOSize = (1 << 20),
-                std::uint32_t maxReadRetries = 2,
-                std::uint32_t maxWriteRetries = 2,
-                std::uint16_t threadPoolSize = 4)
+            bool Initialize(const char* filePath)
             {
                 dbOptions.IncreaseParallelism();
                 dbOptions.OptimizeLevelStyleCompaction();
                 dbOptions.create_if_missing = true;
                 dbPath = std::move(std::string(filePath));
                 // dbOptions.merge_operator.reset(new AnnMergeOperator);
-                Status s = DB::Open(dbOptions, dbPath, &db);
-                return s == Status::OK();
+                auto s = rocksdb::DB::Open(dbOptions, dbPath, &db);
+                return s == rocksdb::Status::OK();
             }
 
-            virtual void ShutDown() {
+            void ShutDown() {
                 db->Close();
                 DestroyDB(dbPath, dbOptions);
+                delete db;
             }
 
             ErrorCode Get(std::string& key, std::string* value) {
-                auto s = db->Get(ReadOptions(), key, value);
-                if (s == Status::OK()) {
+                auto s = db->Get(rocksdb::ReadOptions(), key, value);
+                if (s == rocksdb::Status::OK()) {
                     return ErrorCode::Success;
                 } else {
                     return ErrorCode::Fail;
@@ -298,8 +291,8 @@ namespace SPTAG
             }
 
             ErrorCode Get(int key, std::string* value) {
-                auto s = db->Get(ReadOptions(), Helper::Convert::Serialize<int>(&key, 1), value);
-                if (s == Status::OK()) {
+                auto s = db->Get(rocksdb::ReadOptions(), Helper::Convert::Serialize<int>(&key, 1), value);
+                if (s == rocksdb::Status::OK()) {
                     return ErrorCode::Success;
                 } else {
                     return ErrorCode::Fail;
@@ -307,8 +300,8 @@ namespace SPTAG
             }
             
             ErrorCode Put(int key, std::string& value) {
-                auto s = db->Put(WriteOptions(), Helper::Convert::Serialize<int>(&key, 1), value);
-                if (s == Status::OK()) {
+                auto s = db->Put(rocksdb::WriteOptions(), Helper::Convert::Serialize<int>(&key, 1), value);
+                if (s == rocksdb::Status::OK()) {
                     return ErrorCode::Success;
                 } else {
                     return ErrorCode::Fail;
@@ -316,20 +309,22 @@ namespace SPTAG
             }
 
             ErrorCode Put(std::string& key, std::string& value) {
-                auto s = db->Put(WriteOptions(), key, value);
-                if (s == Status::OK()) {
+                auto s = db->Put(rocksdb::WriteOptions(), key, value);
+                if (s == rocksdb::Status::OK()) {
                     return ErrorCode::Success;
                 } else {
                     return ErrorCode::Fail;
                 }
             }
-            
+        
+        // TODO: add merge interfaces
+        // TODO: add compaction interfaces
+
         private:
             std::string dbPath;
-            DB* db;
-            Options dbOptions;
+            rocksdb::DB* db;
+            rocksdb::Options dbOptions;
         };
-        } // namespace FRESH
     } // namespace Helper
 } // namespace SPTAG
 
