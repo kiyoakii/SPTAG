@@ -26,7 +26,7 @@ namespace SPTAG
 {
     namespace SPANN
     {
-        class RocksDBIO : Helper::KeyValueIO
+        class RocksDBIO : public Helper::KeyValueIO
         {
         public:
             RocksDBIO() {}

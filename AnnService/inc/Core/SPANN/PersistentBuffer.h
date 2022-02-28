@@ -1,50 +1,45 @@
-#include "assert.h"
-#include "rocksdb/db.h"
-#include "rocksdb/slice.h"
-#include "rocksdb/options.h"
-#include "inc/Helper/StringConvert.h"
+#include "inc/Helper/DiskIO.h"
+#include <atomic>
 
 namespace SPTAG {
-    namespace PANNS {
-        namespace FRESH {
-            class PersistentBuffer
+    namespace SPANN {
+        class PersistentBuffer
+        {
+        public:
+            PersistentBuffer(std::string& fileName)
             {
-                public:
-                    PersistentBuffer(std::string& fileName)
-                    {
-                        db.Initialize(fileName.c_str());
-                        m_updateID.store(0);
-                    }
+                db->Initialize(fileName.c_str());
+                m_updateID.store(0);
+            }
 
-                    ~PersistentBuffer() {}
+            ~PersistentBuffer() {}
 
-                    int GetNewAssignmentID()
-                    {
-                        return m_updateID.fetch_add(1);
-                    }
+            int GetNewAssignmentID()
+            {
+                return m_updateID.fetch_add(1);
+            }
 
-                    void GetAssignment(int assignmentID, std::string* assignment)
-                    {
-                        db.Get(assignmentID, assignment);
-                    }
+            void GetAssignment(int assignmentID, std::string* assignment)
+            {
+                db->Get(assignmentID, assignment);
+            }
 
-                    int PutAssignment(std::string& assignment)
-                    {
-                        int assignmentID = GetNewAssignmentID();
-                        db.Put(assignmentID, assignment);
-                        return assignmentID;
-                    }
+            int PutAssignment(std::string& assignment)
+            {
+                int assignmentID = GetNewAssignmentID();
+                db->Put(assignmentID, assignment);
+                return assignmentID;
+            }
 
-                    int GetCurrentAssignmentID()
-                    {
-                        return m_updateID.load();
-                    }
+            int GetCurrentAssignmentID()
+            {
+                return m_updateID.load();
+            }
 
-                private:
-                    Helper::RocksDBIO db;
-                    //update assignment id
-                    std::atomic_int m_updateID;
-            };
-        }
+        private:
+            std::shared_ptr<Helper::KeyValueIO> db;
+            //update assignment id
+            std::atomic_int m_updateID;
+        };
     }
 }
