@@ -4,10 +4,6 @@
 #ifndef _SPTAG_HELPER_DISKIO_H_
 #define _SPTAG_HELPER_DISKIO_H_
 
-#include "rocksdb/db.h"
-#include "rocksdb/slice.h"
-#include "rocksdb/options.h"
-
 #include <functional>
 #include <fstream>
 #include <string.h>
@@ -257,81 +253,27 @@ namespace SPTAG
             std::unique_ptr<streambuf> m_handle;
         };
 
-        class RocksDBIO
-        {
+        class KeyValueIO {
         public:
-            RocksDBIO() {}
+            KeyValueIO() {}
 
-            ~RocksDBIO() { ShutDown(); }
+            virtual ~KeyValueIO() {}
 
-            bool Initialize(const char* filePath)
-            {
-                dbOptions.IncreaseParallelism();
-                dbOptions.OptimizeLevelStyleCompaction();
-                dbOptions.create_if_missing = true;
-                dbPath = std::move(std::string(filePath));
-                // dbOptions.merge_operator.reset(new AnnMergeOperator);
-                auto s = rocksdb::DB::Open(dbOptions, dbPath, &db);
-                return s == rocksdb::Status::OK();
-            }
+            virtual bool Initialize(const char* filePath) = 0;
 
-            void ShutDown() {
-                db->Close();
-                DestroyDB(dbPath, dbOptions);
-                delete db;
-            }
+            virtual void ShutDown() = 0;
 
-            ErrorCode Get(std::string& key, std::string* value) {
-                auto s = db->Get(rocksdb::ReadOptions(), key, value);
-                if (s == rocksdb::Status::OK()) {
-                    return ErrorCode::Success;
-                } else {
-                    return ErrorCode::Fail;
-                }
-            }
+            virtual ErrorCode Get(const std::string& key, std::string* value) = 0;
 
-            ErrorCode Get(SizeType key, std::string* value) {
-                auto s = db->Get(rocksdb::ReadOptions(), Helper::Convert::Serialize<SizeType>(&key), value);
-                if (s == rocksdb::Status::OK()) {
-                    return ErrorCode::Success;
-                } else {
-                    return ErrorCode::Fail;
-                }
-            }
-            
-            ErrorCode Put(SizeType key, std::string& value) {
-                auto s = db->Put(rocksdb::WriteOptions(), Helper::Convert::Serialize<SizeType>(&key), value);
-                if (s == rocksdb::Status::OK()) {
-                    return ErrorCode::Success;
-                } else {
-                    return ErrorCode::Fail;
-                }
-            }
+            virtual ErrorCode Get(SizeType key, std::string* value) = 0;
 
-            ErrorCode Put(std::string& key, std::string& value) {
-                auto s = db->Put(rocksdb::WriteOptions(), key, value);
-                if (s == rocksdb::Status::OK()) {
-                    return ErrorCode::Success;
-                } else {
-                    return ErrorCode::Fail;
-                }
-            }
+            virtual ErrorCode Put(const std::string& key, const std::string& value) = 0;
 
-            ErrorCode Put(SizeType key, SizeType id, const void* vector, SizeType dim) {
-                using Helper::Convert::Serialize;
-                std::string posting(std::move(Serialize<SizeType>(&id) + Serialize<SizeType>(vector, dim)));
-                return Put(key, posting);
-            }
-        
-        // TODO: add merge interfaces
-        // TODO: add compaction interfaces
+            virtual ErrorCode Put(SizeType key, const std::string& value) = 0;
 
-        private:
-            std::string dbPath;
-            rocksdb::DB* db;
-            rocksdb::Options dbOptions;
+            virtual ErrorCode Put(SizeType key, SizeType id, const void* vector, SizeType dim) = 0;
         };
-    } // namespace Helper
+   } // namespace Helper
 } // namespace SPTAG
 
 #endif // _SPTAG_HELPER_DISKIO_H_
