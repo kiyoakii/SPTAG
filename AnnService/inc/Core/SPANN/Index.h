@@ -79,6 +79,39 @@ namespace SPTAG
                     m_index->ProcessAsyncReassign(p_queryResults, VID, newHeads, check, oldVID, std::move(m_callback));
                 }
             };
+
+            class ThreadPool : public Helper::ThreadPool 
+            {
+            private:
+                std::atomic_uint32_t currentJobs{0};
+            public:
+                void init(int numberOfThreads = 1)
+                {
+                    m_abort.SetAbort(false);
+                    for (int i = 0; i < numberOfThreads; i++)
+                    {
+                        m_threads.emplace_back([this] {
+                            Job *j;
+                            while (get(j))
+                            {
+                                try 
+                                {
+                                    currentJobs++;
+                                    j->exec(&m_abort);
+                                    currentJobs--;
+                                }
+                                catch (std::exception& e) {
+                                    LOG(Helper::LogLevel::LL_Error, "ThreadPool: exception in %s %s\n", typeid(*j).name(), e.what());
+                                }
+                                
+                                delete j;
+                            }
+                        });
+                    }
+                }
+
+                inline uint32_t runningJobs() { return currentJobs; }
+            };
         private:
             std::shared_ptr<VectorIndex> m_index;
             std::shared_ptr<std::uint64_t> m_vectorTranslateMap;
