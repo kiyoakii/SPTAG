@@ -83,8 +83,12 @@ namespace SPTAG
             }
         
         // TODO: add merge interfaces
-        // TODO: add compaction interfaces
 
+            void ForceCompaction() {
+                LOG(Helper::LogLevel::LL_Info, "Start Compaction\n");
+                db->CompactRange(rocksdb::CompactRangeOptions(), nullptr, nullptr);
+                LOG(Helper::LogLevel::LL_Info, "Finish Compaction\n");
+            }
         private:
             std::string dbPath;
             rocksdb::DB* db;
