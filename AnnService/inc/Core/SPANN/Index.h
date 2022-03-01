@@ -112,6 +112,34 @@ namespace SPTAG
 
                 inline uint32_t runningJobs() { return currentJobs; }
             };
+
+            class Dispatcher
+            {
+            private:
+                std::thread t;                
+                
+                std::size_t batch;
+                std::atomic_bool running{false};
+                std::atomic_uint32_t sentAssignment{0};
+				// std::atomic_uint32_t finishedAssignment{0};
+
+                std::shared_ptr<PersistentBuffer> persistentBuffer;
+                std::shared_ptr<ThreadPool> appendThreadPool;
+                std::shared_ptr<ThreadPool> reassignThreadPool;
+
+            public:
+                Dispatcher(std::shared_ptr<PersistentBuffer> pm, std::size_t batch) : persistentBuffer(pm), batch(batch) {}
+
+                ~Dispatcher() { running = false; t.join(); }
+
+                void dispatch();
+                
+                inline void run() { running = true; t = std::thread(&dispatch, self) }
+            
+                inline void stop() { running = false; }
+
+                inline bool allFinished() { return sentAssignment == finishedAssignment; }
+            }
         private:
             std::shared_ptr<VectorIndex> m_index;
             std::shared_ptr<std::uint64_t> m_vectorTranslateMap;

@@ -694,6 +694,71 @@ namespace SPTAG
                 return m_options.GetParameter(p_section, p_param);
             }
         }
+
+        template <typename T>
+        void SPTAG::SPANN::Index<T>::Dispatcher::dispatch() 
+        {
+            while (running.test_and_set()) {
+                bool noAssignment = true;
+                int currentAssignmentID = persistentBuffer->GetCurrentAssignmentID();
+                int scanNum = std::min<int>(sentAssignment + batch, currentAssignmentID);
+                if (scanNum != sentAssignment) {
+                    noAssignment = false;
+                }
+
+                std::map<SizeType, std::string*> newPart;
+                newPart.clear();
+                int i;
+                for (i = sentAssignment; i < scanNum; i++) {
+                    std::string assignment;
+                    persistentBuffer->GetAssignment(i, &assignment);
+                    if(assignment.size() == 0) break;
+                    uint8_t* postingP = reinterpret_cast<uint8_t*>(&assignment.front());
+                    char code = *(reinterpret_cast<char*>(postingP));
+                    if (assignment.size() == 0)
+                    {
+                        uint8_t* headPointer = postingP + sizeof(char);
+                        LOG(Helper::LogLevel::LL_Info, "Error\n");
+                        LOG(Helper::LogLevel::LL_Info, "code: %d, headID: %d, assignment size: %d\n", code, *(reinterpret_cast<int*>(headPointer)), assignment.size());
+                        LOG(Helper::LogLevel::LL_Info, "ScanNum: %d, SentNum: %d, CurrentAssignNum: %d, ProcessingAssignment: %d\n", scanNum, sentAssignment, currentAssignmentID, i);
+                        exit(1);
+                    }
+                    if (code == 0) {
+                        // insert
+                        uint8_t* headPointer = postingP + sizeof(char);
+                        int32_t headID = *(reinterpret_cast<int*>(headPointer));
+                        int32_t vid = *(reinterpret_cast<int*>(headPointer + sizeof(int)));
+                        if (m_deletedID.Contains(vid)) {
+                            continue;
+                        }
+                        if (newPart.find(headID) == newPart.end()) {
+                            newPart[headID] = new std::string(Helper::Serialize<uint8_t>(headPointer + sizeof(int), m_vectorSize + sizeof(int)));
+                        } else {
+                            *newPart[headID] += Helper::Serialize<uint8_t>(headPointer + sizeof(int), m_vectorSize + sizeof(int));
+                        }
+                    } else {
+                        // delete
+                        uint8_t* vectorPointer = postingP + sizeof(char);
+                        int VID = *(reinterpret_cast<int*>(vectorPointer));
+                        //LOG(Helper::LogLevel::LL_Info, "Scanner: delete: %d\n", VID);
+                        m_deletedID.Insert(VID);
+                    }
+                }
+
+                for (auto iter = newPart.begin(); iter != newPart.end(); iter++) {
+                    int appendNum = (*iter->second).size() / (m_vectorSize + sizeof(int));
+                    m_currerntTaskNum++;
+                    AppendAsync(iter->first, appendNum, iter->second);
+                }
+                
+                sentAssignment = i;
+                if (noAssignment) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                } else {
+                    //LOG(Helper::LogLevel::LL_Info, "Process Append Assignments: %d, Delete Assignments: %d\n", newPart.size(), deletedVector.size());
+                }
+            }
+        }
     }
 }
 
