@@ -39,6 +39,46 @@ namespace SPTAG
         template<typename T>
         class Index : public VectorIndex
         {
+            class AppendAsyncJob : public Helper::ThreadPool::Job
+            {
+            private:
+                Index* m_index;
+                SizeType headID;
+                int appendNum;
+                std::string* appendPosting;
+                std::function<void()> m_callback;
+            public:
+                AppendAsyncJob(Index* m_index, SizeType headID, int appendNum, std::string* appendPosting, std::function<void()> p_callback)
+                    : m_index(m_index), headID(headID), appendNum(appendNum), appendPosting(appendPosting), m_callback(p_callback) {}
+
+                ~AppendAsyncJob() {}
+
+                inline void exec() {
+                    m_index->ProcessAsyncAppend(headID, appendNum, appendPosting, std::move(m_callback));
+                }
+            };
+
+            class ReassignAsyncJob : public SPTAG::Helper::ThreadPool::Job
+            {
+            private:
+                Index* m_index;
+                COMMON::QueryResultSet<ValueType>* p_queryResults;
+                SizeType VID;
+                std::pair<SizeType, SizeType> newHeads;
+                bool check;
+                SizeType oldVID;
+                std::function<void()> m_callback;
+            public:
+                ReassignAsyncJob(Index* m_index, COMMON::QueryResultSet<ValueType>* p_queryResults, SizeType VID, std::pair<SizeType, SizeType> newHeads, 
+                                bool check, SizeType oldVID, std::function<void()> p_callback)
+                    : m_index(m_index), p_queryResults(p_queryResults), VID(VID), newHeads(newHeads), check(check), oldVID(oldVID), m_callback(p_callback) {}
+
+                ~ReassignAsyncJob() {}
+
+                inline void exec() {
+                    m_index->ProcessAsyncReassign(p_queryResults, VID, newHeads, check, oldVID, std::move(m_callback));
+                }
+            };
         private:
             std::shared_ptr<VectorIndex> m_index;
             std::shared_ptr<std::uint64_t> m_vectorTranslateMap;
@@ -141,6 +181,19 @@ namespace SPTAG
             bool SelectHead(std::shared_ptr<Helper::VectorSetReader>& p_reader);
 
             ErrorCode BuildIndexInternal(std::shared_ptr<Helper::VectorSetReader>& p_reader);
+            
+            inline void AppendAsync(SizeType headID, int appendNum, std::string* appendPosting, std::function<void()> p_callback=nullptr)
+            {
+                AppendAsyncJob* curJob = new AppendAsyncJob(this, headID, appendNum, appendPosting, p_callback);
+                m_appendThreadPool->add(curJob);
+            }
+
+            inline void ReassignAsync(COMMON::QueryResultSet<ValueType>* p_queryResults, SizeType VID, std::pair<SizeType, SizeType> newHeads, bool check = false, 
+                    SizeType oldVID = 0, std::function<void()> p_callback=nullptr)
+            {
+                ReassignAsyncJob* curJob = new ReassignAsyncJob(this, p_queryResults, VID, newHeads, check, oldVID, p_callback);
+                m_reassignThreadPool->add(curJob);
+            }
         };
     } // namespace SPANN
 } // namespace SPTAG
