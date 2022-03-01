@@ -6,10 +6,9 @@ namespace SPTAG {
         class PersistentBuffer
         {
         public:
-            PersistentBuffer(std::string& fileName)
+            PersistentBuffer(std::string& fileName, std::shared_ptr<Helper::KeyValueIO> db) : db(db), m_updateID(0)
             {
                 db->Initialize(fileName.c_str());
-                m_updateID.store(0);
             }
 
             ~PersistentBuffer() {}
