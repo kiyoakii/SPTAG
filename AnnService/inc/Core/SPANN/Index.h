@@ -22,6 +22,7 @@
 
 #include "IExtraSearcher.h"
 #include "Options.h"
+#include "PersistentBuffer.h"
 
 #include <functional>
 #include <shared_mutex>
@@ -85,6 +86,10 @@ namespace SPTAG
             private:
                 std::atomic_uint32_t currentJobs{0};
             public:
+                ThreadPool() : Helper::ThreadPool() {}
+                
+                ~ThreadPool() {}
+                
                 void init(int numberOfThreads = 1)
                 {
                     m_abort.SetAbort(false);
@@ -128,7 +133,8 @@ namespace SPTAG
                 std::shared_ptr<ThreadPool> reassignThreadPool;
 
             public:
-                Dispatcher(std::shared_ptr<PersistentBuffer> pm, std::size_t batch) : persistentBuffer(pm), batch(batch) {}
+                Dispatcher(std::shared_ptr<PersistentBuffer> pb, std::size_t batch, std::shared_ptr<ThreadPool> append, std::shared_ptr<ThreadPool> reassign) 
+                : persistentBuffer(pb), batch(batch), appendThreadPool(append), reassignThreadPool(reassign) {}
 
                 ~Dispatcher() { running = false; t.join(); }
 
@@ -138,7 +144,12 @@ namespace SPTAG
             
                 inline void stop() { running = false; }
 
-                inline bool allFinished() { return sentAssignment == finishedAssignment; }
+                inline bool allFinished()
+                { 
+                    return sentAssignment == persistentBuffer->GetCurrentAssignmentID() 
+                            && appendThreadPool->runningJobs() == 0 
+                            && reassignThreadPool->runningJobs() == 0;
+                }
             }
         private:
             std::shared_ptr<VectorIndex> m_index;
@@ -153,6 +164,7 @@ namespace SPTAG
             float(*m_fComputeDistance)(const T* pX, const T* pY, DimensionType length);
             int m_iBaseSquare;
 
+            std::shared_ptr<Dispatcher> m_dispatcher;
         public:
             Index()
             {
