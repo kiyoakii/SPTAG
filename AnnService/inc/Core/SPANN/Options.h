@@ -89,6 +89,7 @@ namespace SPTAG {
             std::string m_tmpdir;
             float m_rngFactor;
             int m_samples;
+            std::string m_fullDeletedIDFile;   
 
             // GPU building
             int m_gpuSSDNumTrees;

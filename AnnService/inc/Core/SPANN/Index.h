@@ -165,6 +165,7 @@ namespace SPTAG
             int m_iBaseSquare;
 
             std::shared_ptr<Dispatcher> m_dispatcher;
+            COMMON::Labelset m_deletedID;
         public:
             Index()
             {

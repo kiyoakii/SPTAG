@@ -82,6 +82,7 @@ namespace SPTAG
             m_index->UpdateIndex();
             m_index->SetReady(true);
 
+            // TODO: Choose an extra searcher based on config
             m_extraSearcher.reset(new ExtraFullGraphSearcher<T>());
             if (!m_extraSearcher->LoadIndex(m_options)) return ErrorCode::Fail;
 
@@ -91,6 +92,8 @@ namespace SPTAG
             omp_set_num_threads(m_options.m_iSSDNumberOfThreads);
             m_workSpacePool.reset(new COMMON::WorkSpacePool<ExtraWorkSpace>());
             m_workSpacePool->Init(m_options.m_iSSDNumberOfThreads, m_options.m_maxCheck, m_options.m_hashExp, m_options.m_searchInternalResultNum, min(m_options.m_postingPageLimit, m_options.m_searchPostingPageLimit + 1) << PageSizeEx);
+
+            m_deletedID.Load(m_options.m_fullDeletedIDFile, m_iDataBlockSize, m_iDataCapacity);
             return ErrorCode::Success;
         }
 

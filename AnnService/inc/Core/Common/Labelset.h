@@ -51,7 +51,7 @@ namespace SPTAG
                 return m_data.Save(output);
             }
 
-            inline ErrorCode Save(std::string filename)
+            inline ErrorCode Save(const std::string& filename)
             {
                 LOG(Helper::LogLevel::LL_Info, "Save %s To %s\n", m_data.Name().c_str(), filename.c_str());
                 auto ptr = f_createIO();
@@ -67,7 +67,7 @@ namespace SPTAG
                 return m_data.Load(input, blockSize, capacity);
             }
 
-            inline ErrorCode Load(std::string filename, SizeType blockSize, SizeType capacity)
+            inline ErrorCode Load(const std::string& filename, SizeType blockSize, SizeType capacity)
             {
                 LOG(Helper::LogLevel::LL_Info, "Load %s From %s\n", m_data.Name().c_str(), filename.c_str());
                 auto ptr = f_createIO();
