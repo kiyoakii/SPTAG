@@ -134,6 +134,8 @@ public:
 
     virtual ErrorCode RefineIndex(const std::vector<std::shared_ptr<Helper::DiskPriorityIO>>& p_indexStreams, IAbortOperation* p_abort) = 0;
 
+    virtual bool CheckIdDeleted(const SizeType& p_id) = 0;
+
     inline bool HasMetaMapping() const { return nullptr != m_pMetaToVec; }
 
     inline SizeType GetMetaMapping(std::string& meta) const;

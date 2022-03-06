@@ -699,6 +699,75 @@ namespace SPTAG
             }
         }
 
+        // Add insert entry to persistent buffer
+        template <typename T>
+        ErrorCode Index<T>::AddIndex(const void *p_data, SizeType p_vectorNum, DimensionType p_dimension,
+                                     std::shared_ptr<MetadataSet> p_metadataSet, bool p_withMetaIndex,
+                                     bool p_normalized)
+         {
+            if (m_options.m_indexAlgoType != IndexAlgoType::BKT || m_extraSearcher == nullptr) {
+                LOG(Helper::LogLevel::LL_Error, "Only Support BKT Update");
+                return ErrorCode::Fail;
+            }
+
+            std::vector<COMMON::QueryResultSet<T>> p_queryResults;
+            for (int k = 0; k < p_vectorNum; k++)
+            {
+                p_queryResults[k].SetTarget(reinterpret_cast<const T*>(reinterpret_cast<const char*>(p_data) + k * p_dimension));
+                p_queryResults[k].Reset();
+                auto VID = m_vectorNum++;
+                {
+                    std::lock_guard<std::mutex> lock(m_dataAddLock);
+                    m_deletedID.AddBatch(1);
+                    m_reassignedID.AddBatch(1);
+                }
+
+                m_index->SearchIndex(p_queryResults[k]);
+
+                int replicaCount = 0;
+                BasicResult* queryResults = p_queryResults[k].GetResults();
+                std::vector<EdgeInsert> selections(static_cast<size_t>(m_options.m_replicaCount));
+                for (int i = 0; i < p_queryResults[k].GetResultNum() && replicaCount < m_options.m_replicaCount; ++i)
+                {
+                    if (queryResults[i].VID == -1) {
+                        break;
+                    }
+                    // RNG Check.
+                    bool rngAccpeted = true;
+                    for (int j = 0; j < replicaCount; ++j)
+                    {
+                        float nnDist = m_index->ComputeDistance(m_index->GetSample(queryResults[i].VID),
+                                                                m_index->GetSample(selections[j].headID));
+                        if (nnDist <= queryResults[i].Dist)
+                        {
+                            rngAccpeted = false;
+                            break;
+                        }
+                    }
+                    if (!rngAccpeted)
+                        continue;
+                    selections[replicaCount].headID = queryResults[i].VID;
+                    selections[replicaCount].fullID = VID;
+                    selections[replicaCount].distance = queryResults[i].Dist;
+                    selections[replicaCount].order = (char)replicaCount;
+                    ++replicaCount;
+                }
+
+                char insertCode = 0;
+                SizeType assignID = 0;
+                for (int i = 0; i < replicaCount; i++)
+                {
+                    std::string assignment;
+                    assignment += Helper::Convert::Serialize<char>(&insertCode, 1);
+                    assignment += Helper::Convert::Serialize<int>(&selections[i].headID, 1);
+                    assignment += Helper::Convert::Serialize<int>(&VID, 1);
+                    assignment += Helper::Convert::Serialize<T>(p_queryResults[k].GetTarget(), m_options.m_dim);
+                    assignID = m_persistentBuffer->PutAssignment(assignment);
+                }
+            }
+
+        }
+
         // Add delete entry to persistent buffer
         template <typename T>
         ErrorCode Index<T>::DeleteIndex(const SizeType &p_id)
