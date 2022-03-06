@@ -699,6 +699,26 @@ namespace SPTAG
             }
         }
 
+        // Add delete entry to persistent buffer
+        template <typename T>
+        ErrorCode Index<T>::DeleteIndex(const SizeType &p_id)
+        {
+            // I think we should just delete instantly
+            if (m_options.m_addDeleteTaskToPM) {
+                char deleteCode = 1;
+                int VID = p_id;
+                std::string assignment;
+                assignment += Helper::Convert::Serialize<char>(&deleteCode, 1);
+                assignment += Helper::Convert::Serialize<int>(&VID, 1);
+                m_persistentBuffer->PutAssignment(assignment);
+            } else {
+                std::lock_guard<std::mutex> lock(m_dataAddLock);
+                m_deletedID.AddBatch(1);
+                m_deletedID.Insert(p_id);
+            }
+            return ErrorCode::Success;
+        }
+
         template <typename T>
         void SPTAG::SPANN::Index<T>::Dispatcher::dispatch()
         {

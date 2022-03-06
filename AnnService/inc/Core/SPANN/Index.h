@@ -245,12 +245,13 @@ namespace SPTAG
             inline const void* GetSample(const SizeType idx) const { return nullptr; }
             inline SizeType GetNumDeleted() const { return 0; }
             inline bool NeedRefine() const { return false; }
+            inline bool CheckIdDeleted(const SizeType& p_id) { return m_deletedID.Contains(p_id); }
 
             ErrorCode RefineSearchIndex(QueryResult &p_query, bool p_searchDeleted = false) const { return ErrorCode::Undefined; }
             ErrorCode SearchTree(QueryResult& p_query) const { return ErrorCode::Undefined; }
             ErrorCode AddIndex(const void* p_data, SizeType p_vectorNum, DimensionType p_dimension, std::shared_ptr<MetadataSet> p_metadataSet, bool p_withMetaIndex = false, bool p_normalized = false) { return ErrorCode::Undefined; }
             ErrorCode DeleteIndex(const void* p_vectors, SizeType p_vectorNum) { return ErrorCode::Undefined; }
-            ErrorCode DeleteIndex(const SizeType& p_id) { return ErrorCode::Undefined; }
+            ErrorCode DeleteIndex(const SizeType& p_id);
             ErrorCode RefineIndex(const std::vector<std::shared_ptr<Helper::DiskPriorityIO>>& p_indexStreams, IAbortOperation* p_abort) { return ErrorCode::Undefined; }
             ErrorCode RefineIndex(std::shared_ptr<VectorIndex>& p_newIndex) { return ErrorCode::Undefined; }
         private:
@@ -267,6 +268,9 @@ namespace SPTAG
             ErrorCode ReAssign(SizeType headID, std::vector<std::string>& postingLists, std::pair<SizeType, SizeType> newHeadsID);
             void ReAssignVectors(std::map<SizeType, T*>& reAssignVectors, std::pair<SizeType, SizeType> newHeadsID, bool check = false);
             void ReAssignUpdate(std::string*, SizeType VID, std::pair<SizeType, SizeType>, bool check = false, SizeType oldVID = 0);
+            std::shared_ptr<COMMON::Labelset> DeletedID() {return std::make_shared<COMMON::Labelset>(m_deletedID);}
+
+        public:
             inline void AppendAsync(SizeType headID, int appendNum, std::string* appendPosting, std::function<void()> p_callback=nullptr)
             {
                 AppendAsyncJob* curJob = new AppendAsyncJob(this, headID, appendNum, std::make_unique<std::string>(appendPosting), p_callback);
