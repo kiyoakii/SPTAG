@@ -99,7 +99,7 @@ namespace SPTAG
         class ExtraRocksDBController : public IExtraSearcher
         {
         private:
-            Helper::RocksDBIO db;
+            RocksDBIO db;
         public:
             ExtraRocksDBController(const char* dbPath) { db.Initialize(dbPath); }
 
@@ -861,7 +861,7 @@ namespace SPTAG
                     for (int j = 0; j < p_postingListSizes[id]; ++j)
                     {
                         auto s = db.Put(selectIdx, i32Val, p_fullVectors->GetVector(i32Val), p_fullVectors->PerVectorDataSize());
-                        if (s != rocksdb::Status::OK()) {
+                        if (s != ErrorCode::Success) {
                             LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
                             exit(1);
                         }
