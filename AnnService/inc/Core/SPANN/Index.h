@@ -43,19 +43,22 @@ namespace SPTAG
             class AppendAsyncJob : public Helper::ThreadPool::Job
             {
             private:
-                Index* m_index;
+                std::shared_ptr<Index> m_index;
                 SizeType headID;
                 int appendNum;
-                std::string* appendPosting;
+                std::unique_ptr<std::string> appendPosting;
                 std::function<void()> m_callback;
             public:
-                AppendAsyncJob(Index* m_index, SizeType headID, int appendNum, std::string* appendPosting, std::function<void()> p_callback)
-                    : m_index(m_index), headID(headID), appendNum(appendNum), appendPosting(appendPosting), m_callback(p_callback) {}
+                AppendAsyncJob(std::shared_ptr<Index> m_index, SizeType headID, int appendNum, std::unique_ptr<std::string> appendPosting, std::function<void()> p_callback)
+                        : m_index(m_index), headID(headID), appendNum(appendNum), appendPosting(std::move(appendPosting)), m_callback(p_callback) {}
 
                 ~AppendAsyncJob() {}
 
                 inline void exec() {
-                    m_index->ProcessAsyncAppend(headID, appendNum, appendPosting, std::move(m_callback));
+                    m_index->Append(headID, appendNum, appendPosting.get());
+                    if (m_callback != nullptr) {
+                        m_callback();
+                    }
                 }
             };
 
@@ -256,9 +259,10 @@ namespace SPTAG
 
             ErrorCode BuildIndexInternal(std::shared_ptr<Helper::VectorSetReader>& p_reader);
             
+            ErrorCode Append(SizeType headID, int appendNum, std::string* appendPosting, SizeType oldVID = -1);
             inline void AppendAsync(SizeType headID, int appendNum, std::string* appendPosting, std::function<void()> p_callback=nullptr)
             {
-                AppendAsyncJob* curJob = new AppendAsyncJob(this, headID, appendNum, appendPosting, p_callback);
+                AppendAsyncJob* curJob = new AppendAsyncJob(this, headID, appendNum, std::make_unique<std::string>(appendPosting), p_callback);
                 m_appendThreadPool->add(curJob);
             }
 
