@@ -126,36 +126,37 @@ namespace SPTAG
             class Dispatcher
             {
             private:
-                std::thread t;                
-                
+                std::thread t;
+
                 std::size_t batch;
                 std::atomic_bool running{false};
                 std::atomic_uint32_t sentAssignment{0};
-				// std::atomic_uint32_t finishedAssignment{0};
 
-                std::shared_ptr<PersistentBuffer> persistentBuffer;
+                std::shared_ptr<Index> m_index;
+                std::shared_ptr<PersistentBuffer> m_persistentBuffer;
                 std::shared_ptr<ThreadPool> appendThreadPool;
                 std::shared_ptr<ThreadPool> reassignThreadPool;
 
             public:
-                Dispatcher(std::shared_ptr<PersistentBuffer> pb, std::size_t batch, std::shared_ptr<ThreadPool> append, std::shared_ptr<ThreadPool> reassign) 
-                : persistentBuffer(pb), batch(batch), appendThreadPool(append), reassignThreadPool(reassign) {}
+                Dispatcher(std::shared_ptr<PersistentBuffer> pb, std::size_t batch, std::shared_ptr<ThreadPool> append, std::shared_ptr<ThreadPool> reassign)
+                        : m_persistentBuffer(pb), batch(batch), appendThreadPool(append), reassignThreadPool(reassign) {}
 
                 ~Dispatcher() { running = false; t.join(); }
 
                 void dispatch();
-                
-                inline void run() { running = true; t = std::thread(&dispatch, self) }
-            
+
+                inline void run() { running = true; t = std::thread(&Dispatcher::dispatch, this); }
+
                 inline void stop() { running = false; }
 
                 inline bool allFinished()
-                { 
-                    return sentAssignment == persistentBuffer->GetCurrentAssignmentID() 
-                            && appendThreadPool->runningJobs() == 0 
-                            && reassignThreadPool->runningJobs() == 0;
+                {
+                    return sentAssignment == m_persistentBuffer->GetCurrentAssignmentID()
+                           && appendThreadPool->runningJobs() == 0
+                           && reassignThreadPool->runningJobs() == 0;
                 }
-            }
+            };
+
         private:
             std::shared_ptr<VectorIndex> m_index;
             std::shared_ptr<std::uint64_t> m_vectorTranslateMap;

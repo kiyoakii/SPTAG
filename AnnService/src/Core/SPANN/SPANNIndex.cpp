@@ -700,11 +700,11 @@ namespace SPTAG
         }
 
         template <typename T>
-        void SPTAG::SPANN::Index<T>::Dispatcher::dispatch() 
+        void SPTAG::SPANN::Index<T>::Dispatcher::dispatch()
         {
-            while (running.test_and_set()) {
+            while (running) {
                 bool noAssignment = true;
-                int currentAssignmentID = persistentBuffer->GetCurrentAssignmentID();
+                int currentAssignmentID = m_persistentBuffer->GetCurrentAssignmentID();
                 int scanNum = std::min<int>(sentAssignment + batch, currentAssignmentID);
                 if (scanNum != sentAssignment) {
                     noAssignment = false;
@@ -715,8 +715,9 @@ namespace SPTAG
                 int i;
                 for (i = sentAssignment; i < scanNum; i++) {
                     std::string assignment;
-                    persistentBuffer->GetAssignment(i, &assignment);
-                    if(assignment.size() == 0) break;
+                    m_persistentBuffer->GetAssignment(i, &assignment);
+                    if(assignment.size() == 0)
+                        break;
                     uint8_t* postingP = reinterpret_cast<uint8_t*>(&assignment.front());
                     char code = *(reinterpret_cast<char*>(postingP));
                     if (assignment.size() == 0)
@@ -724,7 +725,7 @@ namespace SPTAG
                         uint8_t* headPointer = postingP + sizeof(char);
                         LOG(Helper::LogLevel::LL_Info, "Error\n");
                         LOG(Helper::LogLevel::LL_Info, "code: %d, headID: %d, assignment size: %d\n", code, *(reinterpret_cast<int*>(headPointer)), assignment.size());
-                        LOG(Helper::LogLevel::LL_Info, "ScanNum: %d, SentNum: %d, CurrentAssignNum: %d, ProcessingAssignment: %d\n", scanNum, sentAssignment, currentAssignmentID, i);
+                        LOG(Helper::LogLevel::LL_Info, "ScanNum: %d, SentNum: %d, CurrentAssignNum: %d, ProcessingAssignment: %d\n", scanNum, sentAssignment.load(), currentAssignmentID, i);
                         exit(1);
                     }
                     if (code == 0) {
@@ -732,29 +733,28 @@ namespace SPTAG
                         uint8_t* headPointer = postingP + sizeof(char);
                         int32_t headID = *(reinterpret_cast<int*>(headPointer));
                         int32_t vid = *(reinterpret_cast<int*>(headPointer + sizeof(int)));
-                        if (m_deletedID.Contains(vid)) {
+                        if (m_index->CheckIdDeleted(vid)) {
                             continue;
                         }
                         if (newPart.find(headID) == newPart.end()) {
-                            newPart[headID] = new std::string(Helper::Serialize<uint8_t>(headPointer + sizeof(int), m_vectorSize + sizeof(int)));
+                            newPart[headID] = new std::string(Helper::Convert::Serialize<uint8_t>(headPointer + sizeof(int), m_index->GetValueSize() + sizeof(int)));
                         } else {
-                            *newPart[headID] += Helper::Serialize<uint8_t>(headPointer + sizeof(int), m_vectorSize + sizeof(int));
+                            *newPart[headID] += Helper::Convert::Serialize<uint8_t>(headPointer + sizeof(int), m_index->GetValueSize() + sizeof(int));
                         }
                     } else {
                         // delete
                         uint8_t* vectorPointer = postingP + sizeof(char);
                         int VID = *(reinterpret_cast<int*>(vectorPointer));
                         //LOG(Helper::LogLevel::LL_Info, "Scanner: delete: %d\n", VID);
-                        m_deletedID.Insert(VID);
+                        m_index->DeleteIndex(VID);
                     }
                 }
 
                 for (auto iter = newPart.begin(); iter != newPart.end(); iter++) {
-                    int appendNum = (*iter->second).size() / (m_vectorSize + sizeof(int));
-                    m_currerntTaskNum++;
-                    AppendAsync(iter->first, appendNum, iter->second);
+                    int appendNum = (*iter->second).size() / (m_index->GetValueSize() + sizeof(int));
+                    m_index->AppendAsync(iter->first, appendNum, iter->second);
                 }
-                
+
                 sentAssignment = i;
                 if (noAssignment) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
