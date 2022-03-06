@@ -65,22 +65,24 @@ namespace SPTAG
             class ReassignAsyncJob : public SPTAG::Helper::ThreadPool::Job
             {
             private:
-                Index* m_index;
-                COMMON::QueryResultSet<ValueType>* p_queryResults;
+                std::shared_ptr<Index> m_index;
+                std::unique_ptr<std::string> vectorContain;
                 SizeType VID;
                 std::pair<SizeType, SizeType> newHeads;
                 bool check;
                 SizeType oldVID;
                 std::function<void()> m_callback;
             public:
-                ReassignAsyncJob(Index* m_index, COMMON::QueryResultSet<ValueType>* p_queryResults, SizeType VID, std::pair<SizeType, SizeType> newHeads, 
-                                bool check, SizeType oldVID, std::function<void()> p_callback)
-                    : m_index(m_index), p_queryResults(p_queryResults), VID(VID), newHeads(newHeads), check(check), oldVID(oldVID), m_callback(p_callback) {}
+                ReassignAsyncJob(std::shared_ptr<Index> m_index,
+                                 std::unique_ptr<std::string> vectorContain, SizeType VID, std::pair<SizeType, SizeType> newHeads, bool check,
+                                 SizeType oldVID, std::function<void()> p_callback)
+                        : m_index(m_index),
+                          vectorContain(std::move(vectorContain)), VID(VID), newHeads(newHeads), check(check), oldVID(oldVID), m_callback(p_callback) {}
 
                 ~ReassignAsyncJob() {}
 
-                inline void exec() {
-                    m_index->ProcessAsyncReassign(p_queryResults, VID, newHeads, check, oldVID, std::move(m_callback));
+                void exec() {
+                    m_index->ProcessAsyncReassign(std::move(vectorContain), VID, newHeads, check, oldVID, std::move(m_callback));
                 }
             };
 
@@ -260,18 +262,25 @@ namespace SPTAG
             ErrorCode BuildIndexInternal(std::shared_ptr<Helper::VectorSetReader>& p_reader);
             
             ErrorCode Append(SizeType headID, int appendNum, std::string* appendPosting, SizeType oldVID = -1);
+            ErrorCode Split(const SizeType headID, int appendNum, std::string& appendPosting);
+            ErrorCode ReAssign(SizeType headID, std::vector<std::string>& postingLists, std::pair<SizeType, SizeType> newHeadsID);
+            void ReAssignVectors(std::map<SizeType, T*>& reAssignVectors, std::pair<SizeType, SizeType> newHeadsID, bool check = false);
+            void ReAssignUpdate(std::string*, SizeType VID, std::pair<SizeType, SizeType>, bool check = false, SizeType oldVID = 0);
             inline void AppendAsync(SizeType headID, int appendNum, std::string* appendPosting, std::function<void()> p_callback=nullptr)
             {
                 AppendAsyncJob* curJob = new AppendAsyncJob(this, headID, appendNum, std::make_unique<std::string>(appendPosting), p_callback);
                 m_appendThreadPool->add(curJob);
             }
 
-            inline void ReassignAsync(COMMON::QueryResultSet<ValueType>* p_queryResults, SizeType VID, std::pair<SizeType, SizeType> newHeads, bool check = false, 
-                    SizeType oldVID = 0, std::function<void()> p_callback=nullptr)
+            inline void ReassignAsync(COMMON::QueryResultSet<T>* p_queryResults, SizeType VID, std::pair<SizeType, SizeType> newHeads, bool check = false,
+                                      SizeType oldVID = 0, std::function<void()> p_callback=nullptr)
             {
                 ReassignAsyncJob* curJob = new ReassignAsyncJob(this, p_queryResults, VID, newHeads, check, oldVID, p_callback);
                 m_reassignThreadPool->add(curJob);
             }
+
+            void ProcessAsyncReassign(std::unique_ptr<std::string> vectorContain, SizeType VID, std::pair<SizeType, SizeType> newHeads, bool check,
+                                      SizeType oldVID, std::function<void()> p_callback);
         };
     } // namespace SPANN
 } // namespace SPTAG

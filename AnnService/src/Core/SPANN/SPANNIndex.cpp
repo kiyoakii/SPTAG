@@ -4,6 +4,7 @@
 #include "inc/Core/SPANN/Index.h"
 #include "inc/Helper/VectorSetReaders/MemoryReader.h"
 #include "inc/Core/SPANN/ExtraFullGraphSearcher.h"
+#include <shared_mutex>
 #include <chrono>
 
 #pragma warning(disable:4242)  // '=' : conversion from 'int' to 'short', possible loss of data
@@ -760,6 +761,25 @@ namespace SPTAG
                 } else {
                     //LOG(Helper::LogLevel::LL_Info, "Process Append Assignments: %d, Delete Assignments: %d\n", newPart.size(), deletedVector.size());
                 }
+            }
+        }
+        template <typename T>
+        void SPTAG::SPANN::Index<T>::ProcessAsyncReassign(std::unique_ptr<std::string> vectorContain, SizeType VID, std::pair<SizeType, SizeType> newHeads, bool check,
+                                                          SizeType oldVID, std::function<void()> p_callback)
+        {
+            //LOG(Helper::LogLevel::LL_Info, "ReassignID: %d, newID: %d\n", oldVID, VID);
+
+            if (m_reassignedID.Contains(oldVID)) {
+                m_deletedID.Insert(VID);
+                return;
+            }
+
+            m_reassignedID.Insert(oldVID);
+
+            ReAssignUpdate(vectorContain.get(), VID, newHeads, check, oldVID);
+
+            if (p_callback != nullptr) {
+                p_callback();
             }
         }
     }
