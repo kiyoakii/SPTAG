@@ -89,7 +89,7 @@ namespace SPTAG {
             std::string m_tmpdir;
             float m_rngFactor;
             int m_samples;
-            std::string m_fullDeletedIDFile;   
+            std::string m_fullDeletedIDFile;
 
             // GPU building
             int m_gpuSSDNumTrees;
@@ -114,6 +114,11 @@ namespace SPTAG {
             int m_debugBuildInternalResultNum;
             bool m_enableADC;
             int m_iotimeout;
+
+            // Updating
+            int m_postingVectorLimit;
+            bool m_disableReassign;
+            bool m_addDeleteTaskToPM;
 
             Options() {
 #define DefineBasicParameter(VarName, VarType, DefaultValue, RepresentStr) \
