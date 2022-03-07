@@ -491,6 +491,7 @@ namespace SPTAG
             }
 
             virtual ErrorCode AppendPosting(SizeType headID, const std::string& appendPosting) { return ErrorCode::Undefined; }
+            virtual SizeType  GetIndexSize() { return -1; }
         private:
             struct ListInfo
             {

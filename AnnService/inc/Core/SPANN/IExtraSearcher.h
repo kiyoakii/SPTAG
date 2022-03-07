@@ -178,6 +178,7 @@ namespace SPTAG {
                 Options& p_opt) = 0;
 
             virtual ErrorCode AppendPosting(SizeType headID, const std::string& appendPosting);
+            virtual SizeType  GetIndexSize() = 0;
         };
     } // SPANN
 } // SPTAG

@@ -140,6 +140,7 @@ namespace SPTAG
         {
         private:
             RocksDBIO db;
+            std::atomic_uint64_t m_postingNum;
         public:
             ExtraRocksDBController(const char* dbPath) { db.Initialize(dbPath); }
 
@@ -538,6 +539,7 @@ namespace SPTAG
             virtual ErrorCode AppendPosting(SizeType headID, const std::string& appendPosting) {
                 db.Merge(headID, appendPosting);
             }
+            virtual SizeType  GetIndexSize() { return m_postingNum; }
         private:
             struct ListInfo
             {
