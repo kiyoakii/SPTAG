@@ -157,10 +157,22 @@ namespace SPTAG
                 }
             };
 
+            struct EdgeInsert
+            {
+                EdgeInsert() : headID(INT64_MAX), fullID(INT64_MAX), distance(INT64_MAX), order(0) {}
+                uint64_t headID;
+                uint64_t fullID;
+                float distance;
+                char order;
+            };
+
         private:
             std::shared_ptr<VectorIndex> m_index;
             std::shared_ptr<std::uint64_t> m_vectorTranslateMap;
             std::unordered_map<std::string, std::string> m_headParameters;
+            std::unique_ptr<std::shared_mutex[]> m_rwLocks;
+            std::unique_ptr<std::atomic_uint32_t[]> m_postingSizes;
+            std::atomic_uint64_t m_vectorNum{0};
 
             std::shared_ptr<IExtraSearcher> m_extraSearcher;
             std::unique_ptr<COMMON::WorkSpacePool<ExtraWorkSpace>> m_workSpacePool;
@@ -171,7 +183,19 @@ namespace SPTAG
             int m_iBaseSquare;
 
             std::shared_ptr<Dispatcher> m_dispatcher;
+            std::shared_ptr<PersistentBuffer> m_persistentBuffer;
+            std::unique_ptr<Helper::ThreadPool> m_threadPool;
+            std::unique_ptr<ThreadPool> m_appendThreadPool;
+            std::unique_ptr<ThreadPool> m_reassignThreadPool;
+
             COMMON::Labelset m_deletedID;
+            COMMON::Labelset m_reassignedID;
+            std::atomic_uint32_t m_headMiss{0};
+            uint32_t m_appendTaskNum{0};
+            uint32_t m_splitTaskNum{0};
+            uint32_t m_split_num{0};
+            std::mutex m_dataAddLock;
+
         public:
             Index()
             {
@@ -187,7 +211,8 @@ namespace SPTAG
 
             inline SizeType GetNumSamples() const { return m_options.m_vectorSize; }
             inline DimensionType GetFeatureDim() const { return m_options.m_dim; }
-        
+            inline SizeType GetValueSize() const { return m_options.m_dim * sizeof(T); }
+
             inline int GetCurrMaxCheck() const { return m_options.m_maxCheck; }
             inline int GetNumThreads() const { return m_options.m_iSSDNumberOfThreads; }
             inline DistCalcMethod GetDistCalcMethod() const { return m_options.m_distCalcMethod; }

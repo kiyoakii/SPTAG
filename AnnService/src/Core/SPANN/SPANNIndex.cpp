@@ -6,6 +6,7 @@
 #include "inc/Core/SPANN/ExtraFullGraphSearcher.h"
 #include <shared_mutex>
 #include <chrono>
+#include <random>
 
 #pragma warning(disable:4242)  // '=' : conversion from 'int' to 'short', possible loss of data
 #pragma warning(disable:4244)  // '=' : conversion from 'int' to 'short', possible loss of data
@@ -91,10 +92,21 @@ namespace SPTAG
             IOBINARY(p_indexStreams.back(), ReadBinary, sizeof(std::uint64_t) * m_index->GetNumSamples(), reinterpret_cast<char*>(m_vectorTranslateMap.get()));
 
             omp_set_num_threads(m_options.m_iSSDNumberOfThreads);
-            m_workSpacePool.reset(new COMMON::WorkSpacePool<ExtraWorkSpace>());
+            m_workSpacePool = std::make_unique<COMMON::WorkSpacePool<ExtraWorkSpace>>();
             m_workSpacePool->Init(m_options.m_iSSDNumberOfThreads, m_options.m_maxCheck, m_options.m_hashExp, m_options.m_searchInternalResultNum, min(m_options.m_postingPageLimit, m_options.m_searchPostingPageLimit + 1) << PageSizeEx);
 
             m_deletedID.Load(m_options.m_fullDeletedIDFile, m_iDataBlockSize, m_iDataCapacity);
+
+            // TODO: choose a proper size
+            m_rwLocks = std::make_unique<std::shared_mutex[]>(500000000);
+            m_postingSizes = std::make_unique<std::atomic_uint32_t[]>(500000000);
+
+            for (int idx = 0; idx < m_extraSearcher->GetIndexSize(); idx++) {
+                uint32_t tmp;
+                IOBINARY(p_indexStreams.back(), ReadBinary, sizeof(uint32_t), reinterpret_cast<char*>(&tmp));
+                m_postingSizes[idx].store(tmp);
+            }
+
             return ErrorCode::Success;
         }
 
@@ -145,6 +157,7 @@ namespace SPTAG
             if ((ret = m_index->SaveIndexData(p_indexStreams)) != ErrorCode::Success) return ret;
 
             IOBINARY(p_indexStreams.back(), WriteBinary, sizeof(std::uint64_t) * m_index->GetNumSamples(), (char*)(m_vectorTranslateMap.get()));
+            m_deletedID.Save(m_options.m_fullDeletedIDFile);
             return ErrorCode::Success;
         }
 
@@ -157,7 +170,7 @@ namespace SPTAG
 
             m_index->SearchIndex(p_query);
 
-            COMMON::QueryResultSet<T>* p_queryResults = (COMMON::QueryResultSet<T>*) & p_query;
+            auto* p_queryResults = (COMMON::QueryResultSet<T>*) & p_query;
             std::shared_ptr<ExtraWorkSpace> workSpace = nullptr;
             if (m_extraSearcher != nullptr) {
                 workSpace = m_workSpacePool->Rent();
@@ -612,8 +625,9 @@ namespace SPTAG
             m_bReady = true;
             return ErrorCode::Success;
         }
+
         template <typename T>
-        ErrorCode Index<T>::BuildIndex(bool p_normalized) 
+        ErrorCode Index<T>::BuildIndex(bool p_normalized)
         {
             SPTAG::VectorValueType valueType = SPTAG::COMMON::DistanceUtils::Quantizer ? SPTAG::VectorValueType::UInt8 : m_options.m_valueType;
             std::shared_ptr<Helper::ReaderOptions> vectorOptions(new Helper::ReaderOptions(valueType, m_options.m_dim, m_options.m_vectorType, m_options.m_vectorDelimiter, p_normalized));
@@ -653,8 +667,7 @@ namespace SPTAG
         }
 
         template <typename T>
-        ErrorCode
-            Index<T>::UpdateIndex()
+        ErrorCode Index<T>::UpdateIndex()
         {
             omp_set_num_threads(m_options.m_iSSDNumberOfThreads);
             m_index->UpdateIndex();
@@ -664,8 +677,7 @@ namespace SPTAG
         }
 
         template <typename T>
-        ErrorCode
-            Index<T>::SetParameter(const char* p_param, const char* p_value, const char* p_section)
+        ErrorCode Index<T>::SetParameter(const char* p_param, const char* p_value, const char* p_section)
         {
             if (SPTAG::Helper::StrUtils::StrEqualIgnoreCase(p_section, "BuildHead") && !SPTAG::Helper::StrUtils::StrEqualIgnoreCase(p_param, "isExecute")) {
                 if (m_index != nullptr) return m_index->SetParameter(p_param, p_value);
@@ -681,10 +693,8 @@ namespace SPTAG
             return ErrorCode::Success;
         }
 
-
         template <typename T>
-        std::string
-            Index<T>::GetParameter(const char* p_param, const char* p_section) const
+        std::string Index<T>::GetParameter(const char* p_param, const char* p_section) const
         {
             if (SPTAG::Helper::StrUtils::StrEqualIgnoreCase(p_section, "BuildHead") && !SPTAG::Helper::StrUtils::StrEqualIgnoreCase(p_param, "isExecute")) {
                 if (m_index != nullptr) return m_index->GetParameter(p_param);
@@ -841,7 +851,7 @@ namespace SPTAG
 
                 for (auto iter = newPart.begin(); iter != newPart.end(); iter++) {
                     int appendNum = (*iter->second).size() / (m_index->GetValueSize() + sizeof(int));
-                    m_index->AppendAsync(iter->first, appendNum, iter->second);
+                    m_index->AppendAsync(iter->first, appendNum, std::move(std::unique_ptr<std::string>(iter->second)));
                 }
 
                 sentAssignment = i;
