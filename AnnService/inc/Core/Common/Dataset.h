@@ -166,7 +166,7 @@ namespace SPTAG
                 return ErrorCode::Success;
             }
 
-            ErrorCode Load(constt std::string& sDataPointsFileName, SizeType blockSize, SizeType capacity)
+            ErrorCode Load(const std::string& sDataPointsFileName, SizeType blockSize, SizeType capacity)
             {
                 LOG(Helper::LogLevel::LL_Info, "Load %s From %s\n", name.c_str(), sDataPointsFileName.c_str());
                 auto ptr = f_createIO();
