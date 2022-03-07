@@ -119,6 +119,7 @@ namespace SPTAG {
             int m_postingVectorLimit;
             bool m_disableReassign;
             bool m_addDeleteTaskToPM;
+            int m_reassignK;
 
             Options() {
 #define DefineBasicParameter(VarName, VarType, DefaultValue, RepresentStr) \
