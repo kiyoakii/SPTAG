@@ -490,6 +490,7 @@ namespace SPTAG
                 return true;
             }
 
+            virtual ErrorCode AppendPosting(SizeType headID, const std::string& appendPosting) { return ErrorCode::Undefined; }
         private:
             struct ListInfo
             {

@@ -13,6 +13,7 @@
 #include "rocksdb/db.h"
 #include "rocksdb/slice.h"
 #include "rocksdb/options.h"
+#include "rocksdb/merge_operator.h"
 
 #include <map>
 #include <cmath>
@@ -81,8 +82,38 @@ namespace SPTAG
                 std::string posting(std::move(Serialize<SizeType>(&id) + Serialize<SizeType>(vector, dim)));
                 return Put(key, posting);
             }
-        
-        // TODO: add merge interfaces
+
+            class AnnMergeOperator : public rocksdb::AssociativeMergeOperator
+            {
+            public:
+                virtual bool Merge(const rocksdb::Slice& key, const rocksdb::Slice* existing_value,
+                                   const rocksdb::Slice& value, std::string* new_value,
+                                   rocksdb::Logger* logger) const override {
+                    std::string newPosting;
+                    if(existing_value)
+                    {
+                        newPosting += (*existing_value).ToString();
+                        newPosting += value.ToString();
+                    } else
+                    {
+                        newPosting += value.ToString();
+                    }
+                    *new_value = newPosting;
+                    return true;
+                }
+                virtual const char* Name() const override {
+                    return "AnnMergeOperator";
+                }
+            };
+
+            ErrorCode Merge(SizeType key, const std::string& value) {
+                auto s = db->Merge(rocksdb::WriteOptions(), Helper::Convert::Serialize<int>(&key, 1), value);
+                if (s == rocksdb::Status::OK()) {
+                    return ErrorCode::Success;
+                } else {
+                    return ErrorCode::Fail;
+                }
+            }
 
             void ForceCompaction() {
                 LOG(Helper::LogLevel::LL_Info, "Start Compaction\n");
@@ -495,6 +526,9 @@ namespace SPTAG
                 return true;
             }
 
+            virtual ErrorCode AppendPosting(SizeType headID, const std::string& appendPosting) {
+                db.Merge(headID, appendPosting);
+            }
         private:
             struct ListInfo
             {
