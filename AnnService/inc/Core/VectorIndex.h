@@ -76,6 +76,10 @@ public:
 
     virtual ErrorCode AddIndex(std::shared_ptr<VectorSet> p_vectorSet, std::shared_ptr<MetadataSet> p_metadataSet, bool p_withMetaIndex = false, bool p_normalized = false);
 
+    virtual ErrorCode AddIndexId(const void* p_data, SizeType p_vectorNum, DimensionType p_dimension, int& beginHead, int& endHead) = 0;
+
+    virtual ErrorCode AddIndexIdx(SizeType begin, SizeType end) = 0;
+
     virtual ErrorCode DeleteIndex(ByteArray p_meta);
 
     virtual ErrorCode MergeIndex(VectorIndex* p_addindex, int p_threadnum, IAbortOperation* p_abort);
