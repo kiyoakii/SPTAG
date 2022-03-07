@@ -8,6 +8,7 @@
 #include <fstream>
 #include <string.h>
 #include <memory>
+#include "../Core/Common.h"
 
 namespace SPTAG
 {
@@ -272,6 +273,8 @@ namespace SPTAG
             virtual ErrorCode Put(SizeType key, const std::string& value) = 0;
 
             virtual ErrorCode Put(SizeType key, SizeType id, const void* vector, SizeType dim) = 0;
+
+            virtual ErrorCode Delete(SizeType key) = 0;
         };
    } // namespace Helper
 } // namespace SPTAG

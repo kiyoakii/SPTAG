@@ -115,6 +115,15 @@ namespace SPTAG
                 }
             }
 
+            ErrorCode Delete(SizeType key) {
+                auto s = db->Delete(rocksdb::WriteOptions(), Helper::Convert::Serialize<int>(&key, 1));
+                if (s == rocksdb::Status::OK()) {
+                    return ErrorCode::Success;
+                } else {
+                    return ErrorCode::Fail;
+                }
+            }
+
             void ForceCompaction() {
                 LOG(Helper::LogLevel::LL_Info, "Start Compaction\n");
                 db->CompactRange(rocksdb::CompactRangeOptions(), nullptr, nullptr);
