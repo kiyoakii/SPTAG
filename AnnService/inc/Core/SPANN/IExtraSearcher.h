@@ -177,7 +177,10 @@ namespace SPTAG {
                 std::shared_ptr<VectorIndex> p_index, 
                 Options& p_opt) = 0;
 
-            virtual ErrorCode AppendPosting(SizeType headID, const std::string& appendPosting);
+            virtual ErrorCode AppendPosting(SizeType headID, const std::string& appendPosting) = 0;
+            virtual ErrorCode SearchIndex(SizeType headID, std::string& posting) = 0;
+            virtual ErrorCode AddIndex(SizeType headID, const std::string& posting) = 0;
+            virtual ErrorCode DeleteIndex(SizeType headID) = 0;
             virtual SizeType  GetIndexSize() = 0;
         };
     } // SPANN

@@ -490,7 +490,10 @@ namespace SPTAG
                 return true;
             }
 
-            virtual ErrorCode AppendPosting(SizeType headID, const std::string& appendPosting) { return ErrorCode::Undefined; }
+            virtual ErrorCode AppendPosting(SizeType headID, const std::string& appendPosting)  { return ErrorCode::Undefined; }
+            virtual ErrorCode SearchIndex(SizeType headID, std::string& posting)                { return ErrorCode::Undefined; }
+            virtual ErrorCode AddIndex(SizeType headID, const std::string& posting)             { return ErrorCode::Undefined; }
+            virtual ErrorCode DeleteIndex(SizeType headID)                                      { return ErrorCode::Undefined; }
             virtual SizeType  GetIndexSize() { return -1; }
         private:
             struct ListInfo

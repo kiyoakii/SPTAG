@@ -539,6 +539,10 @@ namespace SPTAG
             virtual ErrorCode AppendPosting(SizeType headID, const std::string& appendPosting) {
                 db.Merge(headID, appendPosting);
             }
+
+            virtual ErrorCode SearchIndex(SizeType headID, std::string& posting) {  return db.Get(headID, &posting); }
+            virtual ErrorCode AddIndex(SizeType headID, const std::string& posting) { m_postingNum++; return db.Put(headID, posting); }
+            virtual ErrorCode DeleteIndex(SizeType headID) { m_postingNum--; return db.Delete(headID); }
             virtual SizeType  GetIndexSize() { return m_postingNum; }
         private:
             struct ListInfo
