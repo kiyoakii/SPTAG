@@ -871,7 +871,7 @@ namespace SPTAG
                     m_reassignedID.AddBatch(appendNum);
                 }
                 uint8_t* postingP = reinterpret_cast<uint8_t*>(&appendPosting->front());
-                std::pair<SizeType, SizeType> newHeads;
+                std::vector<SizeType> newHeads;
                 for (int i = 0; i < appendNum; i++)
                 {
 //                    m_currerntReassignTaskNum++;
@@ -906,7 +906,7 @@ namespace SPTAG
         }
 
         template <typename T>
-        void SPTAG::SPANN::Index<T>::ProcessAsyncReassign(std::unique_ptr<std::string> vectorContain, SizeType VID, std::pair<SizeType, SizeType> newHeads, bool check,
+        void SPTAG::SPANN::Index<T>::ProcessAsyncReassign(std::unique_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check,
                                                           SizeType oldVID, std::function<void()> p_callback)
         {
             //LOG(Helper::LogLevel::LL_Info, "ReassignID: %d, newID: %d\n", oldVID, VID);
