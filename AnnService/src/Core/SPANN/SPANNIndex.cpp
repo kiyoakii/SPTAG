@@ -852,6 +852,59 @@ namespace SPTAG
                 }
             }
         }
+
+        template <typename ValueType>
+        ErrorCode SPTAG::SPANN::Index<ValueType>::Append(SizeType headID, int appendNum, std::string* appendPosting, SizeType oldVID)
+        {
+//            TimeUtils::StopW sw;
+            m_appendTaskNum++;
+            if (appendNum == 0) {
+                LOG(Helper::LogLevel::LL_Info, "Error!, headID :%d, appendNum:%d\n", headID, appendNum);
+            }
+        checkDeleted:
+            if (!m_index->ContainSample(headID)) {
+                m_headMiss++;
+                int newVID = m_vectorNum.fetch_add(appendNum);
+                {
+                    std::lock_guard<std::mutex> lock(m_dataAddLock);
+                    m_deletedID.AddBatch(appendNum);
+                    m_reassignedID.AddBatch(appendNum);
+                }
+                uint8_t* postingP = reinterpret_cast<uint8_t*>(&appendPosting->front());
+                std::pair<SizeType, SizeType> newHeads;
+                for (int i = 0; i < appendNum; i++)
+                {
+//                    m_currerntReassignTaskNum++;
+                    uint8_t* vid = postingP +  i * (m_options.m_vectorSize + sizeof(int));
+                    std::unique_ptr<std::string> vectorContain(new std::string(Helper::Convert::Serialize<uint8_t>(vid + sizeof(int), m_options.m_vectorSize)));
+                    ReassignAsync(std::move(vectorContain), newVID + i, newHeads, false, *(reinterpret_cast<int*>(vid)));
+                }
+                return ErrorCode::Success;
+            }
+            if (m_postingSizes[headID].load() + appendNum > m_options.m_postingVectorLimit) {
+                // double splitStartTime = sw.getElapsedMs();
+                if (Split(headID, appendNum, *appendPosting) == ErrorCode::FailSplit) {
+                    goto checkDeleted;
+                }
+                // m_splitTotalCost += sw.getElapsedMs() - splitStartTime;
+            } else {
+                // double appendSsdStartTime = sw.getElapsedMs();
+                {
+                    std::shared_lock<std::shared_mutex> lock(m_rwLocks[headID]);
+                    if (!m_index->ContainSample(headID)) {
+                        goto checkDeleted;
+                    }
+                    //LOG(Helper::LogLevel::LL_Info, "Merge: headID: %d, appendNum:%d\n", headID, appendNum);
+                    m_extraSearcher->AppendPosting(headID, *appendPosting);
+                }
+                m_postingSizes[headID].fetch_add(appendNum, std::memory_order_relaxed);
+                // m_appendSsdCost += sw.getElapsedMs() - appendSsdStartTime;
+            }
+
+            // m_appendTotalCost += sw.getElapsedMs();
+            return ErrorCode::Success;
+        }
+
         template <typename T>
         void SPTAG::SPANN::Index<T>::ProcessAsyncReassign(std::unique_ptr<std::string> vectorContain, SizeType VID, std::pair<SizeType, SizeType> newHeads, bool check,
                                                           SizeType oldVID, std::function<void()> p_callback)

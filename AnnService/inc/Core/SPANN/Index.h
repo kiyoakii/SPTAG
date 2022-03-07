@@ -249,7 +249,7 @@ namespace SPTAG
 
             ErrorCode RefineSearchIndex(QueryResult &p_query, bool p_searchDeleted = false) const { return ErrorCode::Undefined; }
             ErrorCode SearchTree(QueryResult& p_query) const { return ErrorCode::Undefined; }
-            ErrorCode AddIndex(const void* p_data, SizeType p_vectorNum, DimensionType p_dimension, std::shared_ptr<MetadataSet> p_metadataSet, bool p_withMetaIndex = false, bool p_normalized = false) { return ErrorCode::Undefined; }
+            ErrorCode AddIndex(const void* p_data, SizeType p_vectorNum, DimensionType p_dimension, std::shared_ptr<MetadataSet> p_metadataSet, bool p_withMetaIndex = false, bool p_normalized = false);
             ErrorCode DeleteIndex(const void* p_vectors, SizeType p_vectorNum) { return ErrorCode::Undefined; }
             ErrorCode DeleteIndex(const SizeType& p_id);
             ErrorCode RefineIndex(const std::vector<std::shared_ptr<Helper::DiskPriorityIO>>& p_indexStreams, IAbortOperation* p_abort) { return ErrorCode::Undefined; }
@@ -262,8 +262,8 @@ namespace SPTAG
             bool SelectHead(std::shared_ptr<Helper::VectorSetReader>& p_reader);
 
             ErrorCode BuildIndexInternal(std::shared_ptr<Helper::VectorSetReader>& p_reader);
-            
-            ErrorCode Append(SizeType headID, int appendNum, std::string* appendPosting, SizeType oldVID = -1);
+
+            ErrorCode Append(SizeType headID, int appendNum, std::string* appendPosting, SizeType oldVID);
             ErrorCode Split(const SizeType headID, int appendNum, std::string& appendPosting);
             ErrorCode ReAssign(SizeType headID, std::vector<std::string>& postingLists, std::pair<SizeType, SizeType> newHeadsID);
             void ReAssignVectors(std::map<SizeType, T*>& reAssignVectors, std::pair<SizeType, SizeType> newHeadsID, bool check = false);
@@ -271,16 +271,16 @@ namespace SPTAG
             std::shared_ptr<COMMON::Labelset> DeletedID() {return std::make_shared<COMMON::Labelset>(m_deletedID);}
 
         public:
-            inline void AppendAsync(SizeType headID, int appendNum, std::string* appendPosting, std::function<void()> p_callback=nullptr)
+            inline void AppendAsync(SizeType headID, int appendNum, std::unique_ptr<std::string> appendPosting, std::function<void()> p_callback=nullptr)
             {
-                AppendAsyncJob* curJob = new AppendAsyncJob(this, headID, appendNum, std::make_unique<std::string>(appendPosting), p_callback);
+                AppendAsyncJob* curJob = new AppendAsyncJob(this, headID, appendNum, std::move(appendPosting), p_callback);
                 m_appendThreadPool->add(curJob);
             }
 
-            inline void ReassignAsync(COMMON::QueryResultSet<T>* p_queryResults, SizeType VID, std::pair<SizeType, SizeType> newHeads, bool check = false,
+            inline void ReassignAsync(std::unique_ptr<std::string> vectorContain, SizeType VID, std::pair<SizeType, SizeType> newHeads, bool check = false,
                                       SizeType oldVID = 0, std::function<void()> p_callback=nullptr)
             {
-                ReassignAsyncJob* curJob = new ReassignAsyncJob(this, p_queryResults, VID, newHeads, check, oldVID, p_callback);
+                ReassignAsyncJob* curJob = new ReassignAsyncJob(this, std::move(vectorContain), VID, newHeads, check, oldVID, p_callback);
                 m_reassignThreadPool->add(curJob);
             }
 
