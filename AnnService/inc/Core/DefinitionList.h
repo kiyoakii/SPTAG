@@ -67,7 +67,7 @@ DefineErrorCode(EmptyDiskIO, 0x0019)
 DefineErrorCode(DiskIOFail, 0x0020)
 
 // 0x1000 ~ 0x1FFF  Index Build Status
-
+DefineErrorCode(FailSplit, 0x1000)
 // 0x2000 ~ 0x2FFF  Index Serve Status
 
 // 0x3000 ~ 0x3FFF  Helper Function Status
