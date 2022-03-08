@@ -9,6 +9,7 @@
 #include "IExtraSearcher.h"
 #include "ExtraFullGraphSearcher.h"
 #include "../Common/TruthSet.h"
+#include "inc/Helper/KeyValueIO.h"
 
 #include "rocksdb/db.h"
 #include "rocksdb/slice.h"
