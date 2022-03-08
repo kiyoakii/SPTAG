@@ -44,19 +44,19 @@ namespace SPTAG
             class AppendAsyncJob : public Helper::ThreadPool::Job
             {
             private:
-                std::shared_ptr<VectorIndex> m_index;
+                VectorIndex* m_index;
                 SizeType headID;
                 int appendNum;
-                std::unique_ptr<std::string> appendPosting;
+                std::shared_ptr<std::string> appendPosting;
                 std::function<void()> m_callback;
             public:
-                AppendAsyncJob(std::shared_ptr<VectorIndex> m_index, SizeType headID, int appendNum, std::unique_ptr<std::string> appendPosting, std::function<void()> p_callback)
-                        : m_index(std::move(m_index)), headID(headID), appendNum(appendNum), appendPosting(std::move(appendPosting)), m_callback(std::move(p_callback)) {}
+                AppendAsyncJob(VectorIndex* m_index, SizeType headID, int appendNum, std::shared_ptr<std::string> appendPosting, std::function<void()> p_callback)
+                        : m_index(std::move(m_index)), headID(headID), appendNum(appendNum), appendPosting(appendPosting), m_callback(std::move(p_callback)) {}
 
                 ~AppendAsyncJob() {}
 
                 inline void exec(IAbortOperation* p_abort) override {
-                    m_index->Append(headID, appendNum, appendPosting.get());
+                    m_index->Append(headID, appendNum, appendPosting);
                     if (m_callback != nullptr) {
                         m_callback();
                     }
@@ -66,24 +66,24 @@ namespace SPTAG
             class ReassignAsyncJob : public SPTAG::Helper::ThreadPool::Job
             {
             private:
-                std::shared_ptr<VectorIndex> m_index;
-                std::unique_ptr<std::string> vectorContain;
+                VectorIndex* m_index;
+                std::shared_ptr<std::string> vectorContain;
                 SizeType VID;
                 std::vector<SizeType>& newHeads;
                 bool check;
                 SizeType oldVID;
                 std::function<void()> m_callback;
             public:
-                ReassignAsyncJob(std::shared_ptr<VectorIndex> m_index,
-                                 std::unique_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check,
+                ReassignAsyncJob(VectorIndex* m_index,
+                                 std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check,
                                  SizeType oldVID, std::function<void()> p_callback)
-                        : m_index(std::move(m_index)),
-                          vectorContain(std::move(vectorContain)), VID(VID), newHeads(newHeads), check(check), oldVID(oldVID), m_callback(std::move(p_callback)) {}
+                        : m_index(m_index),
+                          vectorContain(vectorContain), VID(VID), newHeads(newHeads), check(check), oldVID(oldVID), m_callback(std::move(p_callback)) {}
 
                 ~ReassignAsyncJob() {}
 
                 void exec(IAbortOperation* p_abort) override {
-                    m_index->ProcessAsyncReassign(std::move(vectorContain), VID, newHeads, check, oldVID, std::move(m_callback));
+                    m_index->ProcessAsyncReassign(vectorContain, VID, newHeads, check, oldVID, std::move(m_callback));
                 }
             };
 
@@ -292,28 +292,27 @@ namespace SPTAG
 
             ErrorCode BuildIndexInternal(std::shared_ptr<Helper::VectorSetReader>& p_reader);
 
-            ErrorCode Append(SizeType headID, int appendNum, std::string* appendPosting, SizeType oldVID);
+            ErrorCode Append(SizeType headID, int appendNum, std::shared_ptr<std::string> appendPosting, SizeType oldVID);
             ErrorCode Split(const SizeType headID, int appendNum, std::string& appendPosting);
             ErrorCode ReAssign(SizeType headID, std::vector<std::string>& postingLists, std::vector<SizeType>& newHeadsID);
             void ReAssignVectors(std::map<SizeType, T*>& reAssignVectors, std::vector<SizeType>& newHeadsID, bool check=false);
-            void ReAssignUpdate(std::string*, SizeType VID, std::vector<SizeType>&, bool check=false, SizeType oldVID=0);
-            std::shared_ptr<COMMON::Labelset> DeletedID() {return std::make_shared<COMMON::Labelset>(m_deletedID);}
+            void ReAssignUpdate(std::shared_ptr<std::string>, SizeType VID, std::vector<SizeType>&, bool check = false, SizeType oldVID = 0);
 
         public:
-            inline void AppendAsync(SizeType headID, int appendNum, std::unique_ptr<std::string> appendPosting, std::function<void()> p_callback=nullptr)
+            inline void AppendAsync(SizeType headID, int appendNum, std::shared_ptr<std::string> appendPosting, std::function<void()> p_callback=nullptr)
             {
-                auto* curJob = new AppendAsyncJob(std::make_shared<VectorIndex>(this), headID, appendNum, std::move(appendPosting), p_callback);
+                auto* curJob = new AppendAsyncJob(this, headID, appendNum, std::move(appendPosting), p_callback);
                 m_appendThreadPool->add(curJob);
             }
 
-            inline void ReassignAsync(std::unique_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check = false,
+            inline void ReassignAsync(std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check = false,
                                       SizeType oldVID = 0, std::function<void()> p_callback=nullptr)
             {
-                auto* curJob = new ReassignAsyncJob(std::make_shared<VectorIndex>(this), std::move(vectorContain), VID, newHeads, check, oldVID, p_callback);
+                auto* curJob = new ReassignAsyncJob(this, std::move(vectorContain), VID, newHeads, check, oldVID, p_callback);
                 m_reassignThreadPool->add(curJob);
             }
 
-            void ProcessAsyncReassign(std::unique_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check,
+            void ProcessAsyncReassign(std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check,
                                       SizeType oldVID, std::function<void()> p_callback);
         };
     } // namespace SPANN

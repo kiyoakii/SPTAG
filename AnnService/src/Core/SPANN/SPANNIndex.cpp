@@ -809,7 +809,7 @@ namespace SPTAG
                     noAssignment = false;
                 }
 
-                std::map<SizeType, std::string*> newPart;
+                std::map<SizeType, std::shared_ptr<std::string>> newPart;
                 newPart.clear();
                 int i;
                 for (i = sentAssignment; i < scanNum; i++) {
@@ -836,7 +836,7 @@ namespace SPTAG
                             continue;
                         }
                         if (newPart.find(headID) == newPart.end()) {
-                            newPart[headID] = new std::string(Helper::Convert::Serialize<uint8_t>(headPointer + sizeof(int), m_index->GetValueSize() + sizeof(int)));
+                            newPart[headID].reset(new std::string(Helper::Convert::Serialize<uint8_t>(headPointer + sizeof(int), m_index->GetValueSize() + sizeof(int))));
                         } else {
                             *newPart[headID] += Helper::Convert::Serialize<uint8_t>(headPointer + sizeof(int), m_index->GetValueSize() + sizeof(int));
                         }
@@ -851,7 +851,7 @@ namespace SPTAG
 
                 for (auto iter = newPart.begin(); iter != newPart.end(); iter++) {
                     int appendNum = (*iter->second).size() / (m_index->GetValueSize() + sizeof(int));
-                    m_index->AppendAsync(iter->first, appendNum, std::move(std::unique_ptr<std::string>(iter->second)));
+                    m_index->AppendAsync(iter->first, appendNum, iter->second);
                 }
 
                 sentAssignment = i;
@@ -1062,15 +1062,15 @@ namespace SPTAG
                 for (auto it = reAssignVectors.begin(); it != reAssignVectors.end(); ++it) {
                     //m_currerntReassignTaskNum++;
                     //PrintFirstFiveDimInt8(reinterpret_cast<uint8_t*>(it->second), it->first);
-                    std::unique_ptr<std::string> vectorContain(new std::string(Helper::Convert::Serialize<uint8_t>(it->second, m_options.m_vectorSize)));
+                    std::shared_ptr<std::string> vectorContain(new std::string(Helper::Convert::Serialize<uint8_t>(it->second, m_options.m_vectorSize)));
                     //PrintFirstFiveDimInt8(reinterpret_cast<uint8_t*>(&vectorContain->front()), it->first);
-                    ReassignAsync(std::move(vectorContain), newFirstVID + count, newHeadsID, false, it->first);
+                    ReassignAsync(vectorContain, newFirstVID + count, newHeadsID, false, it->first);
                     count++;
                 }
             } else {
                 for (auto it = reAssignVectors.begin(); it != reAssignVectors.end(); ++it) {
-                    std::unique_ptr<std::string> vectorContain(new std::string(Helper::Convert::Serialize<uint8_t>(it->second, m_options.m_vectorSize)));
-                    ReassignAsync(std::move(vectorContain), 0, newHeadsID, true, it->first);
+                    std::shared_ptr<std::string> vectorContain(new std::string(Helper::Convert::Serialize<uint8_t>(it->second, m_options.m_vectorSize)));
+                    ReassignAsync(vectorContain, 0, newHeadsID, true, it->first);
                 }
             }
 
@@ -1079,7 +1079,8 @@ namespace SPTAG
 
         template <typename ValueType>
         void SPTAG::SPANN::Index<ValueType>::ReAssignUpdate
-                (std::string* vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check, SizeType oldVID)
+                (std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType> &newHeads, bool check,
+                 SizeType oldVID)
         {
 //            TimeUtils::StopW sw;
 
@@ -1152,19 +1153,19 @@ namespace SPTAG
                 if (CheckIdDeleted(VID)) {
                     break;
                 }
-                std::string newPart;
-                newPart += Helper::Convert::Serialize<int>(&VID, 1);
-                newPart += Helper::Convert::Serialize<ValueType>(p_queryResults.GetTarget(), m_options.m_dim);
+                std::shared_ptr<std::string> newPart(new std::string);
+                *newPart += Helper::Convert::Serialize<int>(&VID, 1);
+                *newPart += Helper::Convert::Serialize<ValueType>(p_queryResults.GetTarget(), m_options.m_dim);
                 auto headID = selections[i].headID;
                 //LOG(Helper::LogLevel::LL_Info, "Reassign: headID :%d, oldVID:%d, newVID:%d, posting length: %d, dist: %f\n", headID, oldVID, VID, m_postingSizes[headID].load(), selections[i].distance);
-                Append(headID, 1, &newPart, oldVID);
+                Append(headID, 1, newPart, oldVID);
             }
 //            m_reassignSsdCost += sw.getElapsedMs() - selectionEndTime;
             m_deletedID.Insert(oldVID);
         }
 
         template <typename ValueType>
-        ErrorCode SPTAG::SPANN::Index<ValueType>::Append(SizeType headID, int appendNum, std::string* appendPosting, SizeType oldVID)
+        ErrorCode SPTAG::SPANN::Index<ValueType>::Append(SizeType headID, int appendNum, std::shared_ptr<std::string> appendPosting, SizeType oldVID)
         {
 //            TimeUtils::StopW sw;
             m_appendTaskNum++;
@@ -1186,8 +1187,8 @@ namespace SPTAG
                 {
 //                    m_currerntReassignTaskNum++;
                     uint8_t* vid = postingP +  i * (m_options.m_vectorSize + sizeof(int));
-                    std::unique_ptr<std::string> vectorContain(new std::string(Helper::Convert::Serialize<uint8_t>(vid + sizeof(int), m_options.m_vectorSize)));
-                    ReassignAsync(std::move(vectorContain), newVID + i, newHeads, false, *(reinterpret_cast<int*>(vid)));
+                    std::shared_ptr<std::string> vectorContain(new std::string(Helper::Convert::Serialize<uint8_t>(vid + sizeof(int), m_options.m_vectorSize)));
+                    ReassignAsync(vectorContain, newVID + i, newHeads, false, *(reinterpret_cast<int*>(vid)));
                 }
                 return ErrorCode::Success;
             }
@@ -1216,7 +1217,7 @@ namespace SPTAG
         }
 
         template <typename T>
-        void SPTAG::SPANN::Index<T>::ProcessAsyncReassign(std::unique_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check,
+        void SPTAG::SPANN::Index<T>::ProcessAsyncReassign(std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check,
                                                           SizeType oldVID, std::function<void()> p_callback)
         {
             //LOG(Helper::LogLevel::LL_Info, "ReassignID: %d, newID: %d\n", oldVID, VID);
@@ -1228,7 +1229,7 @@ namespace SPTAG
 
             m_reassignedID.Insert(oldVID);
 
-            ReAssignUpdate(vectorContain.get(), VID, newHeads, check, oldVID);
+            ReAssignUpdate(vectorContain, VID, newHeads, check, oldVID);
 
             if (p_callback != nullptr) {
                 p_callback();
