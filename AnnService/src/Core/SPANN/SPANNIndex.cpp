@@ -891,7 +891,7 @@ namespace SPTAG
             {
                 uint8_t* vectorId = postingP + j * (m_options.m_vectorSize + sizeof(int));
                 //LOG(Helper::LogLevel::LL_Info, "vector index/total:id: %d/%d:%d\n", j, m_postingSizes[selections[i].headID], *(reinterpret_cast<int*>(vectorId)));
-                if (m_deletedID.Contains(*(reinterpret_cast<int*>(vectorId)))) {
+                if (CheckIdDeleted(*(reinterpret_cast<int*>(vectorId)))) {
                     realVectorNum--;
                 } else {
                     localIndicesInsert[index] = *(reinterpret_cast<int*>(vectorId));
@@ -981,7 +981,7 @@ namespace SPTAG
 
             m_postingSizes[headID] = 0;
             lock.unlock();
-            int split_order = ++m_split_num;
+            // int split_order = ++m_split_num;
             // m_splitUpdateIndexCost += sw.getElapsedMs() - clusterEndTime;
             //QuantifySplit(headID, newPostingLists, newHeadsID, split_order);
 
@@ -1026,13 +1026,13 @@ namespace SPTAG
                     uint8_t* vectorId = postingP + j * (m_options.m_vectorSize + sizeof(int));
                     SizeType vid = *(reinterpret_cast<SizeType*>(vectorId));
                     if (i <= 1) {
-                        if (reAssignVectorsTop0.find(vid) == reAssignVectorsTop0.end() && !m_deletedID.Contains(vid))
+                        if (reAssignVectorsTop0.find(vid) == reAssignVectorsTop0.end() && !CheckIdDeleted(vid))
                             reAssignVectorsTop0[vid] = reinterpret_cast<ValueType*>(vectorId + sizeof(int));
                         //PrintFirstFiveDimInt8(vectorId + sizeof(int), vid);
                     } else {
                         if (reAssignVectorsTop0.find(vid) == reAssignVectorsTop0.end())
                         {
-                            if (reAssignVectorsTopK.find(vid) == reAssignVectorsTopK.end() && !m_deletedID.Contains(vid))
+                            if (reAssignVectorsTopK.find(vid) == reAssignVectorsTopK.end() && !CheckIdDeleted(vid))
                                 reAssignVectorsTopK[vid] = reinterpret_cast<ValueType*>(vectorId + sizeof(int));
                         }
                     }
@@ -1149,7 +1149,7 @@ namespace SPTAG
             //LOG(Helper::LogLevel::LL_Info, "Reassign: oldVID:%d, replicaCount:%d, candidateNum:%d, dist0:%f\n", oldVID, replicaCount, i, selections[0].distance);
 
             for (i = 0; i < replicaCount; i++) {
-                if (m_deletedID.Contains(VID)) {
+                if (CheckIdDeleted(VID)) {
                     break;
                 }
                 std::string newPart;
