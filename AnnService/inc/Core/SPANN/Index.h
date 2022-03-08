@@ -26,6 +26,7 @@
 
 #include <functional>
 #include <shared_mutex>
+#include <utility>
 
 namespace SPTAG
 {
@@ -43,18 +44,18 @@ namespace SPTAG
             class AppendAsyncJob : public Helper::ThreadPool::Job
             {
             private:
-                std::shared_ptr<Index> m_index;
+                std::shared_ptr<VectorIndex> m_index;
                 SizeType headID;
                 int appendNum;
                 std::unique_ptr<std::string> appendPosting;
                 std::function<void()> m_callback;
             public:
-                AppendAsyncJob(std::shared_ptr<Index> m_index, SizeType headID, int appendNum, std::unique_ptr<std::string> appendPosting, std::function<void()> p_callback)
-                        : m_index(m_index), headID(headID), appendNum(appendNum), appendPosting(std::move(appendPosting)), m_callback(p_callback) {}
+                AppendAsyncJob(std::shared_ptr<VectorIndex> m_index, SizeType headID, int appendNum, std::unique_ptr<std::string> appendPosting, std::function<void()> p_callback)
+                        : m_index(std::move(m_index)), headID(headID), appendNum(appendNum), appendPosting(std::move(appendPosting)), m_callback(std::move(p_callback)) {}
 
                 ~AppendAsyncJob() {}
 
-                inline void exec() {
+                inline void exec(IAbortOperation* p_abort) override {
                     m_index->Append(headID, appendNum, appendPosting.get());
                     if (m_callback != nullptr) {
                         m_callback();
@@ -65,7 +66,7 @@ namespace SPTAG
             class ReassignAsyncJob : public SPTAG::Helper::ThreadPool::Job
             {
             private:
-                std::shared_ptr<Index> m_index;
+                std::shared_ptr<VectorIndex> m_index;
                 std::unique_ptr<std::string> vectorContain;
                 SizeType VID;
                 std::vector<SizeType>& newHeads;
@@ -73,15 +74,15 @@ namespace SPTAG
                 SizeType oldVID;
                 std::function<void()> m_callback;
             public:
-                ReassignAsyncJob(std::shared_ptr<Index> m_index,
+                ReassignAsyncJob(std::shared_ptr<VectorIndex> m_index,
                                  std::unique_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check,
                                  SizeType oldVID, std::function<void()> p_callback)
-                        : m_index(m_index),
-                          vectorContain(std::move(vectorContain)), VID(VID), newHeads(newHeads), check(check), oldVID(oldVID), m_callback(p_callback) {}
+                        : m_index(std::move(m_index)),
+                          vectorContain(std::move(vectorContain)), VID(VID), newHeads(newHeads), check(check), oldVID(oldVID), m_callback(std::move(p_callback)) {}
 
                 ~ReassignAsyncJob() {}
 
-                void exec() {
+                void exec(IAbortOperation* p_abort) override {
                     m_index->ProcessAsyncReassign(std::move(vectorContain), VID, newHeads, check, oldVID, std::move(m_callback));
                 }
             };
@@ -301,14 +302,14 @@ namespace SPTAG
         public:
             inline void AppendAsync(SizeType headID, int appendNum, std::unique_ptr<std::string> appendPosting, std::function<void()> p_callback=nullptr)
             {
-                AppendAsyncJob* curJob = new AppendAsyncJob(this, headID, appendNum, std::move(appendPosting), p_callback);
+                auto* curJob = new AppendAsyncJob(std::make_shared<VectorIndex>(this), headID, appendNum, std::move(appendPosting), p_callback);
                 m_appendThreadPool->add(curJob);
             }
 
             inline void ReassignAsync(std::unique_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check = false,
                                       SizeType oldVID = 0, std::function<void()> p_callback=nullptr)
             {
-                ReassignAsyncJob* curJob = new ReassignAsyncJob(this, std::move(vectorContain), VID, newHeads, check, oldVID, p_callback);
+                auto* curJob = new ReassignAsyncJob(std::make_shared<VectorIndex>(this), std::move(vectorContain), VID, newHeads, check, oldVID, p_callback);
                 m_reassignThreadPool->add(curJob);
             }
 
