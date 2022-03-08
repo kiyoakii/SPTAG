@@ -98,7 +98,7 @@ namespace SPTAG
             m_deletedID.Load(m_options.m_fullDeletedIDFile, m_iDataBlockSize, m_iDataCapacity);
 
             // TODO: choose a proper size
-            m_rwLocks = std::make_unique<std::shared_mutex[]>(500000000);
+            m_rwLocks = std::make_unique<std::shared_timed_mutex[]>(500000000);
             m_postingSizes = std::make_unique<std::atomic_uint32_t[]>(500000000);
 
             for (int idx = 0; idx < m_extraSearcher->GetIndexSize(); idx++) {
@@ -867,7 +867,7 @@ namespace SPTAG
         ErrorCode SPTAG::SPANN::Index<ValueType>::Split(const SizeType headID, int appendNum, std::string& appendPosting)
         {
             // TimeUtils::StopW sw;
-            std::unique_lock<std::shared_mutex> lock(m_rwLocks[headID]);
+            std::unique_lock<std::shared_timed_mutex> lock(m_rwLocks[headID]);
             if (m_postingSizes[headID].load() + appendNum < m_options.m_postingVectorLimit) {
                 return ErrorCode::FailSplit;
             }
@@ -1200,7 +1200,7 @@ namespace SPTAG
             } else {
                 // double appendSsdStartTime = sw.getElapsedMs();
                 {
-                    std::shared_lock<std::shared_mutex> lock(m_rwLocks[headID]);
+                    std::shared_lock<std::shared_timed_mutex> lock(m_rwLocks[headID]);
                     if (!m_index->ContainSample(headID)) {
                         goto checkDeleted;
                     }

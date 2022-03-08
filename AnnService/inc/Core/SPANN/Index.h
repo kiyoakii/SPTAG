@@ -171,7 +171,7 @@ namespace SPTAG
             std::shared_ptr<VectorIndex> m_index;
             std::shared_ptr<std::uint64_t> m_vectorTranslateMap;
             std::unordered_map<std::string, std::string> m_headParameters;
-            std::unique_ptr<std::shared_mutex[]> m_rwLocks;
+            std::unique_ptr<std::shared_timed_mutex[]> m_rwLocks;
             std::unique_ptr<std::atomic_uint32_t[]> m_postingSizes;
             std::atomic_uint64_t m_vectorNum{0};
 
