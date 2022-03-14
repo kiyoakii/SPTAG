@@ -792,7 +792,6 @@ namespace SPTAG
                 m_persistentBuffer->PutAssignment(assignment);
             } else {
                 std::lock_guard<std::mutex> lock(m_dataAddLock);
-                m_deletedID.AddBatch(1);
                 m_deletedID.Insert(p_id);
             }
             return ErrorCode::Success;
