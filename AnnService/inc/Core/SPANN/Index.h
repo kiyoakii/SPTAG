@@ -122,6 +122,8 @@ namespace SPTAG
                 }
 
                 inline uint32_t runningJobs() { return currentJobs; }
+
+                inline bool     allClear()    { return currentJobs == 0 && jobsize() == 0; }
             };
 
             class Dispatcher
