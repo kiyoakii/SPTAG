@@ -87,6 +87,7 @@ DefineSSDParameter(m_batches, int, 1, "Batches")
 DefineSSDParameter(m_tmpdir, std::string, std::string("."), "TmpDir")
 DefineSSDParameter(m_rngFactor, float, 1.0f, "RNGFactor")
 DefineSSDParameter(m_samples, int, 100, "RecallTestSampleNumber")
+DefineSSDParameter(m_fullDeletedIDFile, std::string, std::string("fulldeleted"), "FullDeletedIDFile")
 
 // GPU Building
 DefineSSDParameter(m_gpuSSDNumTrees, int, 100, "GPUSSDNumTrees")
@@ -112,4 +113,9 @@ DefineSSDParameter(m_recall_analysis, bool, false, "RecallAnalysis")
 DefineSSDParameter(m_debugBuildInternalResultNum, int, 64, "DebugBuildInternalResultNum")
 DefineSSDParameter(m_iotimeout, int, 30, "IOTimeout")
 
+// SPANN
+DefineSSDParameter(m_postingVectorLimit, int, 1000, "PostingSearchVectorLimit")
+DefineSSDParameter(m_disableReassign, bool, false, "DisableReassign")
+DefineSSDParameter(m_addDeleteTaskToPM, bool, false, "AddDeleteTaskToLog")
+DefineSSDParameter(m_reassignK, int, 0, "ReassignK")
 #endif
