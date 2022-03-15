@@ -182,7 +182,7 @@ namespace SPTAG
                 std::shared_ptr<VectorIndex> p_index,
                 SearchStats* p_stats, std::set<int>* truth, std::map<int, std::set<int>>* found)
             {
-                const uint32_t postingListCount = static_cast<uint32_t>(p_exWorkSpace->m_postingIDs.size());
+                const auto postingListCount = static_cast<uint32_t>(p_exWorkSpace->m_postingIDs.size());
 
                 p_exWorkSpace->m_deduper.clear();
 
@@ -192,114 +192,48 @@ namespace SPTAG
                 int diskIO = 0;
                 int listElements = 0;
 
-#if defined(ASYNC_READ) && !defined(BATCH_READ)
-                int unprocessed = 0;
-#endif
-
-                bool oneContext = (m_indexFiles.size() == 1);
                 for (uint32_t pi = 0; pi < postingListCount; ++pi)
                 {
                     auto curPostingID = p_exWorkSpace->m_postingIDs[pi];
+                    auto listInfo = &(m_listInfos[0][curPostingID]);
+                    auto postingP = new std::string;
 
-                    int fileid = 0;
-                    ListInfo* listInfo;
-                    if (oneContext) {
-                        listInfo = &(m_listInfos[0][curPostingID]);
-                    }
-                    else {
-                        fileid = curPostingID / m_listPerFile;
-                        listInfo = &(m_listInfos[fileid][curPostingID % m_listPerFile]);
-                    }
+                    SearchIndex(curPostingID, *postingP);
+                    p_exWorkSpace->m_pageBuffers[pi].SetPointer(std::shared_ptr<uint8_t>(
+                            reinterpret_cast<uint8_t*>(postingP->front()), [postingP](uint8_t*){ delete postingP; }));
+                    listInfo->listEleCount = postingP->size() / m_vectorInfoSize;
 
-#ifndef BATCH_READ
-                    Helper::DiskPriorityIO* indexFile = m_indexFiles[fileid].get();
-#endif
-
-                    if (listInfo->listEleCount == 0)
-                    {
-                        continue;
-                    }
-
-                    diskRead += listInfo->listPageCount;
-                    diskIO += 1;
+                    diskIO++;
+                    diskRead++;
                     listElements += listInfo->listEleCount;
 
-                    size_t totalBytes = (static_cast<size_t>(listInfo->listPageCount) << PageSizeEx);
-                    char* buffer = (char*)((p_exWorkSpace->m_pageBuffers[pi]).GetBuffer());
-
-#ifdef ASYNC_READ       
-                    auto& request = p_exWorkSpace->m_diskRequests[pi];
-                    request.m_offset = listInfo->listOffset;
-                    request.m_readSize = totalBytes;
-                    request.m_buffer = buffer;
-                    request.m_status = (fileid << 16) | p_exWorkSpace->m_spaceID;
-                    request.m_payload = (void*)listInfo;
-
-#ifdef BATCH_READ
-                    auto vectorInfoSize = m_vectorInfoSize;
-                    request.m_callback = [&p_exWorkSpace, &queryResults, &p_index, vectorInfoSize](Helper::AsyncReadRequest* request)
-                    {
-                        request->m_readSize = 0;
-                        char* buffer = request->m_buffer;
-                        ListInfo* listInfo = (ListInfo*)(request->m_payload);
-                        ProcessPosting(vectorInfoSize)
-                    };
-#else
-                    request.m_callback = [&p_exWorkSpace](Helper::AsyncReadRequest* request)
-                    {
-                        p_exWorkSpace->m_processIocp.push(request);
-                    };
-
-                    ++unprocessed;
-                    if (!(indexFile->ReadFileAsync(request)))
-                    {
-                        LOG(Helper::LogLevel::LL_Error, "Failed to read file!\n");
-                        unprocessed--;
+                    auto buffer = reinterpret_cast<char*>((p_exWorkSpace->m_pageBuffers[pi]).GetBuffer());
+                    for (int i = 0; i < listInfo->listEleCount; i++) {
+                        char* vectorInfo = buffer + i * m_vectorInfoSize;
+                        int vectorID = *(reinterpret_cast<int*>(vectorInfo));
+                        if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID)) continue;
+                        auto distance2leaf = p_index->ComputeDistance(queryResults.GetQuantizedTarget(), vectorInfo + sizeof(int));
+                        queryResults.AddPoint(vectorID, distance2leaf);
                     }
-#endif
-#else
-                    auto numRead = indexFile->ReadBinary(totalBytes, buffer, listInfo->listOffset);
-                    if (numRead != totalBytes) {
-                        LOG(Helper::LogLevel::LL_Error, "File %s read bytes, expected: %zu, acutal: %llu.\n", m_extraFullGraphFile.c_str(), totalBytes, numRead);
-                        exit(-1);
-                    }
-                    ProcessPosting(m_vectorInfoSize)
-#endif
                 }
 
-#ifdef ASYNC_READ
-#ifdef BATCH_READ
-                BatchReadFileAsync(m_indexFiles, (p_exWorkSpace->m_diskRequests).data(), postingListCount);
-#else
-                while (unprocessed > 0)
-                {
-                    Helper::AsyncReadRequest* request;
-                    if (!(p_exWorkSpace->m_processIocp.pop(request))) break;
-
-                    --unprocessed;
-                    char* buffer = request->m_buffer;
-                    ListInfo* listInfo = static_cast<ListInfo*>(request->m_payload);
-                    ProcessPosting(m_vectorInfoSize)
-                }
-#endif
-#endif
                 if (truth) {
                     for (uint32_t pi = 0; pi < postingListCount; ++pi)
                     {
                         auto curPostingID = p_exWorkSpace->m_postingIDs[pi];
-
-                        ListInfo* listInfo = &(m_listInfos[curPostingID / m_listPerFile][curPostingID % m_listPerFile]);
+                        auto listInfo = &(m_listInfos[0][curPostingID]);
                         char* buffer = (char*)((p_exWorkSpace->m_pageBuffers[pi]).GetBuffer());
 
                         for (int i = 0; i < listInfo->listEleCount; ++i) {
-                            char* vectorInfo = buffer + listInfo->pageOffset + i * m_vectorInfoSize;
+                            char* vectorInfo = buffer + i * m_vectorInfoSize;
                             int vectorID = *(reinterpret_cast<int*>(vectorInfo));
-                            if (truth && truth->count(vectorID)) (*found)[curPostingID].insert(vectorID);
+                            if (truth && truth->count(vectorID))
+                                (*found)[curPostingID].insert(vectorID);
                         }
                     }
                 }
 
-                if (p_stats) 
+                if (p_stats)
                 {
                     p_stats->m_totalListElementsCount = listElements;
                     p_stats->m_diskIOCount = diskIO;
