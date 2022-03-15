@@ -88,6 +88,7 @@ DefineSSDParameter(m_tmpdir, std::string, std::string("."), "TmpDir")
 DefineSSDParameter(m_rngFactor, float, 1.0f, "RNGFactor")
 DefineSSDParameter(m_samples, int, 100, "RecallTestSampleNumber")
 DefineSSDParameter(m_fullDeletedIDFile, std::string, std::string("fulldeleted"), "FullDeletedIDFile")
+DefineSSDParameter(m_KVPath, std::string, std::string(""), "KVPath")
 
 // GPU Building
 DefineSSDParameter(m_gpuSSDNumTrees, int, 100, "GPUSSDNumTrees")
@@ -112,6 +113,34 @@ DefineSSDParameter(m_enableADC, bool, false, "EnableADC")
 DefineSSDParameter(m_recall_analysis, bool, false, "RecallAnalysis")
 DefineSSDParameter(m_debugBuildInternalResultNum, int, 64, "DebugBuildInternalResultNum")
 DefineSSDParameter(m_iotimeout, int, 30, "IOTimeout")
+
+// Calculating
+// TruthFilePrefix
+DefineSSDParameter(m_truthFilePrefix, std::string, std::string(""), "TruthFilePrefix")
+// CalTruth
+DefineSSDParameter(m_calTruth, bool, true, "CalTruth")
+// CalTruth for Recall@1/10/20/50/100
+DefineSSDParameter(m_calAllTruth, bool, false, "CalAllTruth")
+// Search multiple times for stable result
+DefineSSDParameter(m_searchTimes, int, 1, "SearchTimes")
+
+// Updating(SPFresh Update Test)
+// For update mode: current only update
+DefineSSDParameter(m_update, bool, false, "Update")
+// Update batch size
+DefineSSDParameter(m_step, int, 0, "Step")
+// Frontend update threadnum
+DefineSSDParameter(m_insertThreadNum, int, 16, "InsertThreadNum")
+// Update limit
+DefineSSDParameter(m_endVectorNum, int, -1, "EndVectorNum")
+// Persistent buffer path
+DefineSSDParameter(m_persistentBufferPath, std::string, std::string(""), "PersistentBufferPath")
+// Background append threadnum
+DefineSSDParameter(m_appendThreadNum, int, 16, "AppendThreadNum")
+// Background reassign threadnum
+DefineSSDParameter(m_reassignThreadNum, int, 16, "ReassignThreadNum")
+
+
 
 // SPANN
 DefineSSDParameter(m_postingVectorLimit, int, 1000, "PostingSearchVectorLimit")

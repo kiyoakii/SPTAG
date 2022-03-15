@@ -874,6 +874,8 @@ namespace SPTAG
 
                 LOG(Helper::LogLevel::LL_Info, "Padded Size: %llu, final total size: %llu.\n", paddedSize, listOffset);
 
+                auto totalVectorNum = static_cast<int>(p_fullVectors->Count());
+
                 LOG(Helper::LogLevel::LL_Info, "Output done...\n");
                 auto t2 = std::chrono::high_resolution_clock::now();
                 LOG(Helper::LogLevel::LL_Info, "Time to write results:%.2lf sec.\n", ((double)std::chrono::duration_cast<std::chrono::seconds>(t2 - t1).count()) + ((double)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()) / 1000);

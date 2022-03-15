@@ -500,13 +500,6 @@ namespace SPTAG {
                     }
                 }
 
-                std::string quantizerPath = index->GetParameter("QuantizerFilePath", "Base");
-                if (!quantizerPath.empty() && VectorIndex::LoadQuantizer(quantizerPath) != ErrorCode::Success)
-                {
-                    exit(1);
-                }
-                LOG(Helper::LogLevel::LL_Info, "Set QuantizerFile = %s\n", quantizerPath.c_str());
-
                 if (index->BuildIndex() != ErrorCode::Success) {
                     LOG(Helper::LogLevel::LL_Error, "Failed to build index.\n");
                     exit(1);
