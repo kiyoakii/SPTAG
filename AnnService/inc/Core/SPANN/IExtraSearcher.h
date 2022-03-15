@@ -101,6 +101,9 @@ namespace SPTAG {
                 return m_pageBufferSize;
             }
 
+            // Method for SPANN Search function only
+            void SetPointer(std::shared_ptr<T> pointer) { m_pageBuffer = pointer; }
+
         private:
             std::shared_ptr<T> m_pageBuffer;
 
