@@ -720,7 +720,8 @@ namespace SPTAG
                 return ErrorCode::Fail;
             }
 
-            std::vector<COMMON::QueryResultSet<T>> p_queryResults;
+            std::vector<QueryResult> p_queryResults(p_vectorNum, QueryResult(NULL, m_options.m_internalResultNum, false));
+
             for (int k = 0; k < p_vectorNum; k++)
             {
                 p_queryResults[k].SetTarget(reinterpret_cast<const T*>(reinterpret_cast<const char*>(p_data) + k * p_dimension));
