@@ -4,6 +4,7 @@
 #include "inc/Core/SPANN/Index.h"
 #include "inc/Helper/VectorSetReaders/MemoryReader.h"
 #include "inc/Core/SPANN/ExtraFullGraphSearcher.h"
+#include "inc/Core/SPANN/ExtraRocksDBController.h"
 #include <shared_mutex>
 #include <chrono>
 #include <random>
@@ -62,7 +63,7 @@ namespace SPTAG
             m_index->UpdateIndex();
             m_index->SetReady(true);
 
-            m_extraSearcher.reset(new ExtraFullGraphSearcher<T>());
+            m_extraSearcher.reset(new ExtraRocksDBController<T>("./db"));
             if (!m_extraSearcher->LoadIndex(m_options)) return ErrorCode::Fail;
 
             m_vectorTranslateMap.reset((std::uint64_t*)(p_indexBlobs.back().Data()), [=](std::uint64_t* ptr) {});
