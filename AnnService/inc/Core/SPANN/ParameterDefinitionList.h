@@ -88,6 +88,7 @@ DefineSSDParameter(m_tmpdir, std::string, std::string("."), "TmpDir")
 DefineSSDParameter(m_rngFactor, float, 1.0f, "RNGFactor")
 DefineSSDParameter(m_samples, int, 100, "RecallTestSampleNumber")
 DefineSSDParameter(m_fullDeletedIDFile, std::string, std::string("fulldeleted"), "FullDeletedIDFile")
+DefineSSDParameter(m_useKV, bool, false, "UseKV")
 DefineSSDParameter(m_KVPath, std::string, std::string(""), "KVPath")
 
 // GPU Building

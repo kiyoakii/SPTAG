@@ -4,6 +4,7 @@
 #include "inc/Core/SPANN/Index.h"
 #include "inc/Helper/VectorSetReaders/MemoryReader.h"
 #include "inc/Core/SPANN/ExtraFullGraphSearcher.h"
+#include "inc/Core/SPANN/ExtraRocksDBController.h"
 #include <shared_mutex>
 #include <chrono>
 #include <random>
@@ -589,7 +590,12 @@ namespace SPTAG
                 m_index->SetParameter("HashTableExponent", std::to_string(m_options.m_hashExp));
                 m_index->UpdateIndex();
 
-                m_extraSearcher.reset(new ExtraFullGraphSearcher<T>());
+                if (m_options.m_useKV)
+                {
+                    m_extraSearcher.reset(new ExtraRocksDBController<T>(m_options.m_KVPath.c_str()));
+                } else {
+                    m_extraSearcher.reset(new ExtraFullGraphSearcher<T>());
+                }
                 if (m_options.m_buildSsdIndex) {
                     if (!m_extraSearcher->BuildIndex(p_reader, m_index, m_options)) {
                         LOG(Helper::LogLevel::LL_Error, "BuildSSDIndex Failed!\n");

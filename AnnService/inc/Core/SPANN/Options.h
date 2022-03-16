@@ -90,6 +90,7 @@ namespace SPTAG {
             float m_rngFactor;
             int m_samples;
             std::string m_fullDeletedIDFile;
+            bool m_useKV;
             std::string m_KVPath;
 
             // GPU building
