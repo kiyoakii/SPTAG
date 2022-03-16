@@ -616,8 +616,36 @@ namespace SPTAG
                     }
                     IOBINARY(ptr, ReadBinary, sizeof(std::uint64_t) * m_index->GetNumSamples(), (char*)(m_vectorTranslateMap.get()));
                 } else {
+                    //data structrue initialization
                     m_deletedID.Load(m_options.m_fullDeletedIDFile, m_iDataBlockSize, m_iDataCapacity);
-                }
+                    m_rwLocks = std::make_unique<std::shared_timed_mutex[]>(500000000);
+                    m_postingSizes = std::make_unique<std::atomic_uint32_t[]>(500000000);
+                    std::ifstream input(m_options.m_ssdInfoFile, std::ios::binary);
+                    if (!input.is_open())
+                    {
+                        fprintf(stderr, "Failed to open file: %s\n", m_options.m_ssdInfoFile.c_str());
+                        exit(1);
+                    }
+
+					int vectorNum;
+                    input.read(reinterpret_cast<char*>(&vectorNum), sizeof(vectorNum));
+					m_vectorNum.store(vectorNum);
+
+					LOG(Helper::LogLevel::LL_Info, "Current vector num: %d.\n", m_vectorNum.load());
+
+					uint32_t postingNum;
+					input.read(reinterpret_cast<char*>(&postingNum), sizeof(postingNum));
+
+					LOG(Helper::LogLevel::LL_Info, "Current posting num: %d.\n", postingNum);
+
+					for (int idx = 0; idx < postingNum; idx++) {
+						uint32_t tmp;
+						input.read(reinterpret_cast<char*>(&tmp), sizeof(uint32_t));
+						m_postingSizes[idx].store(tmp);
+					}
+
+					input.close();    
+                }       
             }
             auto t4 = std::chrono::high_resolution_clock::now();
             double buildSSDTime = std::chrono::duration_cast<std::chrono::seconds>(t4 - t3).count();

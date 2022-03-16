@@ -427,42 +427,58 @@ namespace SPTAG
                 auto t4 = std::chrono::high_resolution_clock::now();
                 LOG(SPTAG::Helper::LogLevel::LL_Info, "Time to perform posting cut:%.2lf sec.\n", ((double)std::chrono::duration_cast<std::chrono::seconds>(t4 - t3).count()) + ((double)std::chrono::duration_cast<std::chrono::milliseconds>(t4 - t3).count()) / 1000);
 
-                size_t postingFileSize = (postingListSize.size() + p_opt.m_ssdIndexFileNum - 1) / p_opt.m_ssdIndexFileNum;
-                std::vector<size_t> selectionsBatchOffset(p_opt.m_ssdIndexFileNum + 1, 0);
-                for (int i = 0; i < p_opt.m_ssdIndexFileNum; i++) {
-                    size_t curPostingListEnd = min(postingListSize.size(), (i + 1) * postingFileSize);
-                    selectionsBatchOffset[i + 1] = std::lower_bound(selections.m_selections.begin(), selections.m_selections.end(), (SizeType)curPostingListEnd, Selection::g_edgeComparer) - selections.m_selections.begin();
-                }
-
                 if (p_opt.m_ssdIndexFileNum > 1) selections.SaveBatch();
 
                 auto fullVectors = p_reader->GetVectorSet();
                 if (p_opt.m_distCalcMethod == DistCalcMethod::Cosine && !p_reader->IsNormalized()) fullVectors->Normalize(p_opt.m_iSSDNumberOfThreads);
 
-                for (int i = 0; i < p_opt.m_ssdIndexFileNum; i++) {
-                    size_t curPostingListOffSet = i * postingFileSize;
-                    size_t curPostingListEnd = min(postingListSize.size(), (i + 1) * postingFileSize);
-                    std::vector<int> curPostingListSizes(
-                        postingListSize.begin() + curPostingListOffSet,
-                        postingListSize.begin() + curPostingListEnd);
+                std::string postinglist;
+                for (int id = 0; id < postingListSize.size(); id++) 
+                {
+                    postinglist.resize(0);
+                    postinglist.clear();
+                    std::size_t selectIdx = selections.lower_bound(id);
+                    for (int j = 0; j < postingListSize[id]; ++j) {
+                        if (selections[selectIdx].node != id) {
+                            LOG(Helper::LogLevel::LL_Error, "Selection ID NOT MATCH\n");
+                            exit(1);
+                        }
+                        int fullID = selections[selectIdx++].tonode;
+                        size_t dim = fullVectors->Dimension();
+                        // First Vector ID, then Vector
+                        postinglist += Helper::Convert::Serialize<int>(&fullID, 1);
+                        postinglist += Helper::Convert::Serialize<ValueType>(fullVectors->GetVector(fullID), dim);
+                    }
 
-                    std::unique_ptr<int[]> postPageNum;
-                    std::unique_ptr<std::uint16_t[]> postPageOffset;
-                    std::vector<int> postingOrderInIndex;
-                    SelectPostingOffset(vectorInfoSize, curPostingListSizes, postPageNum, postPageOffset, postingOrderInIndex);
+                    AddIndex(id, postinglist);
+                }
 
-                    if (p_opt.m_ssdIndexFileNum > 1) selections.LoadBatch(selectionsBatchOffset[i], selectionsBatchOffset[i + 1]);
+                auto ptr = SPTAG::f_createIO();
+                if (ptr == nullptr || !ptr->Initialize(p_opt.m_ssdInfoFile.c_str(), std::ios::binary | std::ios::out)) {
+                    LOG(Helper::LogLevel::LL_Error, "Failed open file %s\n", p_opt.m_ssdInfoFile.c_str());
+                    exit(1);
+                }
+                //Number of all documents.
+                int i32Val = static_cast<int>(fullCount);
+                if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
+                    LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndexInfo File!");
+                    exit(1);
+                }
+                //Number of postings
+                i32Val = static_cast<int>(postingListSize.size());
 
-                    OutputSSDIndexFile((i == 0) ? outputFile : outputFile + "_" + std::to_string(i),
-                        vectorInfoSize,
-                        curPostingListSizes,
-                        selections,
-                        postPageNum,
-                        postPageOffset,
-                        postingOrderInIndex,
-                        fullVectors,
-                        curPostingListOffSet);
+                if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
+                    LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndexInfo File!");
+                    exit(1);
+                }
 
+                for(int id = 0; id < postingListSize.size(); id++)
+                {
+                    i32Val = postingListSize[id].load();
+                    if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndexInfo File!");
+                        exit(1);
+                    }
                 }
 
                 LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize deleteMap\n");
@@ -605,285 +621,6 @@ namespace SPTAG
                 }
 
                 return m_listCount;
-            }
-
-            void SelectPostingOffset(size_t p_spacePerVector,
-                const std::vector<int>& p_postingListSizes,
-                std::unique_ptr<int[]>& p_postPageNum,
-                std::unique_ptr<std::uint16_t[]>& p_postPageOffset,
-                std::vector<int>& p_postingOrderInIndex)
-            {
-                p_postPageNum.reset(new int[p_postingListSizes.size()]);
-                p_postPageOffset.reset(new std::uint16_t[p_postingListSizes.size()]);
-
-                struct PageModWithID
-                {
-                    int id;
-
-                    std::uint16_t rest;
-                };
-
-                struct PageModeWithIDCmp
-                {
-                    bool operator()(const PageModWithID& a, const PageModWithID& b) const
-                    {
-                        return a.rest == b.rest ? a.id < b.id : a.rest > b.rest;
-                    }
-                };
-
-                std::set<PageModWithID, PageModeWithIDCmp> listRestSize;
-
-                p_postingOrderInIndex.clear();
-                p_postingOrderInIndex.reserve(p_postingListSizes.size());
-
-                PageModWithID listInfo;
-                for (size_t i = 0; i < p_postingListSizes.size(); ++i)
-                {
-                    if (p_postingListSizes[i] == 0)
-                    {
-                        continue;
-                    }
-
-                    listInfo.id = static_cast<int>(i);
-                    listInfo.rest = static_cast<std::uint16_t>((p_spacePerVector * p_postingListSizes[i]) % PageSize);
-
-                    listRestSize.insert(listInfo);
-                }
-
-                listInfo.id = -1;
-
-                int currPageNum = 0;
-                std::uint16_t currOffset = 0;
-
-                while (!listRestSize.empty())
-                {
-                    listInfo.rest = PageSize - currOffset;
-                    auto iter = listRestSize.lower_bound(listInfo);
-                    if (iter == listRestSize.end())
-                    {
-                        ++currPageNum;
-                        currOffset = 0;
-                    }
-                    else
-                    {
-                        p_postPageNum[iter->id] = currPageNum;
-                        p_postPageOffset[iter->id] = currOffset;
-
-                        p_postingOrderInIndex.push_back(iter->id);
-
-                        currOffset += iter->rest;
-                        if (currOffset > PageSize)
-                        {
-                            LOG(Helper::LogLevel::LL_Error, "Crossing extra pages\n");
-                            exit(1);
-                        }
-
-                        if (currOffset == PageSize)
-                        {
-                            ++currPageNum;
-                            currOffset = 0;
-                        }
-
-                        currPageNum += static_cast<int>((p_spacePerVector * p_postingListSizes[iter->id]) / PageSize);
-
-                        listRestSize.erase(iter);
-                    }
-                }
-
-                LOG(Helper::LogLevel::LL_Info, "TotalPageNumbers: %d, IndexSize: %llu\n", currPageNum, static_cast<uint64_t>(currPageNum) * PageSize + currOffset);
-            }
-
-
-            void OutputSSDIndexFile(const std::string& p_outputFile,
-                size_t p_spacePerVector,
-                const std::vector<int>& p_postingListSizes,
-                Selection& p_postingSelections,
-                const std::unique_ptr<int[]>& p_postPageNum,
-                const std::unique_ptr<std::uint16_t[]>& p_postPageOffset,
-                const std::vector<int>& p_postingOrderInIndex,
-                std::shared_ptr<VectorSet> p_fullVectors,
-                size_t p_postingListOffset)
-            {
-                // TODO: Modify
-                LOG(Helper::LogLevel::LL_Info, "Start output...\n");
-
-                auto t1 = std::chrono::high_resolution_clock::now();
-
-                auto ptr = SPTAG::f_createIO();
-                int retry = 3;
-                while (retry > 0 && (ptr == nullptr || !ptr->Initialize(p_outputFile.c_str(), std::ios::binary | std::ios::out)))
-                {
-                    LOG(Helper::LogLevel::LL_Error, "Failed open file %s\n", p_outputFile.c_str());
-                    retry--;
-                }
-
-                if (ptr == nullptr || !ptr->Initialize(p_outputFile.c_str(), std::ios::binary | std::ios::out)) {
-                    LOG(Helper::LogLevel::LL_Error, "Failed open file %s\n", p_outputFile.c_str());
-                    exit(1);
-                }
-
-                std::uint64_t listOffset = sizeof(int) * 4;
-                listOffset += (sizeof(int) + sizeof(std::uint16_t) + sizeof(int) + sizeof(std::uint16_t)) * p_postingListSizes.size();
-
-                std::unique_ptr<char[]> paddingVals(new char[PageSize]);
-                memset(paddingVals.get(), 0, sizeof(char) * PageSize);
-
-                std::uint64_t paddingSize = PageSize - (listOffset % PageSize);
-                if (paddingSize == PageSize)
-                {
-                    paddingSize = 0;
-                }
-                else
-                {
-                    listOffset += paddingSize;
-                }
-
-                // Number of lists.
-                int i32Val = static_cast<int>(p_postingListSizes.size());
-                if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
-                    LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-                    exit(1);
-                }
-
-                // Number of all documents.
-                i32Val = static_cast<int>(p_fullVectors->Count());
-                if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
-                    LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-                    exit(1);
-                }
-
-                // Bytes of each vector.
-                i32Val = static_cast<int>(p_fullVectors->Dimension());
-                if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
-                    LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-                    exit(1);
-                }
-
-                // Page offset of list content section.
-                i32Val = static_cast<int>(listOffset / PageSize);
-                if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
-                    LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-                    exit(1);
-                }
-
-                for (int i = 0; i < p_postingListSizes.size(); ++i)
-                {
-                    int pageNum = 0;
-                    std::uint16_t pageOffset = 0;
-                    int listEleCount = 0;
-                    std::uint16_t listPageCount = 0;
-
-                    if (p_postingListSizes[i] > 0)
-                    {
-                        pageNum = p_postPageNum[i];
-                        pageOffset = static_cast<std::uint16_t>(p_postPageOffset[i]);
-                        listEleCount = static_cast<int>(p_postingListSizes[i]);
-                        listPageCount = static_cast<std::uint16_t>((p_spacePerVector * p_postingListSizes[i]) / PageSize);
-                        if (0 != ((p_spacePerVector * p_postingListSizes[i]) % PageSize))
-                        {
-                            ++listPageCount;
-                        }
-                    }
-                    if (ptr->WriteBinary(sizeof(pageNum), reinterpret_cast<char*>(&pageNum)) != sizeof(pageNum)) {
-                        LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-                        exit(1);
-                    }
-                    if (ptr->WriteBinary(sizeof(pageOffset), reinterpret_cast<char*>(&pageOffset)) != sizeof(pageOffset)) {
-                        LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-                        exit(1);
-                    }
-                    if (ptr->WriteBinary(sizeof(listEleCount), reinterpret_cast<char*>(&listEleCount)) != sizeof(listEleCount)) {
-                        LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-                        exit(1);
-                    }
-                    if (ptr->WriteBinary(sizeof(listPageCount), reinterpret_cast<char*>(&listPageCount)) != sizeof(listPageCount)) {
-                        LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-                        exit(1);
-                    }
-                }
-
-                if (paddingSize > 0)
-                {
-                    if (ptr->WriteBinary(paddingSize, reinterpret_cast<char*>(paddingVals.get())) != paddingSize) {
-                        LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-                        exit(1);
-                    }
-                }
-
-                if (static_cast<uint64_t>(ptr->TellP()) != listOffset)
-                {
-                    LOG(Helper::LogLevel::LL_Info, "List offset not match!\n");
-                    exit(1);
-                }
-
-                LOG(Helper::LogLevel::LL_Info, "SubIndex Size: %llu bytes, %llu MBytes\n", listOffset, listOffset >> 20);
-
-                listOffset = 0;
-
-                std::uint64_t paddedSize = 0;
-                for (auto id : p_postingOrderInIndex)
-                {
-                    std::uint64_t targetOffset = static_cast<uint64_t>(p_postPageNum[id]) * PageSize + p_postPageOffset[id];
-                    if (targetOffset < listOffset)
-                    {
-                        LOG(Helper::LogLevel::LL_Info, "List offset not match, targetOffset < listOffset!\n");
-                        exit(1);
-                    }
-
-                    if (targetOffset > listOffset)
-                    {
-                        if (targetOffset - listOffset > PageSize)
-                        {
-                            LOG(Helper::LogLevel::LL_Error, "Padding size greater than page size!\n");
-                            exit(1);
-                        }
-
-                        if (ptr->WriteBinary(targetOffset - listOffset, reinterpret_cast<char*>(paddingVals.get())) != targetOffset - listOffset) {
-                            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-                            exit(1);
-                        }
-
-                        paddedSize += targetOffset - listOffset;
-
-                        listOffset = targetOffset;
-                    }
-
-                    std::size_t selectIdx = p_postingSelections.lower_bound(id + (int)p_postingListOffset);
-                    for (int j = 0; j < p_postingListSizes[id]; ++j)
-                    {
-                        auto s = db.Put(selectIdx, i32Val, p_fullVectors->GetVector(i32Val), p_fullVectors->PerVectorDataSize());
-                        if (s != ErrorCode::Success) {
-                            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-                            exit(1);
-                        }
-                        listOffset += p_spacePerVector;
-                    }
-                }
-
-                paddingSize = PageSize - (listOffset % PageSize);
-                if (paddingSize == PageSize)
-                {
-                    paddingSize = 0;
-                }
-                else
-                {
-                    listOffset += paddingSize;
-                    paddedSize += paddingSize;
-                }
-
-                if (paddingSize > 0)
-                {
-                    if (ptr->WriteBinary(paddingSize, reinterpret_cast<char*>(paddingVals.get())) != paddingSize) {
-                        LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-                        exit(1);
-                    }
-                }
-
-                LOG(Helper::LogLevel::LL_Info, "Padded Size: %llu, final total size: %llu.\n", paddedSize, listOffset);
-
-                LOG(Helper::LogLevel::LL_Info, "Output done...\n");
-                auto t2 = std::chrono::high_resolution_clock::now();
-                LOG(Helper::LogLevel::LL_Info, "Time to write results:%.2lf sec.\n", ((double)std::chrono::duration_cast<std::chrono::seconds>(t2 - t1).count()) + ((double)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()) / 1000);
             }
 
         private:

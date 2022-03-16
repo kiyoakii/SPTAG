@@ -92,6 +92,7 @@ namespace SPTAG {
             std::string m_fullDeletedIDFile;
             bool m_useKV;
             std::string m_KVPath;
+            std::string m_ssdInfoFile;
 
             // GPU building
             int m_gpuSSDNumTrees;
