@@ -138,6 +138,7 @@ namespace SPTAG {
             std::string m_persistentBufferPath;
             int m_appendThreadNum;
             int m_reassignThreadNum;
+            int m_batch;
 
             Options() {
 #define DefineBasicParameter(VarName, VarType, DefaultValue, RepresentStr) \

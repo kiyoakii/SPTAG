@@ -141,6 +141,8 @@ DefineSSDParameter(m_persistentBufferPath, std::string, std::string(""), "Persis
 DefineSSDParameter(m_appendThreadNum, int, 16, "AppendThreadNum")
 // Background reassign threadnum
 DefineSSDParameter(m_reassignThreadNum, int, 16, "ReassignThreadNum")
+// Background process batch size
+DefineSSDParameter(m_batch, int, 1000, "Batch")
 
 
 
