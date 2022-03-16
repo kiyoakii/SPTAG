@@ -462,7 +462,14 @@ namespace SPTAG
                         postingOrderInIndex,
                         fullVectors,
                         curPostingListOffSet);
+
                 }
+
+                LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize deleteMap\n");
+                COMMON::Labelset m_deleteID;
+                m_deleteID.Initialize(fullCount, p_headIndex->m_iDataBlockSize, p_headIndex->m_iDataCapacity);
+                LOG(Helper::LogLevel::LL_Info, "SPFresh: save deleteMap\n");
+                m_deleteID.Save(p_opt.m_fullDeletedIDFile);
 
                 auto t5 = std::chrono::high_resolution_clock::now();
                 double elapsedSeconds = std::chrono::duration_cast<std::chrono::seconds>(t5 - t1).count();
@@ -873,8 +880,6 @@ namespace SPTAG
                 }
 
                 LOG(Helper::LogLevel::LL_Info, "Padded Size: %llu, final total size: %llu.\n", paddedSize, listOffset);
-
-                auto totalVectorNum = static_cast<int>(p_fullVectors->Count());
 
                 LOG(Helper::LogLevel::LL_Info, "Output done...\n");
                 auto t2 = std::chrono::high_resolution_clock::now();

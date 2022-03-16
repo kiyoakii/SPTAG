@@ -371,7 +371,7 @@ namespace SPTAG {
                 int internalResultNum = p_opts.m_searchInternalResultNum;
                 int K = p_opts.m_resultNum;
                 int truthK = (p_opts.m_truthResultNum <= 0) ? K : p_opts.m_truthResultNum;
-                int searchTime = 10;
+                int searchTimes = p_opts.m_searchTimes;
 
                 if (!warmupFile.empty())
                 {
@@ -414,7 +414,7 @@ namespace SPTAG {
 
                 LOG(Helper::LogLevel::LL_Info, "Start ANN Search...\n");
 
-                StableSearch(p_index, numThreads, results, querySet, searchTime, p_opts.m_queryCountLimit, internalResultNum);
+                StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 
                 LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
 
