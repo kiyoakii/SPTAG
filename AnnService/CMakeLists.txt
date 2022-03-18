@@ -32,10 +32,19 @@ if(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
     target_compile_options(DistanceUtils PRIVATE -mavx2 -mavx -msse -msse2 -fPIC)
 endif()
 
+find_package(RocksDB 6.16.4 CONFIG)
+if((DEFINED RocksDB_DIR) AND RocksDB_DIR)
+    list(APPEND RocksDB_LIBRARIES RocksDB::rocksdb)
+    message (STATUS "Found RocksDB ${RocksDB_VERSION}")
+    message (STATUS "RocksDB: ${RocksDB_DIR}")
+else()
+    message (FATAL_ERROR "Could not find RocksDB!")
+endif()
+
 add_library (SPTAGLib SHARED ${SRC_FILES} ${HDR_FILES})
-target_link_libraries (SPTAGLib DistanceUtils)
+target_link_libraries (SPTAGLib DistanceUtils ${RocksDB_LIBRARIES})
 add_library (SPTAGLibStatic STATIC ${SRC_FILES} ${HDR_FILES})
-target_link_libraries (SPTAGLibStatic DistanceUtils)
+target_link_libraries (SPTAGLibStatic DistanceUtils ${RocksDB_LIBRARIES})
 if(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
     target_compile_options(SPTAGLibStatic PRIVATE -fPIC)
 endif()
@@ -90,7 +99,7 @@ elseif(WIN32)
 endif()
 
 add_executable(ssdserving ${SSD_SERVING_HDR_FILES} ${SSD_SERVING_FILES})
-target_link_libraries(ssdserving SPTAGLibStatic ${Boost_LIBRARIES})
+target_link_libraries(ssdserving SPTAGLibStatic ${Boost_LIBRARIES} ${RocksDB_LIBRARIES})
 target_compile_definitions(ssdserving PRIVATE _exe)
 
 # for Test
@@ -108,19 +117,7 @@ if (MPI_FOUND)
     target_link_libraries(balanceddatapartition SPTAGLibStatic ${Boost_LIBRARIES} ${MPI_CXX_LIBRARIES})
 endif()
 
-find_package(RocksDB)
-if (RocksDB_FOUND)
-    include_directories (${RocksDB_INCLUDE_DIR})
-    link_directories (${RocksDB_LIBRARY_DIR})
-    message (STATUS "Found RocksDB.")
-    message (STATUS "Include Path: ${RocksDB_INCLUDE_DIRS}")
-    message (STATUS "Library Path: ${RocksDB_LIBRARY_DIRS}")
-    message (STATUS "Library: ${RocksDB_LIBRARIES}")
-else()
-    message (FATAL_ERROR "Could not find RocksDB!")
-endif()
-
 install(TARGETS ssdservingLib ssdserving
-  RUNTIME DESTINATION bin
-  ARCHIVE DESTINATION lib
+        RUNTIME DESTINATION bin
+        ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib)
