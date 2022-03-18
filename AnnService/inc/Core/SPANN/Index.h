@@ -187,9 +187,9 @@ namespace SPTAG
 
             std::shared_ptr<Dispatcher> m_dispatcher;
             std::shared_ptr<PersistentBuffer> m_persistentBuffer;
-            std::unique_ptr<Helper::ThreadPool> m_threadPool;
-            std::unique_ptr<ThreadPool> m_appendThreadPool;
-            std::unique_ptr<ThreadPool> m_reassignThreadPool;
+            std::shared_ptr<Helper::ThreadPool> m_threadPool;
+            std::shared_ptr<ThreadPool> m_appendThreadPool;
+            std::shared_ptr<ThreadPool> m_reassignThreadPool;
 
             COMMON::Labelset m_deletedID;
             COMMON::Labelset m_reassignedID;
