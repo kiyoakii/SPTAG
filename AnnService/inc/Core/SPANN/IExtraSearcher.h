@@ -102,7 +102,7 @@ namespace SPTAG {
             }
 
             // Method for SPANN Search function only
-            void SetPointer(std::shared_ptr<T> pointer) { m_pageBuffer = pointer; }
+            void SetPointer(std::shared_ptr<T> pointer) { m_pageBuffer.reset(); m_pageBuffer = pointer; }
 
         private:
             std::shared_ptr<T> m_pageBuffer;

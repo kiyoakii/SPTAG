@@ -651,13 +651,13 @@ namespace SPTAG
                 m_reassignedID.Initialize(m_vectorNum.load(), m_iDataBlockSize, m_iDataCapacity);
                 std::shared_ptr<Helper::KeyValueIO> db;
                 db.reset(new SPANN::RocksDBIO());
-                m_persistentBuffer.reset(new PersistentBuffer(m_options.m_persistentBufferPath, db));
-                m_appendThreadPool.reset(new ThreadPool());
+                m_persistentBuffer = std::make_shared<PersistentBuffer>(m_options.m_persistentBufferPath, db);
+                m_appendThreadPool = std::make_shared<ThreadPool>();
                 m_appendThreadPool->init(m_options.m_appendThreadNum);
-                m_reassignThreadPool.reset(new ThreadPool());
+                m_reassignThreadPool = std::make_shared<ThreadPool>();
                 m_reassignThreadPool->init(m_options.m_reassignThreadNum);
                 
-                m_dispatcher.reset(new Dispatcher(m_persistentBuffer, m_options.m_batch, m_appendThreadPool, m_reassignThreadPool));
+                m_dispatcher = std::make_shared<Dispatcher>(m_persistentBuffer, m_options.m_batch, m_appendThreadPool, m_reassignThreadPool);
             }
             auto t4 = std::chrono::high_resolution_clock::now();
             double buildSSDTime = std::chrono::duration_cast<std::chrono::seconds>(t4 - t3).count();

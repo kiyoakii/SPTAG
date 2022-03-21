@@ -202,7 +202,7 @@ namespace SPTAG
                     LOG(Helper::LogLevel::LL_Info, "fetch posting\n");
                     SearchIndex(curPostingID, *postingP);
                     p_exWorkSpace->m_pageBuffers[pi].SetPointer(std::shared_ptr<uint8_t>(
-                            reinterpret_cast<uint8_t*>(postingP->front()), [postingP](uint8_t*){ delete postingP; }));
+                            reinterpret_cast<uint8_t*>(&postingP[0]), [postingP](uint8_t*){ delete postingP; }));
                     int vectorNum = postingP->size() / m_vectorInfoSize;
 
                     diskIO++;
@@ -431,11 +431,9 @@ namespace SPTAG
                 auto fullVectors = p_reader->GetVectorSet();
                 if (p_opt.m_distCalcMethod == DistCalcMethod::Cosine && !p_reader->IsNormalized()) fullVectors->Normalize(p_opt.m_iSSDNumberOfThreads);
 
-                std::string postinglist;
                 for (int id = 0; id < postingListSize.size(); id++) 
                 {
-                    postinglist.resize(0);
-                    postinglist.clear();
+                    std::string postinglist;
                     std::size_t selectIdx = selections.lower_bound(id);
                     for (int j = 0; j < postingListSize[id]; ++j) {
                         if (selections[selectIdx].node != id) {
