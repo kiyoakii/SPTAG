@@ -216,7 +216,7 @@ namespace SPTAG
             if (nullptr == m_extraSearcher) return ErrorCode::EmptyIndex;
 
             COMMON::QueryResultSet<T> newResults(*((COMMON::QueryResultSet<T>*)&p_query));
-            for (int i = 0; i < newResults.GetResultNum(); ++i)
+            for (int i = 0; i < newResults.GetResultNum() && !m_options.m_useKV; ++i)
             {
                 auto res = newResults.GetResult(i);
                 if (res->VID == -1) break;
@@ -592,7 +592,7 @@ namespace SPTAG
 
                 if (m_options.m_useKV)
                 {
-                    m_extraSearcher.reset(new ExtraRocksDBController<T>(m_options.m_KVPath.c_str()));
+                    m_extraSearcher.reset(new ExtraRocksDBController<T>(m_options.m_KVPath.c_str(), m_options.m_dim));
                 } else {
                     m_extraSearcher.reset(new ExtraFullGraphSearcher<T>());
                 }
@@ -618,7 +618,6 @@ namespace SPTAG
                 } else {
                     //data structrue initialization
                     m_deletedID.Load(m_options.m_fullDeletedIDFile, m_iDataBlockSize, m_iDataCapacity);
-                    m_rwLocks = std::make_unique<std::shared_timed_mutex[]>(500000000);
                     m_postingSizes = std::make_unique<std::atomic_uint32_t[]>(500000000);
                     std::ifstream input(m_options.m_ssdInfoFile, std::ios::binary);
                     if (!input.is_open())
@@ -648,6 +647,7 @@ namespace SPTAG
                 }       
             }
             if (m_options.m_update) {
+                m_rwLocks = std::make_unique<std::shared_timed_mutex[]>(500000000);
                 m_reassignedID.Initialize(m_vectorNum.load(), m_iDataBlockSize, m_iDataCapacity);
                 std::shared_ptr<Helper::KeyValueIO> db;
                 db.reset(new SPANN::RocksDBIO());

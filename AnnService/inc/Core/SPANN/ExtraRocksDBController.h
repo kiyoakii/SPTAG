@@ -143,11 +143,12 @@ namespace SPTAG
             RocksDBIO db;
             std::atomic_uint64_t m_postingNum;
         public:
-            ExtraRocksDBController(const char* dbPath) { db.Initialize(dbPath); }
+            ExtraRocksDBController(const char* dbPath, int dim) { db.Initialize(dbPath); m_vectorInfoSize = dim * sizeof(ValueType) + sizeof(int);}
 
             virtual ~ExtraRocksDBController() { }
 
             virtual bool LoadIndex(Options& p_opt) {
+                /*
                 m_extraFullGraphFile = p_opt.m_indexDirectory + FolderSep + p_opt.m_ssdIndex;
                 std::string curFile = m_extraFullGraphFile;
                 do {
@@ -174,6 +175,7 @@ namespace SPTAG
 #ifndef _MSC_VER
                 Helper::AIOTimeout.tv_nsec = p_opt.m_iotimeout * 1000;
 #endif
+                */
                 return true;
             }
 
@@ -195,36 +197,33 @@ namespace SPTAG
                 for (uint32_t pi = 0; pi < postingListCount; ++pi)
                 {
                     auto curPostingID = p_exWorkSpace->m_postingIDs[pi];
-                    auto listInfo = &(m_listInfos[0][curPostingID]);
                     auto postingP = new std::string;
 
+                    LOG(Helper::LogLevel::LL_Info, "fetch posting\n");
                     SearchIndex(curPostingID, *postingP);
                     p_exWorkSpace->m_pageBuffers[pi].SetPointer(std::shared_ptr<uint8_t>(
                             reinterpret_cast<uint8_t*>(postingP->front()), [postingP](uint8_t*){ delete postingP; }));
-                    listInfo->listEleCount = postingP->size() / m_vectorInfoSize;
+                    int vectorNum = postingP->size() / m_vectorInfoSize;
 
                     diskIO++;
                     diskRead++;
-                    listElements += listInfo->listEleCount;
-
+                    listElements += vectorNum;
+ 
                     auto buffer = reinterpret_cast<char*>((p_exWorkSpace->m_pageBuffers[pi]).GetBuffer());
-                    for (int i = 0; i < listInfo->listEleCount; i++) {
+                    LOG(Helper::LogLevel::LL_Info, "iterate posting: posting id: %d lenght: %d\n", curPostingID, vectorNum);
+                    for (int i = 0; i < vectorNum; i++) {
+                        LOG(Helper::LogLevel::LL_Info, "get vector pointer\n");
                         char* vectorInfo = buffer + i * m_vectorInfoSize;
+                        LOG(Helper::LogLevel::LL_Info, "get id\n");
                         int vectorID = *(reinterpret_cast<int*>(vectorInfo));
+                        LOG(Helper::LogLevel::LL_Info, "check accessed\n");
                         if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID)) continue;
+                        LOG(Helper::LogLevel::LL_Info, "calculate\n");
                         auto distance2leaf = p_index->ComputeDistance(queryResults.GetQuantizedTarget(), vectorInfo + sizeof(int));
                         queryResults.AddPoint(vectorID, distance2leaf);
                     }
-                }
-
-                if (truth) {
-                    for (uint32_t pi = 0; pi < postingListCount; ++pi)
-                    {
-                        auto curPostingID = p_exWorkSpace->m_postingIDs[pi];
-                        auto listInfo = &(m_listInfos[0][curPostingID]);
-                        char* buffer = (char*)((p_exWorkSpace->m_pageBuffers[pi]).GetBuffer());
-
-                        for (int i = 0; i < listInfo->listEleCount; ++i) {
+                    if (truth) {
+                        for (int i = 0; i < vectorNum; ++i) {
                             char* vectorInfo = buffer + i * m_vectorInfoSize;
                             int vectorID = *(reinterpret_cast<int*>(vectorInfo));
                             if (truth && truth->count(vectorID))
