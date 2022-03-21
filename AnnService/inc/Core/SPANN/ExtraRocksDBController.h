@@ -199,7 +199,6 @@ namespace SPTAG
                     auto curPostingID = p_exWorkSpace->m_postingIDs[pi];
                     auto postingP = new std::string;
 
-                    LOG(Helper::LogLevel::LL_Info, "fetch posting\n");
                     SearchIndex(curPostingID, *postingP);
                     p_exWorkSpace->m_pageBuffers[pi].SetPointer(std::shared_ptr<uint8_t>(
                             reinterpret_cast<uint8_t*>(&postingP[0]), [postingP](uint8_t*){ delete postingP; }));
@@ -210,15 +209,10 @@ namespace SPTAG
                     listElements += vectorNum;
  
                     auto buffer = reinterpret_cast<char*>((p_exWorkSpace->m_pageBuffers[pi]).GetBuffer());
-                    LOG(Helper::LogLevel::LL_Info, "iterate posting: posting id: %d lenght: %d\n", curPostingID, vectorNum);
                     for (int i = 0; i < vectorNum; i++) {
-                        LOG(Helper::LogLevel::LL_Info, "get vector pointer\n");
-                        char* vectorInfo = buffer + i * m_vectorInfoSize;
-                        LOG(Helper::LogLevel::LL_Info, "get id\n");
+                        char* vectorInfo = postingP->data() + i * m_vectorInfoSize;
                         int vectorID = *(reinterpret_cast<int*>(vectorInfo));
-                        LOG(Helper::LogLevel::LL_Info, "check accessed\n");
                         if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID)) continue;
-                        LOG(Helper::LogLevel::LL_Info, "calculate\n");
                         auto distance2leaf = p_index->ComputeDistance(queryResults.GetQuantizedTarget(), vectorInfo + sizeof(int));
                         queryResults.AddPoint(vectorID, distance2leaf);
                     }
@@ -300,16 +294,7 @@ namespace SPTAG
                         auto fullVectors = p_reader->GetVectorSet(start, end);
                         if (p_opt.m_distCalcMethod == DistCalcMethod::Cosine && !p_reader->IsNormalized()) fullVectors->Normalize(p_opt.m_iSSDNumberOfThreads);
 
-                        if (p_opt.m_batches > 1) {
-                            selections.LoadBatch(static_cast<size_t>(start) * p_opt.m_replicaCount, static_cast<size_t>(end) * p_opt.m_replicaCount);
-                            emptySet.clear();
-                            for (auto vid : headVectorIDS) {
-                                if (vid >= start && vid < end) emptySet.insert(vid - start);
-                            }
-                        }
-                        else {
-                            emptySet = headVectorIDS;
-                        }
+                        emptySet.clear();
 
                         int sampleNum = 0;
                         for (int j = start; j < end && sampleNum < sampleSize; j++)
@@ -331,12 +316,10 @@ namespace SPTAG
                         for (SizeType j = start; j < end; j++) {
                             replicaCount[j] = 0;
                             size_t vecOffset = j * (size_t)p_opt.m_replicaCount;
-                            if (headVectorIDS.count(j) == 0) {
-                                for (int resNum = 0; resNum < p_opt.m_replicaCount && selections[vecOffset + resNum].node != INT_MAX; resNum++) {
-                                    ++postingListSize[selections[vecOffset + resNum].node];
-                                    selections[vecOffset + resNum].tonode = j;
-                                    ++replicaCount[j];
-                                }
+                            for (int resNum = 0; resNum < p_opt.m_replicaCount && selections[vecOffset + resNum].node != INT_MAX; resNum++) {
+                                ++postingListSize[selections[vecOffset + resNum].node];
+                                selections[vecOffset + resNum].tonode = j;
+                                ++replicaCount[j];
                             }
                         }
 
@@ -366,7 +349,6 @@ namespace SPTAG
                     std::vector<int> replicaCountDist(p_opt.m_replicaCount + 1, 0);
                     for (int i = 0; i < replicaCount.size(); ++i)
                     {
-                        if (headVectorIDS.count(i) > 0) continue;
                         ++replicaCountDist[replicaCount[i]];
                     }
 
@@ -402,7 +384,6 @@ namespace SPTAG
                     }
                     for (int i = 0; i < replicaCount.size(); ++i)
                     {
-                        if (headVectorIDS.count(i) > 0) continue;
 
                         ++replicaCountDist[replicaCount[i]];
 

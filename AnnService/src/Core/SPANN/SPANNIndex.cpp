@@ -225,6 +225,7 @@ namespace SPTAG
                 if (truth && truth->count(global_VID)) (*found)[res->VID].insert(global_VID);
                 res->VID = global_VID;
             }
+            newResults.Reset();
             newResults.Reverse();
 
             auto auto_ws = m_workSpacePool->Rent();
