@@ -90,7 +90,7 @@ DefineSSDParameter(m_samples, int, 100, "RecallTestSampleNumber")
 DefineSSDParameter(m_fullDeletedIDFile, std::string, std::string("fulldeleted"), "FullDeletedIDFile")
 DefineSSDParameter(m_useKV, bool, false, "UseKV")
 DefineSSDParameter(m_KVPath, std::string, std::string(""), "KVPath")
-DefineSSDParameter(m_ssdInfoFile, std::string, std::string(""), "ssdInfoFile")
+DefineSSDParameter(m_ssdInfoFile, std::string, std::string(""), "SsdInfoFile")
 
 // GPU Building
 DefineSSDParameter(m_gpuSSDNumTrees, int, 100, "GPUSSDNumTrees")
