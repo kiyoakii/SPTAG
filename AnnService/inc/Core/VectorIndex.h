@@ -146,7 +146,7 @@ public:
 
     void BuildMetaMapping(bool p_checkDeleted = true);
 
-    virtual ErrorCode Append(SizeType headID, int appendNum, std::shared_ptr<std::string> appendPosting, SizeType oldVID = -1) = 0;
+    virtual ErrorCode Append(SizeType headID, int appendNum, std::string& appendPosting, SizeType oldVID = -1) = 0;
 
     virtual void ProcessAsyncReassign(std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check,
                               SizeType oldVID, std::function<void()> p_callback) = 0;

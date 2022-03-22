@@ -109,6 +109,9 @@ namespace SPTAG
             };
 
             ErrorCode Merge(SizeType key, const std::string& value) {
+                if (value.size() == 0) {
+                    LOG(Helper::LogLevel::LL_Error, "Error! empty append posting!\n");
+                }
                 auto s = db->Merge(rocksdb::WriteOptions(), Helper::Convert::Serialize<int>(&key, 1), value);
                 if (s == rocksdb::Status::OK()) {
                     return ErrorCode::Success;
@@ -202,7 +205,7 @@ namespace SPTAG
 
                     SearchIndex(curPostingID, *postingP);
                     p_exWorkSpace->m_pageBuffers[pi].SetPointer(std::shared_ptr<uint8_t>(
-                            reinterpret_cast<uint8_t*>(&postingP[0]), [postingP](uint8_t*){ delete postingP; }));
+                            (uint8_t *)postingP->data(), [postingP](uint8_t*){ delete postingP; }));
                     int vectorNum = postingP->size() / m_vectorInfoSize;
 
                     diskIO++;
@@ -474,6 +477,9 @@ namespace SPTAG
             }
 
             virtual ErrorCode AppendPosting(SizeType headID, const std::string& appendPosting) {
+                if (appendPosting.size() == 0) {
+                    LOG(Helper::LogLevel::LL_Error, "Error! empty append posting!\n");
+                }
                 return db.Merge(headID, appendPosting);
             }
 

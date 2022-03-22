@@ -880,11 +880,11 @@ namespace SPTAG
                     char code = *(reinterpret_cast<char*>(assignment.data()));
                     if (assignment.size() == 0)
                     {
-                        char* headPointer = assignment.data() + sizeof(char);
                         LOG(Helper::LogLevel::LL_Info, "Error\n");
                         LOG(Helper::LogLevel::LL_Info, "ScanNum: %d, SentNum: %d, CurrentAssignNum: %d, ProcessingAssignment: %d\n", scanNum, sentAssignment.load(), currentAssignmentID, i);
                         exit(1);
                     }
+                    int32_t vectorInfoSize = m_index->GetValueSize() + sizeof(int);
                     if (code == 0) {
                         // insert
                         char* headPointer = assignment.data() + sizeof(char);
@@ -901,9 +901,12 @@ namespace SPTAG
                             continue;
                         }
                         if (newPart.find(headID) == newPart.end()) {
-                            newPart[headID] = std::make_shared<std::string>(std::move(Helper::Convert::Serialize<uint8_t>(headPointer + sizeof(int), m_index->GetValueSize() + sizeof(int))));
+                            newPart[headID] = std::make_shared<std::string>(std::move(assignment.substr(sizeof(char)+ sizeof(int), vectorInfoSize)));
+                            LOG(Helper::LogLevel::LL_Info, "Append task, headID: %d, vid: %d\n", headID, *(int*)(headPointer + sizeof(int)));
                         } else {
-                            *newPart[headID] += Helper::Convert::Serialize<uint8_t>(headPointer + sizeof(int), m_index->GetValueSize() + sizeof(int));
+                            *newPart[headID] += assignment.substr(sizeof(char)+ sizeof(int), vectorInfoSize);
+                            LOG(Helper::LogLevel::LL_Info, "Add assignment to existing new part, newPart length: %d\n", newPart[headID]->size());
+                            LOG(Helper::LogLevel::LL_Info, "Append headID: %d, vid: %d\n", headID, *(int*)(headPointer + sizeof(int)));
                         }
                     } else {
                         // delete
@@ -916,7 +919,7 @@ namespace SPTAG
 
                 for (auto iter = newPart.begin(); iter != newPart.end(); iter++) {
                     int appendNum = (*iter->second).size() / (m_index->GetValueSize() + sizeof(int));
-                    m_index->AppendAsync(iter->first, appendNum, iter->second);
+                    m_index->AppendAsync(iter->first, appendNum, std::move(iter->second));
                 }
 
                 sentAssignment = i;
@@ -1218,9 +1221,9 @@ namespace SPTAG
                 if (CheckIdDeleted(VID)) {
                     break;
                 }
-                std::shared_ptr<std::string> newPart(new std::string);
-                *newPart += Helper::Convert::Serialize<int>(&VID, 1);
-                *newPart += Helper::Convert::Serialize<ValueType>(p_queryResults.GetTarget(), m_options.m_dim);
+                std::string newPart;
+                newPart += Helper::Convert::Serialize<int>(&VID, 1);
+                newPart += Helper::Convert::Serialize<ValueType>(p_queryResults.GetTarget(), m_options.m_dim);
                 auto headID = selections[i].headID;
                 //LOG(Helper::LogLevel::LL_Info, "Reassign: headID :%d, oldVID:%d, newVID:%d, posting length: %d, dist: %f\n", headID, oldVID, VID, m_postingSizes[headID].load(), selections[i].distance);
                 Append(headID, 1, newPart, oldVID);
@@ -1230,20 +1233,22 @@ namespace SPTAG
         }
 
         template <typename ValueType>
-        ErrorCode SPTAG::SPANN::Index<ValueType>::Append(SizeType headID, int appendNum, std::shared_ptr<std::string> appendPosting, SizeType oldVID)
+        ErrorCode SPTAG::SPANN::Index<ValueType>::Append(SizeType headID, int appendNum, std::string& appendPosting, SizeType oldVID)
         {
+            if (appendPosting.size() == 0) {
+                LOG(Helper::LogLevel::LL_Error, "Error! empty append posting!\n");
+            }
 //            TimeUtils::StopW sw;
             m_appendTaskNum++;
 
             //debug code
             LOG(Helper::LogLevel::LL_Info, "Append: headID :%d, appendNum:%d\n", headID, appendNum);
-            uint8_t* postingP = reinterpret_cast<uint8_t*>(&appendPosting->front());
+            auto postingP = reinterpret_cast<uint8_t*>(&appendPosting[0]);
             for (int i = 0; i < appendNum; i++)
             {
                 uint8_t* vid = postingP +  i * (m_options.m_vectorSize + sizeof(int));
                 LOG(Helper::LogLevel::LL_Info, "Append: vid: %d\n", *reinterpret_cast<int*>(vid));
             }
-
 
             if (appendNum == 0) {
                 LOG(Helper::LogLevel::LL_Info, "Error!, headID :%d, appendNum:%d\n", headID, appendNum);
@@ -1257,20 +1262,20 @@ namespace SPTAG
                     m_deletedID.AddBatch(appendNum);
                     m_reassignedID.AddBatch(appendNum);
                 }
-                uint8_t* postingP = reinterpret_cast<uint8_t*>(&appendPosting->front());
+
                 std::vector<SizeType> newHeads;
                 for (int i = 0; i < appendNum; i++)
                 {
 //                    m_currerntReassignTaskNum++;
-                    uint8_t* vid = postingP +  i * (m_options.m_vectorSize + sizeof(int));
-                    std::shared_ptr<std::string> vectorContain(new std::string(Helper::Convert::Serialize<uint8_t>(vid + sizeof(int), m_options.m_vectorSize)));
-                    ReassignAsync(vectorContain, newVID + i, newHeads, false, *(reinterpret_cast<int*>(vid)));
+                    uint32_t idx = i * (sizeof(int) + m_options.m_vectorSize);
+                    auto vectorContain = std::make_shared<std::string>(std::move(appendPosting.substr(idx + sizeof(int), m_options.m_vectorSize)));
+                    ReassignAsync(vectorContain, newVID + i, newHeads, false, *(int*)(appendPosting[idx]));
                 }
                 return ErrorCode::Success;
             }
             if (m_postingSizes[headID].load() + appendNum > m_options.m_postingVectorLimit) {
                 // double splitStartTime = sw.getElapsedMs();
-                if (Split(headID, appendNum, *appendPosting) == ErrorCode::FailSplit) {
+                if (Split(headID, appendNum, appendPosting) == ErrorCode::FailSplit) {
                     goto checkDeleted;
                 }
                 // m_splitTotalCost += sw.getElapsedMs() - splitStartTime;
@@ -1282,7 +1287,7 @@ namespace SPTAG
                         goto checkDeleted;
                     }
                     //LOG(Helper::LogLevel::LL_Info, "Merge: headID: %d, appendNum:%d\n", headID, appendNum);
-                    m_extraSearcher->AppendPosting(headID, *appendPosting);
+                    m_extraSearcher->AppendPosting(headID, appendPosting);
                 }
                 m_postingSizes[headID].fetch_add(appendNum, std::memory_order_relaxed);
                 // m_appendSsdCost += sw.getElapsedMs() - appendSsdStartTime;

@@ -31,6 +31,7 @@ namespace SPTAG {
             inline int StopPB()
             {
                 db->ShutDown();
+                return 0;
             }
 
         private:
