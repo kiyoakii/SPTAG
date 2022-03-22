@@ -564,6 +564,7 @@ namespace SPTAG {
                         recall);
 
                     LOG(Helper::LogLevel::LL_Info, "\n");
+                    LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times, head missing %d times\n", finishedInsert, p_index->getSplitTimes(), p_index->getHeadMiss());
                 }
                 p_index->UpdateStop();
             }

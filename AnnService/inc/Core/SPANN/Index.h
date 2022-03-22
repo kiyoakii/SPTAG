@@ -196,7 +196,7 @@ namespace SPTAG
             std::atomic_uint32_t m_headMiss{0};
             uint32_t m_appendTaskNum{0};
             uint32_t m_splitTaskNum{0};
-            uint32_t m_split_num{0};
+            uint32_t m_splitNum{0};
             std::mutex m_dataAddLock;
 
         public:
@@ -321,6 +321,10 @@ namespace SPTAG
             bool AllFinished() {return m_dispatcher->allFinished();}
 
             void ForceCompaction() {if (m_options.m_useKV) m_extraSearcher->ForceCompaction();}
+
+            int getSplitTimes() {return m_splitNum;}
+
+            int getHeadMiss() {return m_headMiss.load();}
 
             void UpdateStop()
             {

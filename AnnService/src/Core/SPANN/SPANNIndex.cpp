@@ -890,8 +890,13 @@ namespace SPTAG
                         char* headPointer = assignment.data() + sizeof(char);
                         int32_t headID = *(reinterpret_cast<int*>(headPointer));
                         int32_t vid = *(reinterpret_cast<int*>(headPointer + sizeof(int)));
-                        //LOG(Helper::LogLevel::LL_Info, "code: %d, headID: %d, assignment size: %d, vid: %d\n", code, *(reinterpret_cast<int*>(headPointer)), assignment.size(), vid);
-                        //LOG(Helper::LogLevel::LL_Info, "ScanNum: %d, SentNum: %d, CurrentAssignNum: %d, ProcessingAssignment: %d\n", scanNum, sentAssignment.load(), currentAssignmentID, i);
+
+                        //debug code
+
+                        //LOG(Helper::LogLevel::LL_Info, "Dispatcher: code: %d, headID: %d, assignment size: %d, vid: %d\n", code, *(reinterpret_cast<int*>(headPointer)), assignment.size(), vid);
+                        //LOG(Helper::LogLevel::LL_Info, "Dispatcher: ScanNum: %d, SentNum: %d, CurrentAssignNum: %d, ProcessingAssignment: %d\n", scanNum, sentAssignment.load(), currentAssignmentID, i);
+
+
                         if (m_index->CheckIdDeleted(vid)) {
                             continue;
                         }
@@ -1041,7 +1046,7 @@ namespace SPTAG
 
             m_postingSizes[headID] = 0;
             lock.unlock();
-            // int split_order = ++m_split_num;
+            ++m_splitNum;
             // m_splitUpdateIndexCost += sw.getElapsedMs() - clusterEndTime;
             //QuantifySplit(headID, newPostingLists, newHeadsID, split_order);
 
@@ -1229,6 +1234,17 @@ namespace SPTAG
         {
 //            TimeUtils::StopW sw;
             m_appendTaskNum++;
+
+            //debug code
+            LOG(Helper::LogLevel::LL_Info, "Append: headID :%d, appendNum:%d\n", headID, appendNum);
+            uint8_t* postingP = reinterpret_cast<uint8_t*>(&appendPosting->front());
+            for (int i = 0; i < appendNum; i++)
+            {
+                uint8_t* vid = postingP +  i * (m_options.m_vectorSize + sizeof(int));
+                LOG(Helper::LogLevel::LL_Info, "Append: vid: %d\n", *reinterpret_cast<int*>(vid));
+            }
+
+
             if (appendNum == 0) {
                 LOG(Helper::LogLevel::LL_Info, "Error!, headID :%d, appendNum:%d\n", headID, appendNum);
             }

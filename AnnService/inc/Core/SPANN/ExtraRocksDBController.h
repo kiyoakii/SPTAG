@@ -474,7 +474,7 @@ namespace SPTAG
             }
 
             virtual ErrorCode AppendPosting(SizeType headID, const std::string& appendPosting) {
-                db.Merge(headID, appendPosting);
+                return db.Merge(headID, appendPosting);
             }
 
             virtual void ForceCompaction() {db.ForceCompaction();}
