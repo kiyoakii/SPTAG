@@ -663,7 +663,7 @@ namespace SPTAG
                 LOG(Helper::LogLevel::LL_Info, "SPFresh: finish initialization\n");
 
                 LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize dispatcher\n");
-                m_dispatcher = std::make_shared<Dispatcher>(m_persistentBuffer, m_options.m_batch, m_appendThreadPool, m_reassignThreadPool, *this);
+                m_dispatcher = std::make_shared<Dispatcher>(m_persistentBuffer, m_options.m_batch, m_appendThreadPool, m_reassignThreadPool, this);
 
                 m_dispatcher->run();
                 LOG(Helper::LogLevel::LL_Info, "SPFresh: finish initialization\n");
@@ -892,26 +892,26 @@ namespace SPTAG
                         int32_t vid = *(reinterpret_cast<int*>(headPointer + sizeof(int)));
                         //LOG(Helper::LogLevel::LL_Info, "code: %d, headID: %d, assignment size: %d, vid: %d\n", code, *(reinterpret_cast<int*>(headPointer)), assignment.size(), vid);
                         //LOG(Helper::LogLevel::LL_Info, "ScanNum: %d, SentNum: %d, CurrentAssignNum: %d, ProcessingAssignment: %d\n", scanNum, sentAssignment.load(), currentAssignmentID, i);
-                        if (m_index.lock()->CheckIdDeleted(vid)) {
+                        if (m_index->CheckIdDeleted(vid)) {
                             continue;
                         }
                         if (newPart.find(headID) == newPart.end()) {
-                            newPart[headID].reset(new std::string(Helper::Convert::Serialize<uint8_t>(headPointer + sizeof(int), m_index.lock()->GetValueSize() + sizeof(int))));
+                            newPart[headID].reset(new std::string(Helper::Convert::Serialize<uint8_t>(headPointer + sizeof(int), m_index->GetValueSize() + sizeof(int))));
                         } else {
-                            *newPart[headID] += Helper::Convert::Serialize<uint8_t>(headPointer + sizeof(int), m_index.lock()->GetValueSize() + sizeof(int));
+                            *newPart[headID] += Helper::Convert::Serialize<uint8_t>(headPointer + sizeof(int), m_index->GetValueSize() + sizeof(int));
                         }
                     } else {
                         // delete
                         char* vectorPointer = assignment.data() + sizeof(char);
                         int VID = *(reinterpret_cast<int*>(vectorPointer));
                         //LOG(Helper::LogLevel::LL_Info, "Scanner: delete: %d\n", VID);
-                        m_index.lock()->DeleteIndex(VID);
+                        m_index->DeleteIndex(VID);
                     }
                 }
 
                 for (auto iter = newPart.begin(); iter != newPart.end(); iter++) {
-                    int appendNum = (*iter->second).size() / (m_index.lock()->GetValueSize() + sizeof(int));
-                    m_index.lock()->AppendAsync(iter->first, appendNum, iter->second);
+                    int appendNum = (*iter->second).size() / (m_index->GetValueSize() + sizeof(int));
+                    m_index->AppendAsync(iter->first, appendNum, iter->second);
                 }
 
                 sentAssignment = i;

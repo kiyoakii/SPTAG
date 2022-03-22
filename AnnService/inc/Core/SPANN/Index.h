@@ -39,8 +39,8 @@ namespace SPTAG
     namespace SPANN
     {
         template<typename T>
-        class Index : public VectorIndex
-        {
+    class Index : public std::enable_shared_from_this<Index<T>>, public VectorIndex
+    {
             class AppendAsyncJob : public Helper::ThreadPool::Job
             {
             private:
@@ -135,13 +135,13 @@ namespace SPTAG
                 std::atomic_bool running{false};
                 std::atomic_uint32_t sentAssignment{0};
 
-                std::shared_ptr<Index> m_index;
+                Index* m_index;
                 std::shared_ptr<PersistentBuffer> m_persistentBuffer;
                 std::shared_ptr<ThreadPool> appendThreadPool;
                 std::shared_ptr<ThreadPool> reassignThreadPool;
 
             public:
-                Dispatcher(std::shared_ptr<PersistentBuffer> pb, std::size_t batch, std::shared_ptr<ThreadPool> append, std::shared_ptr<ThreadPool> reassign, std::shared_ptr<Index> m_index)
+                Dispatcher(std::shared_ptr<PersistentBuffer> pb, std::size_t batch, std::shared_ptr<ThreadPool> append, std::shared_ptr<ThreadPool> reassign, Index* m_index)
                         : m_persistentBuffer(pb), batch(batch), appendThreadPool(append), reassignThreadPool(reassign), m_index(m_index) {}
 
                 ~Dispatcher() { running = false; t.join(); }
