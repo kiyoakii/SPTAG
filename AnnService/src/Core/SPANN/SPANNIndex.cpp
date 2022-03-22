@@ -896,7 +896,7 @@ namespace SPTAG
                             continue;
                         }
                         if (newPart.find(headID) == newPart.end()) {
-                            newPart[headID].reset(new std::string(Helper::Convert::Serialize<uint8_t>(headPointer + sizeof(int), m_index->GetValueSize() + sizeof(int))));
+                            newPart[headID] = std::make_shared<std::string>(std::move(Helper::Convert::Serialize<uint8_t>(headPointer + sizeof(int), m_index->GetValueSize() + sizeof(int))));
                         } else {
                             *newPart[headID] += Helper::Convert::Serialize<uint8_t>(headPointer + sizeof(int), m_index->GetValueSize() + sizeof(int));
                         }

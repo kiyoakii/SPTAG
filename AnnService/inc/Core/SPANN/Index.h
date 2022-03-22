@@ -51,12 +51,12 @@ namespace SPTAG
                 std::function<void()> m_callback;
             public:
                 AppendAsyncJob(VectorIndex* m_index, SizeType headID, int appendNum, std::shared_ptr<std::string> appendPosting, std::function<void()> p_callback)
-                        : m_index(std::move(m_index)), headID(headID), appendNum(appendNum), appendPosting(appendPosting), m_callback(std::move(p_callback)) {}
+                        : m_index(m_index), headID(headID), appendNum(appendNum), appendPosting(appendPosting), m_callback(std::move(p_callback)) {}
 
                 ~AppendAsyncJob() {}
 
                 inline void exec(IAbortOperation* p_abort) override {
-                    m_index->Append(headID, appendNum, appendPosting);
+                    m_index->Append(headID, appendNum, std::move(appendPosting));
                     if (m_callback != nullptr) {
                         m_callback();
                     }
