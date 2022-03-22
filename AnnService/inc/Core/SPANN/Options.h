@@ -118,6 +118,8 @@ namespace SPTAG {
             bool m_enableADC;
             int m_iotimeout;
 
+            int m_searchThreadNum;
+
             // Calculating
             std::string m_truthFilePrefix;
             bool m_calTruth;
@@ -139,6 +141,7 @@ namespace SPTAG {
             int m_appendThreadNum;
             int m_reassignThreadNum;
             int m_batch;
+            std::string m_fullVectorPath;
 
             Options() {
 #define DefineBasicParameter(VarName, VarType, DefaultValue, RepresentStr) \

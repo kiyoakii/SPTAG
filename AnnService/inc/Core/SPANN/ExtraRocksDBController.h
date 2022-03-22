@@ -37,6 +37,7 @@ namespace SPTAG
 
             virtual bool Initialize(const char* filePath)
             {
+                LOG(Helper::LogLevel::LL_Info, "SPFresh: New Rocksdb: %s\n", filePath);
                 dbOptions.IncreaseParallelism();
                 dbOptions.OptimizeLevelStyleCompaction();
                 dbOptions.create_if_missing = true;
@@ -475,6 +476,8 @@ namespace SPTAG
             virtual ErrorCode AppendPosting(SizeType headID, const std::string& appendPosting) {
                 db.Merge(headID, appendPosting);
             }
+
+            virtual void ForceCompaction() {db.ForceCompaction();}
 
             virtual ErrorCode SearchIndex(SizeType headID, std::string& posting) {  return db.Get(headID, &posting); }
             virtual ErrorCode AddIndex(SizeType headID, const std::string& posting) { m_postingNum++; return db.Put(headID, posting); }

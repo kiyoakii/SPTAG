@@ -650,15 +650,23 @@ namespace SPTAG
             if (m_options.m_update) {
                 m_rwLocks = std::make_unique<std::shared_timed_mutex[]>(500000000);
                 m_reassignedID.Initialize(m_vectorNum.load(), m_iDataBlockSize, m_iDataCapacity);
+                LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize persistent buffer\n");
                 std::shared_ptr<Helper::KeyValueIO> db;
                 db.reset(new SPANN::RocksDBIO());
                 m_persistentBuffer = std::make_shared<PersistentBuffer>(m_options.m_persistentBufferPath, db);
+                LOG(Helper::LogLevel::LL_Info, "SPFresh: finish initialization\n");
+                LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize thread pools, append: %d, reassign %d\n", m_options.m_appendThreadNum, m_options.m_reassignThreadNum);
                 m_appendThreadPool = std::make_shared<ThreadPool>();
                 m_appendThreadPool->init(m_options.m_appendThreadNum);
                 m_reassignThreadPool = std::make_shared<ThreadPool>();
                 m_reassignThreadPool->init(m_options.m_reassignThreadNum);
-                
-                m_dispatcher = std::make_shared<Dispatcher>(m_persistentBuffer, m_options.m_batch, m_appendThreadPool, m_reassignThreadPool);
+                LOG(Helper::LogLevel::LL_Info, "SPFresh: finish initialization\n");
+
+                LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize dispatcher\n");
+                m_dispatcher = std::make_shared<Dispatcher>(m_persistentBuffer, m_options.m_batch, m_appendThreadPool, m_reassignThreadPool, *this);
+
+                m_dispatcher->run();
+                LOG(Helper::LogLevel::LL_Info, "SPFresh: finish initialization\n");
             }
             auto t4 = std::chrono::high_resolution_clock::now();
             double buildSSDTime = std::chrono::duration_cast<std::chrono::seconds>(t4 - t3).count();
@@ -827,7 +835,7 @@ namespace SPTAG
                     assignID = m_persistentBuffer->PutAssignment(assignment);
                 }
             }
-
+            return ErrorCode::Success;
         }
 
         // Add delete entry to persistent buffer
@@ -868,41 +876,42 @@ namespace SPTAG
                     m_persistentBuffer->GetAssignment(i, &assignment);
                     if(assignment.size() == 0)
                         break;
-                    uint8_t* postingP = reinterpret_cast<uint8_t*>(&assignment.front());
-                    char code = *(reinterpret_cast<char*>(postingP));
+                    //uint8_t* postingP = reinterpret_cast<uint8_t*>(&assignment.front());
+                    char code = *(reinterpret_cast<char*>(assignment.data()));
                     if (assignment.size() == 0)
                     {
-                        uint8_t* headPointer = postingP + sizeof(char);
+                        char* headPointer = assignment.data() + sizeof(char);
                         LOG(Helper::LogLevel::LL_Info, "Error\n");
-                        LOG(Helper::LogLevel::LL_Info, "code: %d, headID: %d, assignment size: %d\n", code, *(reinterpret_cast<int*>(headPointer)), assignment.size());
                         LOG(Helper::LogLevel::LL_Info, "ScanNum: %d, SentNum: %d, CurrentAssignNum: %d, ProcessingAssignment: %d\n", scanNum, sentAssignment.load(), currentAssignmentID, i);
                         exit(1);
                     }
                     if (code == 0) {
                         // insert
-                        uint8_t* headPointer = postingP + sizeof(char);
+                        char* headPointer = assignment.data() + sizeof(char);
                         int32_t headID = *(reinterpret_cast<int*>(headPointer));
                         int32_t vid = *(reinterpret_cast<int*>(headPointer + sizeof(int)));
-                        if (m_index->CheckIdDeleted(vid)) {
+                        //LOG(Helper::LogLevel::LL_Info, "code: %d, headID: %d, assignment size: %d, vid: %d\n", code, *(reinterpret_cast<int*>(headPointer)), assignment.size(), vid);
+                        //LOG(Helper::LogLevel::LL_Info, "ScanNum: %d, SentNum: %d, CurrentAssignNum: %d, ProcessingAssignment: %d\n", scanNum, sentAssignment.load(), currentAssignmentID, i);
+                        if (m_index.lock()->CheckIdDeleted(vid)) {
                             continue;
                         }
                         if (newPart.find(headID) == newPart.end()) {
-                            newPart[headID].reset(new std::string(Helper::Convert::Serialize<uint8_t>(headPointer + sizeof(int), m_index->GetValueSize() + sizeof(int))));
+                            newPart[headID].reset(new std::string(Helper::Convert::Serialize<uint8_t>(headPointer + sizeof(int), m_index.lock()->GetValueSize() + sizeof(int))));
                         } else {
-                            *newPart[headID] += Helper::Convert::Serialize<uint8_t>(headPointer + sizeof(int), m_index->GetValueSize() + sizeof(int));
+                            *newPart[headID] += Helper::Convert::Serialize<uint8_t>(headPointer + sizeof(int), m_index.lock()->GetValueSize() + sizeof(int));
                         }
                     } else {
                         // delete
-                        uint8_t* vectorPointer = postingP + sizeof(char);
+                        char* vectorPointer = assignment.data() + sizeof(char);
                         int VID = *(reinterpret_cast<int*>(vectorPointer));
                         //LOG(Helper::LogLevel::LL_Info, "Scanner: delete: %d\n", VID);
-                        m_index->DeleteIndex(VID);
+                        m_index.lock()->DeleteIndex(VID);
                     }
                 }
 
                 for (auto iter = newPart.begin(); iter != newPart.end(); iter++) {
-                    int appendNum = (*iter->second).size() / (m_index->GetValueSize() + sizeof(int));
-                    m_index->AppendAsync(iter->first, appendNum, iter->second);
+                    int appendNum = (*iter->second).size() / (m_index.lock()->GetValueSize() + sizeof(int));
+                    m_index.lock()->AppendAsync(iter->first, appendNum, iter->second);
                 }
 
                 sentAssignment = i;

@@ -11,6 +11,8 @@
 #include "inc/Helper/StringConvert.h"
 #include "inc/Helper/VectorSetReader.h"
 
+#include <iomanip>
+
 using namespace SPTAG;
 
 namespace SPTAG {
@@ -319,6 +321,47 @@ namespace SPTAG {
                 }
             }
 
+            std::string convertFloatToString(const float value, const int precision = 0)
+            {
+                std::stringstream stream{};
+                stream<<std::fixed<<std::setprecision(precision)<<value;
+                return stream.str();
+            }
+
+            std::string GetTruthFileName(std::string& truthFilePrefix, int vectorCount)
+            {
+                std::string fileName(truthFilePrefix);
+                fileName += "-";
+                if (vectorCount < 1000)
+                {
+                    fileName += std::to_string(vectorCount);
+                } 
+                else if (vectorCount < 1000000)
+                {
+                    fileName += std::to_string(vectorCount/1000);
+                    fileName += "k";
+                }
+                else if (vectorCount < 1000000000)
+                {
+                    if (vectorCount % 1000000 == 0) {
+                        fileName += std::to_string(vectorCount/1000000);
+                        fileName += "M";
+                    } 
+                    else 
+                    {
+                        float vectorCountM = ((float)vectorCount)/1000000;
+                        fileName += convertFloatToString(vectorCountM, 2);
+                        fileName += "M";
+                    }
+                }
+                else
+                {
+                    fileName += std::to_string(vectorCount/1000000000);
+                    fileName += "B";
+                }
+                return fileName;
+            }
+
             template <typename ValueType>
             void StableSearch(SPANN::Index<ValueType>* p_index,
                 int numThreads,
@@ -350,9 +393,192 @@ namespace SPTAG {
             }
 
             template <typename ValueType>
+            void UpdateSPFresh(SPANN::Index<ValueType>* p_index)
+            {
+                SPANN::Options& p_opts = *(p_index->GetOptions());
+                std::string truthFilePrefix = p_opts.m_truthFilePrefix;
+                int step = p_opts.m_step;
+                if (step == 0)
+                {
+                    LOG(Helper::LogLevel::LL_Error, "Incremental Test Error, Need to set step.\n");
+                    exit(1);
+                }
+
+                int numThreads = p_opts.m_searchThreadNum;
+                int internalResultNum = p_opts.m_searchInternalResultNum;
+                int K = p_opts.m_resultNum;
+                int truthK = (p_opts.m_truthResultNum <= 0) ? K : p_opts.m_truthResultNum;
+                int searchTimes = p_opts.m_searchTimes;
+
+                int KList[4] = {1, 10, 20, 50};
+
+                std::shared_ptr<VectorSet> vectorSet;
+
+                LOG(Helper::LogLevel::LL_Info, "Start loading VectorSet...\n");
+                if (!p_opts.m_vectorPath.empty() && fileexists(p_opts.m_vectorPath.c_str())) {
+                    std::shared_ptr<Helper::ReaderOptions> vectorOptions(new Helper::ReaderOptions(p_opts.m_valueType, p_opts.m_dim, p_opts.m_vectorType, p_opts.m_vectorDelimiter));
+                    auto vectorReader = Helper::VectorSetReader::CreateInstance(vectorOptions);
+                    if (ErrorCode::Success == vectorReader->LoadFile(p_opts.m_fullVectorPath))
+                    {
+                        vectorSet = vectorReader->GetVectorSet();
+                        if (p_opts.m_distCalcMethod == DistCalcMethod::Cosine) vectorSet->Normalize(numThreads);
+                        LOG(Helper::LogLevel::LL_Info, "\nLoad VectorSet(%d,%d).\n", vectorSet->Count(), vectorSet->Dimension());
+                    }
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "Start loading QuerySet...\n");
+                std::shared_ptr<Helper::ReaderOptions> queryOptions(new Helper::ReaderOptions(p_opts.m_valueType, p_opts.m_dim, p_opts.m_queryType, p_opts.m_queryDelimiter));
+                auto queryReader = Helper::VectorSetReader::CreateInstance(queryOptions);
+                if (ErrorCode::Success != queryReader->LoadFile(p_opts.m_queryPath))
+                {
+                    LOG(Helper::LogLevel::LL_Error, "Failed to read query file.\n");
+                    exit(1);
+                }
+                auto querySet = queryReader->GetVectorSet();
+                int numQueries = querySet->Count();
+
+                int curCount = p_index->GetNumSamples();
+                int insertCount = vectorSet->Count() - curCount;
+
+                if (p_opts.m_endVectorNum != -1)
+                {
+                    insertCount = p_opts.m_endVectorNum - curCount;
+                }
+                std::vector<std::set<SizeType>> truth;
+                float recall;
+
+                std::vector<QueryResult> results(numQueries, QueryResult(NULL, max(K, internalResultNum), false));
+
+                StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
+
+                LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
+
+                auto ptr = f_createIO();
+                if (ptr == nullptr || !ptr->Initialize(GetTruthFileName(truthFilePrefix, curCount).c_str(), std::ios::in | std::ios::binary)) {
+                    LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", GetTruthFileName(truthFilePrefix, curCount).c_str());
+                    exit(1);
+                }
+                int originalK = truthK;
+                COMMON::TruthSet::LoadTruth(ptr, truth, numQueries, originalK, truthK, p_opts.m_truthType);
+                char tmp[4];
+                if (ptr->ReadBinary(4, tmp) == 4) {
+                    LOG(Helper::LogLevel::LL_Error, "Truth number is larger than query number(%d)!\n", numQueries);
+                }
+
+                recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth, K, truthK, querySet, vectorSet, numQueries);
+                LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", truthK, K, recall);
+
+                LOG(Helper::LogLevel::LL_Info,
+                    "Recall: %f\n",
+                    recall);
+
+                LOG(Helper::LogLevel::LL_Info, "\n");
+
+                int batch = insertCount / step;
+                int finishedInsert = 0;
+                int insertThreads = p_opts.m_insertThreadNum;
+
+                LOG(Helper::LogLevel::LL_Info, "Updating: numThread: %d, step: %d, totalBatch: %d.\n", insertThreads, step, batch);
+
+                LOG(Helper::LogLevel::LL_Info, "Start updating...\n");
+                for (int i = 0; i < batch; i++)
+                {
+                    LOG(Helper::LogLevel::LL_Info, "Updating Batch %d: numThread: %d, step: %d.\n", i, insertThreads, step);
+                    StopWSPFresh sw;
+
+                    std::vector<std::thread> threads;
+
+                    std::atomic_size_t vectorsSent(0);
+
+                    auto func = [&]()
+                    {
+                        size_t index = 0;
+                        while (true)
+                        {
+                            index = vectorsSent.fetch_add(1);
+                            if (index < step)
+                            {
+                                if ((index & ((1 << 14) - 1)) == 0)
+                                {
+                                    LOG(Helper::LogLevel::LL_Info, "Sent %.2lf%%...\n", index * 100.0 / step);
+                                }
+
+                                p_index->AddIndex(vectorSet->GetVector(index + curCount), 1, p_opts.m_dim, nullptr);
+                            }
+                            else
+                            {
+                                return;
+                            }
+                        }
+                    };
+                    for (int j = 0; j < insertThreads; j++) { threads.emplace_back(func); }
+                    for (auto& thread : threads) { thread.join(); }
+
+                    double sendingCost = sw.getElapsedSec();
+                    LOG(Helper::LogLevel::LL_Info,
+                    "Finish sending in %.3lf seconds, sending throughput is %.2lf , insertion count %u.\n",
+                    sendingCost,
+                    step/ sendingCost,
+                    static_cast<uint32_t>(step));
+
+                    while(!p_index->AllFinished())
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                    }
+                    double syncingCost = sw.getElapsedSec();
+                    LOG(Helper::LogLevel::LL_Info,
+                    "Finish syncing in %.3lf seconds, actuall throughput is %.2lf, insertion count %u.\n",
+                    syncingCost,
+                    step / syncingCost,
+                    static_cast<uint32_t>(step));
+
+                    curCount += step;
+                    finishedInsert += step;
+                    LOG(Helper::LogLevel::LL_Info, "Total Vector num %d \n", curCount);
+
+                    p_index->ForceCompaction();
+
+                    StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
+
+                    LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
+
+                    truth.clear();
+
+                    auto ptr = f_createIO();
+                    if (ptr == nullptr || !ptr->Initialize(GetTruthFileName(truthFilePrefix, curCount).c_str(), std::ios::in | std::ios::binary)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", GetTruthFileName(truthFilePrefix, curCount).c_str());
+                        exit(1);
+                    }
+                    int originalK = truthK;
+                    COMMON::TruthSet::LoadTruth(ptr, truth, numQueries, originalK, truthK, p_opts.m_truthType);
+                    char tmp[4];
+                    if (ptr->ReadBinary(4, tmp) == 4) {
+                        LOG(Helper::LogLevel::LL_Error, "Truth number is larger than query number(%d)!\n", numQueries);
+                    }
+
+                    recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth, K, truthK, querySet, vectorSet, numQueries);
+                    LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", truthK, K, recall);
+
+                    LOG(Helper::LogLevel::LL_Info,
+                        "Recall: %f\n",
+                        recall);
+
+                    LOG(Helper::LogLevel::LL_Info, "\n");
+                }
+                p_index->UpdateStop();
+            }
+
+            template <typename ValueType>
             void SearchSPFresh(SPANN::Index<ValueType>* p_index)
             {
                 SPANN::Options& p_opts = *(p_index->GetOptions());
+
+                if (p_opts.m_update) 
+                {
+                    UpdateSPFresh(p_index);
+                    return;
+                }
+
                 std::string outputFile = p_opts.m_searchResult;
                 std::string truthFile = p_opts.m_truthPath;
                 std::string warmupFile = p_opts.m_warmupPath;
@@ -367,7 +593,7 @@ namespace SPTAG {
                 {
                     g_pLogger.reset(new Helper::FileLogger(Helper::LogLevel::LL_Info, p_opts.m_logFile.c_str()));
                 }
-                int numThreads = 16;
+                int numThreads = p_opts.m_searchThreadNum;
                 int internalResultNum = p_opts.m_searchInternalResultNum;
                 int K = p_opts.m_resultNum;
                 int truthK = (p_opts.m_truthResultNum <= 0) ? K : p_opts.m_truthResultNum;
@@ -420,6 +646,7 @@ namespace SPTAG {
 
                 std::shared_ptr<VectorSet> vectorSet;
 
+                LOG(Helper::LogLevel::LL_Info, "Start loading VectorSet...\n");
                 if (!p_opts.m_vectorPath.empty() && fileexists(p_opts.m_vectorPath.c_str())) {
                     std::shared_ptr<Helper::ReaderOptions> vectorOptions(new Helper::ReaderOptions(p_opts.m_valueType, p_opts.m_dim, p_opts.m_vectorType, p_opts.m_vectorDelimiter));
                     auto vectorReader = Helper::VectorSetReader::CreateInstance(vectorOptions);

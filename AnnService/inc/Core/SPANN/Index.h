@@ -141,8 +141,8 @@ namespace SPTAG
                 std::shared_ptr<ThreadPool> reassignThreadPool;
 
             public:
-                Dispatcher(std::shared_ptr<PersistentBuffer> pb, std::size_t batch, std::shared_ptr<ThreadPool> append, std::shared_ptr<ThreadPool> reassign)
-                        : m_persistentBuffer(pb), batch(batch), appendThreadPool(append), reassignThreadPool(reassign) {}
+                Dispatcher(std::shared_ptr<PersistentBuffer> pb, std::size_t batch, std::shared_ptr<ThreadPool> append, std::shared_ptr<ThreadPool> reassign, std::shared_ptr<Index> m_index)
+                        : m_persistentBuffer(pb), batch(batch), appendThreadPool(append), reassignThreadPool(reassign), m_index(m_index) {}
 
                 ~Dispatcher() { running = false; t.join(); }
 
@@ -213,7 +213,7 @@ namespace SPTAG
             inline std::shared_ptr<IExtraSearcher> GetDiskIndex() { return m_extraSearcher; }
             inline Options* GetOptions() { return &m_options; }
 
-            inline SizeType GetNumSamples() const { return m_options.m_vectorSize; }
+            inline SizeType GetNumSamples() const { return m_vectorNum.load(); }
             inline DimensionType GetFeatureDim() const { return m_options.m_dim; }
             inline SizeType GetValueSize() const { return m_options.m_dim * sizeof(T); }
 
@@ -317,6 +317,16 @@ namespace SPTAG
 
             void ProcessAsyncReassign(std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check,
                                       SizeType oldVID, std::function<void()> p_callback);
+
+            bool AllFinished() {return m_dispatcher->allFinished();}
+
+            void ForceCompaction() {if (m_options.m_useKV) m_extraSearcher->ForceCompaction();}
+
+            void UpdateStop()
+            {
+                m_persistentBuffer->StopPB();
+                m_dispatcher->stop();
+            }
         };
     } // namespace SPANN
 } // namespace SPTAG

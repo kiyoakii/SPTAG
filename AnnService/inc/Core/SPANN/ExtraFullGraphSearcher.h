@@ -491,6 +491,7 @@ namespace SPTAG
             }
 
             virtual ErrorCode AppendPosting(SizeType headID, const std::string& appendPosting)  { return ErrorCode::Undefined; }
+            virtual void ForceCompaction()  { return; }
             virtual ErrorCode SearchIndex(SizeType headID, std::string& posting)                { return ErrorCode::Undefined; }
             virtual ErrorCode AddIndex(SizeType headID, const std::string& posting)             { return ErrorCode::Undefined; }
             virtual ErrorCode DeleteIndex(SizeType headID)                                      { return ErrorCode::Undefined; }

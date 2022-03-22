@@ -181,6 +181,7 @@ namespace SPTAG {
                 Options& p_opt) = 0;
 
             virtual ErrorCode AppendPosting(SizeType headID, const std::string& appendPosting) = 0;
+            virtual void ForceCompaction() = 0;
             virtual ErrorCode SearchIndex(SizeType headID, std::string& posting) = 0;
             virtual ErrorCode AddIndex(SizeType headID, const std::string& posting) = 0;
             virtual ErrorCode DeleteIndex(SizeType headID) = 0;

@@ -125,6 +125,8 @@ DefineSSDParameter(m_calTruth, bool, true, "CalTruth")
 DefineSSDParameter(m_calAllTruth, bool, false, "CalAllTruth")
 // Search multiple times for stable result
 DefineSSDParameter(m_searchTimes, int, 1, "SearchTimes")
+// Frontend search threadnum
+DefineSSDParameter(m_searchThreadNum, int, 16, "SearchThreadNum")
 
 // Updating(SPFresh Update Test)
 // For update mode: current only update
@@ -143,6 +145,8 @@ DefineSSDParameter(m_appendThreadNum, int, 16, "AppendThreadNum")
 DefineSSDParameter(m_reassignThreadNum, int, 16, "ReassignThreadNum")
 // Background process batch size
 DefineSSDParameter(m_batch, int, 1000, "Batch")
+// Total Vector Path
+DefineSSDParameter(m_fullVectorPath, std::string, std::string(""), "FullVectorPath")
 
 
 
