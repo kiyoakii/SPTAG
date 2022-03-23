@@ -897,16 +897,13 @@ namespace SPTAG
                         //LOG(Helper::LogLevel::LL_Info, "Dispatcher: ScanNum: %d, SentNum: %d, CurrentAssignNum: %d, ProcessingAssignment: %d\n", scanNum, sentAssignment.load(), currentAssignmentID, i);
 
 
-                        if (m_index->CheckIdDeleted(vid)) {
-                            continue;
-                        }
+//                        if (m_index->CheckIdDeleted(vid)) {
+//                            continue;
+//                        }
                         if (newPart.find(headID) == newPart.end()) {
                             newPart[headID] = std::make_shared<std::string>(std::move(assignment.substr(sizeof(char)+ sizeof(int), vectorInfoSize)));
-                            LOG(Helper::LogLevel::LL_Info, "Append task, headID: %d, vid: %d\n", headID, *(int*)(headPointer + sizeof(int)));
                         } else {
-                            *newPart[headID] += assignment.substr(sizeof(char)+ sizeof(int), vectorInfoSize);
-                            LOG(Helper::LogLevel::LL_Info, "Add assignment to existing new part, newPart length: %d\n", newPart[headID]->size());
-                            LOG(Helper::LogLevel::LL_Info, "Append headID: %d, vid: %d\n", headID, *(int*)(headPointer + sizeof(int)));
+                            newPart[headID]->append(assignment.substr(sizeof(char)+ sizeof(int), vectorInfoSize));
                         }
                     } else {
                         // delete
@@ -919,7 +916,7 @@ namespace SPTAG
 
                 for (auto iter = newPart.begin(); iter != newPart.end(); iter++) {
                     int appendNum = (*iter->second).size() / (m_index->GetValueSize() + sizeof(int));
-                    m_index->AppendAsync(iter->first, appendNum, std::move(iter->second));
+                    m_index->AppendAsync(iter->first, appendNum, iter->second);
                 }
 
                 sentAssignment = i;
@@ -1242,13 +1239,13 @@ namespace SPTAG
             m_appendTaskNum++;
 
             //debug code
-            LOG(Helper::LogLevel::LL_Info, "Append: headID :%d, appendNum:%d\n", headID, appendNum);
-            auto postingP = reinterpret_cast<uint8_t*>(&appendPosting[0]);
-            for (int i = 0; i < appendNum; i++)
-            {
-                uint8_t* vid = postingP +  i * (m_options.m_vectorSize + sizeof(int));
-                LOG(Helper::LogLevel::LL_Info, "Append: vid: %d\n", *reinterpret_cast<int*>(vid));
-            }
+//            LOG(Helper::LogLevel::LL_Info, "Append: headID: %d, appendNum: %d, posting size: %d\n", headID, appendNum, appendPosting.size());
+//            auto postingP = reinterpret_cast<uint8_t*>(&appendPosting[0]);
+//            for (int i = 0; i < appendNum; i++)
+//            {
+//                uint8_t* vid = postingP +  i * (m_options.m_vectorSize + sizeof(int));
+//                LOG(Helper::LogLevel::LL_Info, "Append: vid: %d\n", *reinterpret_cast<int*>(vid));
+//            }
 
             if (appendNum == 0) {
                 LOG(Helper::LogLevel::LL_Info, "Error!, headID :%d, appendNum:%d\n", headID, appendNum);
@@ -1287,7 +1284,9 @@ namespace SPTAG
                         goto checkDeleted;
                     }
                     //LOG(Helper::LogLevel::LL_Info, "Merge: headID: %d, appendNum:%d\n", headID, appendNum);
-                    m_extraSearcher->AppendPosting(headID, appendPosting);
+                    if (m_extraSearcher->AppendPosting(headID, appendPosting) != ErrorCode::Success) {
+                        LOG(Helper::LogLevel::LL_Error, "Merge failed!\n");
+                    }
                 }
                 m_postingSizes[headID].fetch_add(appendNum, std::memory_order_relaxed);
                 // m_appendSsdCost += sw.getElapsedMs() - appendSsdStartTime;

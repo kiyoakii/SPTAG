@@ -37,13 +37,14 @@ namespace SPTAG
 
             virtual bool Initialize(const char* filePath)
             {
-                LOG(Helper::LogLevel::LL_Info, "SPFresh: New Rocksdb: %s\n", filePath);
+                dbPath = std::move(std::string(filePath));
+                dbOptions.create_if_missing = true;
                 dbOptions.IncreaseParallelism();
                 dbOptions.OptimizeLevelStyleCompaction();
-                dbOptions.create_if_missing = true;
-                dbPath = std::move(std::string(filePath));
-                // dbOptions.merge_operator.reset(new AnnMergeOperator);
+                dbOptions.merge_operator.reset(new AnnMergeOperator);
+
                 auto s = rocksdb::DB::Open(dbOptions, dbPath, &db);
+                LOG(Helper::LogLevel::LL_Info, "SPFresh: New Rocksdb: %s\n", filePath);
                 return s == rocksdb::Status::OK();
             }
 
@@ -205,7 +206,7 @@ namespace SPTAG
 
                     SearchIndex(curPostingID, *postingP);
                     p_exWorkSpace->m_pageBuffers[pi].SetPointer(std::shared_ptr<uint8_t>(
-                            (uint8_t *)postingP->data(), [postingP](uint8_t*){ delete postingP; }));
+                            (uint8_t *)&(*postingP)[0], [postingP](uint8_t*){ delete postingP; }));
                     int vectorNum = postingP->size() / m_vectorInfoSize;
 
                     diskIO++;
