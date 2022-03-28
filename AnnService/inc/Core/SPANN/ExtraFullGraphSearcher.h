@@ -496,6 +496,7 @@ namespace SPTAG
             virtual ErrorCode AddIndex(SizeType headID, const std::string& posting)             { return ErrorCode::Undefined; }
             virtual ErrorCode DeleteIndex(SizeType headID)                                      { return ErrorCode::Undefined; }
             virtual SizeType  GetIndexSize() { return -1; }
+            virtual SizeType  GetPostingSizeLimit() { return -1; }
         private:
             struct ListInfo
             {

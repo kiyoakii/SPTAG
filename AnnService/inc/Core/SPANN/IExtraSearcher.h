@@ -8,6 +8,8 @@
 
 #include "inc/Core/VectorIndex.h"
 #include "inc/Helper/AsyncFileReader.h"
+#include "inc/Helper/VectorSetReader.h"
+#include "inc/Core/Common/WorkSpace.h"
 
 #if defined(_MSC_VER) || defined(__INTEL_COMPILER)
 #include <malloc.h>
@@ -19,6 +21,7 @@
 #include <vector>
 #include <chrono>
 #include <atomic>
+#include <set>
 
 namespace SPTAG {
     namespace SPANN {
@@ -186,6 +189,7 @@ namespace SPTAG {
             virtual ErrorCode AddIndex(SizeType headID, const std::string& posting) = 0;
             virtual ErrorCode DeleteIndex(SizeType headID) = 0;
             virtual SizeType  GetIndexSize() = 0;
+            virtual SizeType  GetPostingSizeLimit() = 0;
         };
     } // SPANN
 } // SPTAG

@@ -13,9 +13,7 @@
 #pragma warning(disable:4244)  // '=' : conversion from 'int' to 'short', possible loss of data
 #pragma warning(disable:4127)  // conditional expression is constant
 
-namespace SPTAG
-{
-    namespace SPANN
+namespace SPTAG::SPANN
     {
         std::atomic_int ExtraWorkSpace::g_spaceCount(0);
         EdgeCompare Selection::g_edgeComparer;
@@ -644,12 +642,13 @@ namespace SPTAG
 						m_postingSizes[idx].store(tmp);
 					}
 
-					input.close();    
-                }       
+					input.close();
+                }
             }
             if (m_options.m_update) {
                 m_rwLocks = std::make_unique<std::shared_timed_mutex[]>(500000000);
-                m_reassignedID.Initialize(m_vectorNum.load(), m_iDataBlockSize, m_iDataCapacity);
+                m_reassignedID.Initialize(m_vectorNum.load(), m_options.m_datasetRowsInBlock, m_options.m_datasetCapacity);
+                m_deletedID.Initialize(m_vectorNum.load(), m_options.m_datasetRowsInBlock, m_options.m_datasetCapacity);
                 LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize persistent buffer\n");
                 std::shared_ptr<Helper::KeyValueIO> db;
                 db.reset(new SPANN::RocksDBIO());
@@ -824,7 +823,6 @@ namespace SPTAG
                 }
 
                 char insertCode = 0;
-                SizeType assignID = 0;
                 for (int i = 0; i < replicaCount; i++)
                 {
                     std::string assignment;
@@ -832,7 +830,6 @@ namespace SPTAG
                     assignment += Helper::Convert::Serialize<int>(&selections[i].headID, 1);
                     assignment += Helper::Convert::Serialize<int>(&VID, 1);
                     assignment += Helper::Convert::Serialize<T>(p_queryResults[k].GetTarget(), m_options.m_dim);
-                    assignID = m_persistentBuffer->PutAssignment(assignment);
                 }
             }
             return ErrorCode::Success;
@@ -896,10 +893,9 @@ namespace SPTAG
                         //LOG(Helper::LogLevel::LL_Info, "Dispatcher: code: %d, headID: %d, assignment size: %d, vid: %d\n", code, *(reinterpret_cast<int*>(headPointer)), assignment.size(), vid);
                         //LOG(Helper::LogLevel::LL_Info, "Dispatcher: ScanNum: %d, SentNum: %d, CurrentAssignNum: %d, ProcessingAssignment: %d\n", scanNum, sentAssignment.load(), currentAssignmentID, i);
 
-
-//                        if (m_index->CheckIdDeleted(vid)) {
-//                            continue;
-//                        }
+                        if (m_index->CheckIdDeleted(vid)) {
+                            continue;
+                        }
                         if (newPart.find(headID) == newPart.end()) {
                             newPart[headID] = std::make_shared<std::string>(std::move(assignment.substr(sizeof(char)+ sizeof(int), vectorInfoSize)));
                         } else {
@@ -933,7 +929,7 @@ namespace SPTAG
         {
             // TimeUtils::StopW sw;
             std::unique_lock<std::shared_timed_mutex> lock(m_rwLocks[headID]);
-            if (m_postingSizes[headID].load() + appendNum < m_options.m_postingVectorLimit) {
+            if (m_postingSizes[headID].load() + appendNum < m_extraSearcher->GetPostingSizeLimit()) {
                 return ErrorCode::FailSplit;
             }
             m_splitTaskNum++;
@@ -943,9 +939,10 @@ namespace SPTAG
 
             // reinterpret postingList to vectors and IDs
             auto* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
-            int postVectorNum = postingList.size() / (m_options.m_vectorSize + sizeof(int));
+            int vectorInfoSize = m_options.m_dim * sizeof(ValueType) + sizeof(int);
+            int postVectorNum = postingList.size() / vectorInfoSize;
             COMMON::Dataset<ValueType> smallSample;  // smallSample[i] -> VID
-            std::shared_ptr<uint8_t> vectorBuffer(new uint8_t[m_options.m_vectorSize * postVectorNum], std::default_delete<uint8_t[]>());
+            std::shared_ptr<uint8_t> vectorBuffer(new uint8_t[m_options.m_dim * sizeof(ValueType) * postVectorNum], std::default_delete<uint8_t[]>());
             std::vector<int> localIndicesInsert(postVectorNum);  // smallSample[i] = j <-> localindices[j] = i
             std::vector<int> localIndices(postVectorNum);
             auto vectorBuf = vectorBuffer.get();
@@ -954,7 +951,7 @@ namespace SPTAG
             //LOG(Helper::LogLevel::LL_Info, "Scanning\n");
             for (int j = 0; j < postVectorNum; j++)
             {
-                uint8_t* vectorId = postingP + j * (m_options.m_vectorSize + sizeof(int));
+                uint8_t* vectorId = postingP + j * vectorInfoSize;
                 //LOG(Helper::LogLevel::LL_Info, "vector index/total:id: %d/%d:%d\n", j, m_postingSizes[selections[i].headID], *(reinterpret_cast<int*>(vectorId)));
                 if (CheckIdDeleted(*(reinterpret_cast<int*>(vectorId)))) {
                     realVectorNum--;
@@ -962,19 +959,19 @@ namespace SPTAG
                     localIndicesInsert[index] = *(reinterpret_cast<int*>(vectorId));
                     localIndices[index] = index;
                     index++;
-                    memcpy(vectorBuf, vectorId + sizeof(int), m_options.m_vectorSize);
-                    vectorBuf += m_options.m_vectorSize;
+                    memcpy(vectorBuf, vectorId + sizeof(int), m_options.m_dim * sizeof(ValueType));
+                    vectorBuf += m_options.m_dim * sizeof(ValueType);
                 }
             }
             // double gcEndTime = sw.getElapsedMs();
             // m_splitGcCost += gcEndTime;
-            if (realVectorNum < m_options.m_postingVectorLimit)
+            if (realVectorNum < m_extraSearcher->GetPostingSizeLimit())
             {
                 postingList.clear();
                 for (int j = 0; j < realVectorNum; j++)
                 {
                     postingList += Helper::Convert::Serialize<int>(&localIndicesInsert[j], 1);
-                    postingList += Helper::Convert::Serialize<ValueType>(vectorBuffer.get() + j * m_options.m_vectorSize, m_options.m_dim);
+                    postingList += Helper::Convert::Serialize<ValueType>(vectorBuffer.get() + j * m_options.m_dim * sizeof(ValueType), m_options.m_dim * sizeof(ValueType));
                 }
                 m_postingSizes[headID].store(realVectorNum);
                 m_extraSearcher->AddIndex(headID, postingList);
@@ -999,8 +996,8 @@ namespace SPTAG
                 for (int j = 0; j < realVectorNum; j++)
                 {
                     postingList += Helper::Convert::Serialize<int>(&localIndicesInsert[j], 1);
-                    postingList += Helper::Convert::Serialize<ValueType>(vectorBuffer.get() + j * m_options.m_vectorSize, m_options.m_dim);
-                    auto dist = m_index->ComputeDistance(vectorBuffer.get() + j * m_options.m_vectorSize, m_index->GetSample(headID));
+                    postingList += Helper::Convert::Serialize<ValueType>(vectorBuffer.get() + j * m_options.m_dim * sizeof(ValueType), m_options.m_dim);
+                    auto dist = m_index->ComputeDistance(vectorBuffer.get() + j * m_options.m_dim * sizeof(ValueType), m_index->GetSample(headID));
                     r = std::max<float>(r, dist);
                 }
                 m_postingSizes[headID].store(realVectorNum);
@@ -1081,14 +1078,15 @@ namespace SPTAG
 //                m_reassignSearchHeadCost += sw.getElapsedMs();
             }
 
+            int vectorInfoSize = m_options.m_dim * sizeof(ValueType) + sizeof(int);
             std::map<SizeType, ValueType*> reAssignVectorsTop0;
             std::map<SizeType, ValueType*> reAssignVectorsTopK;
             for (int i = 0; i < postingLists.size(); i++) {
                 auto& postingList = postingLists[i];
-                int postVectorNum = postingList.size() / (m_options.m_vectorSize + sizeof(int));
+                int postVectorNum = postingList.size() / vectorInfoSize;
                 auto* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
                 for (int j = 0; j < postVectorNum; j++) {
-                    uint8_t* vectorId = postingP + j * (m_options.m_vectorSize + sizeof(int));
+                    uint8_t* vectorId = postingP + j * vectorInfoSize;
                     SizeType vid = *(reinterpret_cast<SizeType*>(vectorId));
                     if (i <= 1) {
                         if (reAssignVectorsTop0.find(vid) == reAssignVectorsTop0.end() && !CheckIdDeleted(vid))
@@ -1119,22 +1117,22 @@ namespace SPTAG
                 {
                     std::lock_guard<std::mutex> lock(m_dataAddLock);
                     m_deletedID.AddBatch(numQueries);
-
                     m_reassignedID.AddBatch(numQueries);
                 }
+
                 int count = 0;
                 auto newFirstVID = m_vectorNum.fetch_add(numQueries);
                 for (auto it = reAssignVectors.begin(); it != reAssignVectors.end(); ++it) {
                     //m_currerntReassignTaskNum++;
                     //PrintFirstFiveDimInt8(reinterpret_cast<uint8_t*>(it->second), it->first);
-                    std::shared_ptr<std::string> vectorContain(new std::string(Helper::Convert::Serialize<uint8_t>(it->second, m_options.m_vectorSize)));
+                    auto vectorContain = std::make_shared<std::string>(std::move(Helper::Convert::Serialize<uint8_t>(it->second, m_options.m_dim * sizeof(ValueType))));
                     //PrintFirstFiveDimInt8(reinterpret_cast<uint8_t*>(&vectorContain->front()), it->first);
                     ReassignAsync(vectorContain, newFirstVID + count, newHeadsID, false, it->first);
                     count++;
                 }
             } else {
                 for (auto it = reAssignVectors.begin(); it != reAssignVectors.end(); ++it) {
-                    std::shared_ptr<std::string> vectorContain(new std::string(Helper::Convert::Serialize<uint8_t>(it->second, m_options.m_vectorSize)));
+                    auto vectorContain = std::make_shared<std::string>(std::move(Helper::Convert::Serialize<uint8_t>(it->second, m_options.m_dim * sizeof(ValueType))));
                     ReassignAsync(vectorContain, 0, newHeadsID, true, it->first);
                 }
             }
@@ -1235,17 +1233,18 @@ namespace SPTAG
             if (appendPosting.size() == 0) {
                 LOG(Helper::LogLevel::LL_Error, "Error! empty append posting!\n");
             }
+            int vectorInfoSize = m_options.m_dim * sizeof(ValueType) + sizeof(int);
 //            TimeUtils::StopW sw;
             m_appendTaskNum++;
 
             //debug code
-//            LOG(Helper::LogLevel::LL_Info, "Append: headID: %d, appendNum: %d, posting size: %d\n", headID, appendNum, appendPosting.size());
-//            auto postingP = reinterpret_cast<uint8_t*>(&appendPosting[0]);
-//            for (int i = 0; i < appendNum; i++)
-//            {
-//                uint8_t* vid = postingP +  i * (m_options.m_vectorSize + sizeof(int));
-//                LOG(Helper::LogLevel::LL_Info, "Append: vid: %d\n", *reinterpret_cast<int*>(vid));
-//            }
+            LOG(Helper::LogLevel::LL_Info, "Append: headID: %d, appendNum: %d, posting size: %d\n", headID, appendNum, appendPosting.size());
+            auto postingP = reinterpret_cast<uint8_t*>(&appendPosting[0]);
+            for (int i = 0; i < appendNum; i++)
+            {
+                uint8_t* vid = postingP +  i * vectorInfoSize;
+                LOG(Helper::LogLevel::LL_Info, "Append: vid: %d\n", *reinterpret_cast<int*>(vid));
+            }
 
             if (appendNum == 0) {
                 LOG(Helper::LogLevel::LL_Info, "Error!, headID :%d, appendNum:%d\n", headID, appendNum);
@@ -1264,13 +1263,13 @@ namespace SPTAG
                 for (int i = 0; i < appendNum; i++)
                 {
 //                    m_currerntReassignTaskNum++;
-                    uint32_t idx = i * (sizeof(int) + m_options.m_vectorSize);
-                    auto vectorContain = std::make_shared<std::string>(std::move(appendPosting.substr(idx + sizeof(int), m_options.m_vectorSize)));
+                    uint32_t idx = i * vectorInfoSize;
+                    auto vectorContain = std::make_shared<std::string>(appendPosting.substr(idx + sizeof(int), m_options.m_dim * sizeof(ValueType)));
                     ReassignAsync(vectorContain, newVID + i, newHeads, false, *(int*)(appendPosting[idx]));
                 }
                 return ErrorCode::Success;
             }
-            if (m_postingSizes[headID].load() + appendNum > m_options.m_postingVectorLimit) {
+            if (m_postingSizes[headID].load() + appendNum > m_extraSearcher->GetPostingSizeLimit()) {
                 // double splitStartTime = sw.getElapsedMs();
                 if (Split(headID, appendNum, appendPosting) == ErrorCode::FailSplit) {
                     goto checkDeleted;
@@ -1316,7 +1315,6 @@ namespace SPTAG
             }
         }
     }
-}
 
 #define DefineVectorValueType(Name, Type) \
 template class SPTAG::SPANN::Index<Type>; \

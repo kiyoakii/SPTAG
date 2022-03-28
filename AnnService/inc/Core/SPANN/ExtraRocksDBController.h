@@ -202,20 +202,17 @@ namespace SPTAG
                 for (uint32_t pi = 0; pi < postingListCount; ++pi)
                 {
                     auto curPostingID = p_exWorkSpace->m_postingIDs[pi];
-                    auto postingP = new std::string;
+                    std::string postingList;
 
-                    SearchIndex(curPostingID, *postingP);
-                    p_exWorkSpace->m_pageBuffers[pi].SetPointer(std::shared_ptr<uint8_t>(
-                            (uint8_t *)&(*postingP)[0], [postingP](uint8_t*){ delete postingP; }));
-                    int vectorNum = postingP->size() / m_vectorInfoSize;
+                    SearchIndex(curPostingID, postingList);
+                    int vectorNum = postingList.size() / m_vectorInfoSize;
 
                     diskIO++;
                     diskRead++;
                     listElements += vectorNum;
- 
-                    auto buffer = reinterpret_cast<char*>((p_exWorkSpace->m_pageBuffers[pi]).GetBuffer());
+
                     for (int i = 0; i < vectorNum; i++) {
-                        char* vectorInfo = postingP->data() + i * m_vectorInfoSize;
+                        char* vectorInfo = postingList.data() + i * m_vectorInfoSize;
                         int vectorID = *(reinterpret_cast<int*>(vectorInfo));
                         if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID)) continue;
                         auto distance2leaf = p_index->ComputeDistance(queryResults.GetQuantizedTarget(), vectorInfo + sizeof(int));
@@ -223,7 +220,7 @@ namespace SPTAG
                     }
                     if (truth) {
                         for (int i = 0; i < vectorNum; ++i) {
-                            char* vectorInfo = buffer + i * m_vectorInfoSize;
+                            char* vectorInfo = postingList.data() + i * m_vectorInfoSize;
                             int vectorID = *(reinterpret_cast<int*>(vectorInfo));
                             if (truth && truth->count(vectorID))
                                 (*found)[curPostingID].insert(vectorID);
@@ -342,13 +339,14 @@ namespace SPTAG
                 auto t3 = std::chrono::high_resolution_clock::now();
                 LOG(Helper::LogLevel::LL_Info, "Time to sort selections:%.2lf sec.\n", ((double)std::chrono::duration_cast<std::chrono::seconds>(t3 - t2).count()) + ((double)std::chrono::duration_cast<std::chrono::milliseconds>(t3 - t2).count()) / 1000);
 
-                int postingSizeLimit = INT_MAX;
                 if (p_opt.m_postingPageLimit > 0)
                 {
-                    postingSizeLimit = static_cast<int>(p_opt.m_postingPageLimit * PageSize / vectorInfoSize);
+                    m_postingSizeLimit = static_cast<int>(p_opt.m_postingPageLimit * PageSize / vectorInfoSize);
                 }
 
-                LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", postingSizeLimit);
+                LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", m_postingSizeLimit);
+
+                auto postingSizeLimit = m_postingSizeLimit;
 
                 {
                     std::vector<int> replicaCountDist(p_opt.m_replicaCount + 1, 0);
@@ -486,10 +484,11 @@ namespace SPTAG
 
             virtual void ForceCompaction() {db.ForceCompaction();}
 
-            virtual ErrorCode SearchIndex(SizeType headID, std::string& posting) {  return db.Get(headID, &posting); }
-            virtual ErrorCode AddIndex(SizeType headID, const std::string& posting) { m_postingNum++; return db.Put(headID, posting); }
-            virtual ErrorCode DeleteIndex(SizeType headID) { m_postingNum--; return db.Delete(headID); }
-            virtual SizeType  GetIndexSize() { return m_postingNum; }
+            virtual inline ErrorCode SearchIndex(SizeType headID, std::string& posting) {  return db.Get(headID, &posting); }
+            virtual inline ErrorCode AddIndex(SizeType headID, const std::string& posting) { m_postingNum++; return db.Put(headID, posting); }
+            virtual inline ErrorCode DeleteIndex(SizeType headID) { m_postingNum--; return db.Delete(headID); }
+            virtual inline SizeType  GetIndexSize() { return m_postingNum; }
+            virtual inline SizeType  GetPostingSizeLimit() { return m_postingSizeLimit; }
         private:
             struct ListInfo
             {
@@ -624,6 +623,8 @@ namespace SPTAG
             int m_totalListCount = 0;
 
             int m_listPerFile = 0;
+
+            int m_postingSizeLimit = INT_MAX;
         };
     } // namespace SPANN
 } // namespace SPTAG
