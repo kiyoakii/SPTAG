@@ -832,6 +832,7 @@ namespace SPTAG
                     assignment += Helper::Convert::Serialize<int>(&selections[i].headID, 1);
                     assignment += Helper::Convert::Serialize<int>(&VID, 1);
                     assignment += Helper::Convert::Serialize<T>(p_queryResults[k].GetTarget(), m_options.m_dim);
+                    m_persistentBuffer->PutAssignment(assignment);
                 }
             }
             return ErrorCode::Success;
