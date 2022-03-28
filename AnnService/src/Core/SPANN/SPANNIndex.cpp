@@ -1268,7 +1268,7 @@ namespace SPTAG
 //                    m_currerntReassignTaskNum++;
                     uint32_t idx = i * vectorInfoSize;
                     auto vectorContain = std::make_shared<std::string>(appendPosting.substr(idx + sizeof(int), m_options.m_dim * sizeof(ValueType)));
-                    ReassignAsync(vectorContain, newVID + i, newHeads, false, *(int*)(appendPosting[idx]));
+                    ReassignAsync(vectorContain, newVID + i, newHeads, false, *(int*)(&appendPosting[idx]));
                 }
                 return ErrorCode::Success;
             }
