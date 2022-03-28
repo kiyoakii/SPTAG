@@ -780,7 +780,7 @@ namespace SPTAG
                 return ErrorCode::Fail;
             }
 
-            std::vector<QueryResult> p_queryResults(p_vectorNum, QueryResult(NULL, m_options.m_internalResultNum, false));
+            std::vector<QueryResult> p_queryResults(p_vectorNum, QueryResult(nullptr, m_options.m_internalResultNum, false));
 
             for (int k = 0; k < p_vectorNum; k++)
             {
@@ -874,11 +874,11 @@ namespace SPTAG
                 for (i = sentAssignment; i < scanNum; i++) {
                     std::string assignment;
                     m_persistentBuffer->GetAssignment(i, &assignment);
-                    if(assignment.size() == 0)
+                    if(assignment.empty())
                         break;
                     //uint8_t* postingP = reinterpret_cast<uint8_t*>(&assignment.front());
                     char code = *(reinterpret_cast<char*>(assignment.data()));
-                    if (assignment.size() == 0)
+                    if (assignment.empty())
                     {
                         LOG(Helper::LogLevel::LL_Info, "Error\n");
                         LOG(Helper::LogLevel::LL_Info, "ScanNum: %d, SentNum: %d, CurrentAssignNum: %d, ProcessingAssignment: %d\n", scanNum, sentAssignment.load(), currentAssignmentID, i);
@@ -900,7 +900,7 @@ namespace SPTAG
                             continue;
                         }
                         if (newPart.find(headID) == newPart.end()) {
-                            newPart[headID] = std::make_shared<std::string>(std::move(assignment.substr(sizeof(char)+ sizeof(int), vectorInfoSize)));
+                            newPart[headID] = std::make_shared<std::string>(assignment.substr(sizeof(char)+ sizeof(int), vectorInfoSize));
                         } else {
                             newPart[headID]->append(assignment.substr(sizeof(char)+ sizeof(int), vectorInfoSize));
                         }
@@ -913,9 +913,9 @@ namespace SPTAG
                     }
                 }
 
-                for (auto iter = newPart.begin(); iter != newPart.end(); iter++) {
-                    int appendNum = (*iter->second).size() / (m_index->GetValueSize() + sizeof(int));
-                    m_index->AppendAsync(iter->first, appendNum, iter->second);
+                for (auto & iter : newPart) {
+                    int appendNum = (*iter.second).size() / (m_index->GetValueSize() + sizeof(int));
+                    m_index->AppendAsync(iter.first, appendNum, iter.second);
                 }
 
                 sentAssignment = i;
@@ -942,14 +942,14 @@ namespace SPTAG
 
             // reinterpret postingList to vectors and IDs
             auto* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
-            int vectorInfoSize = m_options.m_dim * sizeof(ValueType) + sizeof(int);
-            int postVectorNum = postingList.size() / vectorInfoSize;
+            size_t vectorInfoSize = m_options.m_dim * sizeof(ValueType) + sizeof(int);
+            size_t postVectorNum = postingList.size() / vectorInfoSize;
             COMMON::Dataset<ValueType> smallSample;  // smallSample[i] -> VID
             std::shared_ptr<uint8_t> vectorBuffer(new uint8_t[m_options.m_dim * sizeof(ValueType) * postVectorNum], std::default_delete<uint8_t[]>());
             std::vector<int> localIndicesInsert(postVectorNum);  // smallSample[i] = j <-> localindices[j] = i
             std::vector<int> localIndices(postVectorNum);
             auto vectorBuf = vectorBuffer.get();
-            int realVectorNum = postVectorNum;
+            size_t realVectorNum = postVectorNum;
             int index = 0;
             //LOG(Helper::LogLevel::LL_Info, "Scanning\n");
             for (int j = 0; j < postVectorNum; j++)
@@ -1086,7 +1086,7 @@ namespace SPTAG
             std::map<SizeType, ValueType*> reAssignVectorsTopK;
             for (int i = 0; i < postingLists.size(); i++) {
                 auto& postingList = postingLists[i];
-                int postVectorNum = postingList.size() / vectorInfoSize;
+                size_t postVectorNum = postingList.size() / vectorInfoSize;
                 auto* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
                 for (int j = 0; j < postVectorNum; j++) {
                     uint8_t* vectorId = postingP + j * vectorInfoSize;
@@ -1145,7 +1145,7 @@ namespace SPTAG
 
         template <typename ValueType>
         void SPTAG::SPANN::Index<ValueType>::ReAssignUpdate
-                (std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType> &newHeads, bool check,
+                (const std::shared_ptr<std::string>& vectorContain, SizeType VID, std::vector<SizeType> &newHeads, bool check,
                  SizeType oldVID)
         {
 //            TimeUtils::StopW sw;
@@ -1233,7 +1233,7 @@ namespace SPTAG
         template <typename ValueType>
         ErrorCode SPTAG::SPANN::Index<ValueType>::Append(SizeType headID, int appendNum, std::string& appendPosting, SizeType oldVID)
         {
-            if (appendPosting.size() == 0) {
+            if (appendPosting.empty()) {
                 LOG(Helper::LogLevel::LL_Error, "Error! empty append posting!\n");
             }
             int vectorInfoSize = m_options.m_dim * sizeof(ValueType) + sizeof(int);
