@@ -165,7 +165,7 @@ namespace SPTAG
             ErrorCode RefineIndex(const std::vector<std::shared_ptr<Helper::DiskPriorityIO>>& p_indexStreams, IAbortOperation* p_abort);
             ErrorCode RefineIndex(std::shared_ptr<VectorIndex>& p_newIndex);
 
-            ErrorCode Append(SizeType headID, int appendNum, std::shared_ptr<std::string> appendPosting, SizeType oldVID) { return ErrorCode::Undefined; }
+            ErrorCode Append(SizeType headID, int appendNum, std::string& appendPosting, SizeType oldVID) { return ErrorCode::Undefined; }
             void ProcessAsyncReassign(std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check,
                                               SizeType oldVID, std::function<void()> p_callback) {}
 

@@ -1219,9 +1219,9 @@ namespace SPTAG
                 if (CheckIdDeleted(VID)) {
                     break;
                 }
-                std::shared_ptr<std::string> newPart(new std::string);
-                *newPart += Helper::Convert::Serialize<int>(&VID, 1);
-                *newPart += Helper::Convert::Serialize<ValueType>(p_queryResults.GetTarget(), m_options.m_dim);
+                std::string newPart;
+                newPart += Helper::Convert::Serialize<int>(&VID, 1);
+                newPart += Helper::Convert::Serialize<ValueType>(p_queryResults.GetTarget(), m_options.m_dim);
                 auto headID = selections[i].headID;
                 //LOG(Helper::LogLevel::LL_Info, "Reassign: headID :%d, oldVID:%d, newVID:%d, posting length: %d, dist: %f\n", headID, oldVID, VID, m_postingSizes[headID].load(), selections[i].distance);
                 Append(headID, 1, newPart, oldVID);
@@ -1231,20 +1231,23 @@ namespace SPTAG
         }
 
         template <typename ValueType>
-        ErrorCode SPTAG::SPANN::Index<ValueType>::Append(SizeType headID, int appendNum, std::shared_ptr<std::string> appendPosting, SizeType oldVID)
+        ErrorCode SPTAG::SPANN::Index<ValueType>::Append(SizeType headID, int appendNum, std::string& appendPosting, SizeType oldVID)
         {
+            if (appendPosting.size() == 0) {
+                LOG(Helper::LogLevel::LL_Error, "Error! empty append posting!\n");
+            }
+            int vectorInfoSize = m_options.m_dim * sizeof(ValueType) + sizeof(int);
 //            TimeUtils::StopW sw;
             m_appendTaskNum++;
 
             //debug code
-            LOG(Helper::LogLevel::LL_Info, "Append: headID :%d, appendNum:%d\n", headID, appendNum);
-            uint8_t* postingP = reinterpret_cast<uint8_t*>(&appendPosting->front());
+            LOG(Helper::LogLevel::LL_Info, "Append: headID: %d, appendNum: %d, posting size: %d\n", headID, appendNum, appendPosting.size());
+            auto postingP = reinterpret_cast<uint8_t*>(&appendPosting[0]);
             for (int i = 0; i < appendNum; i++)
             {
-                uint8_t* vid = postingP +  i * (m_options.m_vectorSize + sizeof(int));
+                uint8_t* vid = postingP +  i * vectorInfoSize;
                 LOG(Helper::LogLevel::LL_Info, "Append: vid: %d\n", *reinterpret_cast<int*>(vid));
             }
-
 
             if (appendNum == 0) {
                 LOG(Helper::LogLevel::LL_Info, "Error!, headID :%d, appendNum:%d\n", headID, appendNum);
@@ -1258,7 +1261,7 @@ namespace SPTAG
                     m_deletedID.AddBatch(appendNum);
                     m_reassignedID.AddBatch(appendNum);
                 }
-                uint8_t* postingP = reinterpret_cast<uint8_t*>(&appendPosting->front());
+
                 std::vector<SizeType> newHeads;
                 for (int i = 0; i < appendNum; i++)
                 {
@@ -1271,7 +1274,7 @@ namespace SPTAG
             }
             if (m_postingSizes[headID].load() + appendNum > m_extraSearcher->GetPostingSizeLimit()) {
                 // double splitStartTime = sw.getElapsedMs();
-                if (Split(headID, appendNum, *appendPosting) == ErrorCode::FailSplit) {
+                if (Split(headID, appendNum, appendPosting) == ErrorCode::FailSplit) {
                     goto checkDeleted;
                 }
                 // m_splitTotalCost += sw.getElapsedMs() - splitStartTime;
@@ -1283,7 +1286,9 @@ namespace SPTAG
                         goto checkDeleted;
                     }
                     //LOG(Helper::LogLevel::LL_Info, "Merge: headID: %d, appendNum:%d\n", headID, appendNum);
-                    m_extraSearcher->AppendPosting(headID, *appendPosting);
+                    if (m_extraSearcher->AppendPosting(headID, appendPosting) != ErrorCode::Success) {
+                        LOG(Helper::LogLevel::LL_Error, "Merge failed!\n");
+                    }
                 }
                 m_postingSizes[headID].fetch_add(appendNum, std::memory_order_relaxed);
                 // m_appendSsdCost += sw.getElapsedMs() - appendSsdStartTime;

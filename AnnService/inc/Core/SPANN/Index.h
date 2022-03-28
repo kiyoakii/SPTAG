@@ -39,7 +39,7 @@ namespace SPTAG
     namespace SPANN
     {
         template<typename T>
-    class Index : public std::enable_shared_from_this<Index<T>>, public VectorIndex
+    class Index : public VectorIndex
     {
             class AppendAsyncJob : public Helper::ThreadPool::Job
             {
@@ -51,12 +51,12 @@ namespace SPTAG
                 std::function<void()> m_callback;
             public:
                 AppendAsyncJob(VectorIndex* m_index, SizeType headID, int appendNum, std::shared_ptr<std::string> appendPosting, std::function<void()> p_callback)
-                        : m_index(m_index), headID(headID), appendNum(appendNum), appendPosting(appendPosting), m_callback(std::move(p_callback)) {}
+                        : m_index(m_index), headID(headID), appendNum(appendNum), appendPosting(std::move(appendPosting)), m_callback(std::move(p_callback)) {}
 
                 ~AppendAsyncJob() {}
 
                 inline void exec(IAbortOperation* p_abort) override {
-                    m_index->Append(headID, appendNum, std::move(appendPosting));
+                    m_index->Append(headID, appendNum, *appendPosting);
                     if (m_callback != nullptr) {
                         m_callback();
                     }
@@ -295,7 +295,7 @@ namespace SPTAG
 
             ErrorCode BuildIndexInternal(std::shared_ptr<Helper::VectorSetReader>& p_reader);
 
-            ErrorCode Append(SizeType headID, int appendNum, std::shared_ptr<std::string> appendPosting, SizeType oldVID);
+            ErrorCode Append(SizeType headID, int appendNum, std::string& appendPosting, SizeType oldVID);
             ErrorCode Split(const SizeType headID, int appendNum, std::string& appendPosting);
             ErrorCode ReAssign(SizeType headID, std::vector<std::string>& postingLists, std::vector<SizeType>& newHeadsID);
             void ReAssignVectors(std::map<SizeType, T*>& reAssignVectors, std::vector<SizeType>& newHeadsID, bool check=false);
