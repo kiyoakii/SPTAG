@@ -649,7 +649,8 @@ namespace SPTAG
             }
             if (m_options.m_update) {
                 m_rwLocks = std::make_unique<std::shared_timed_mutex[]>(500000000);
-                m_reassignedID.Initialize(m_vectorNum.load(), m_iDataBlockSize, m_iDataCapacity);
+                m_reassignedID.Initialize(m_vectorNum.load(), m_options.m_datasetRowsInBlock, m_options.m_datasetCapacity);
+                m_deletedID.Initialize(m_vectorNum.load(), m_options.m_datasetRowsInBlock, m_options.m_datasetCapacity);
                 LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize persistent buffer\n");
                 std::shared_ptr<Helper::KeyValueIO> db;
                 db.reset(new SPANN::RocksDBIO());
