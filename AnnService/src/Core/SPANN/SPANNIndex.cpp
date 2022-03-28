@@ -934,7 +934,7 @@ namespace SPTAG
         {
             // TimeUtils::StopW sw;
             std::unique_lock<std::shared_timed_mutex> lock(m_rwLocks[headID]);
-            if (m_postingSizes[headID].load() + appendNum < m_options.m_postingVectorLimit) {
+            if (m_postingSizes[headID].load() + appendNum < m_extraSearcher->GetPostingSizeLimit()) {
                 return ErrorCode::FailSplit;
             }
             m_splitTaskNum++;
@@ -969,7 +969,7 @@ namespace SPTAG
             }
             // double gcEndTime = sw.getElapsedMs();
             // m_splitGcCost += gcEndTime;
-            if (realVectorNum < m_options.m_postingVectorLimit)
+            if (realVectorNum < m_extraSearcher->GetPostingSizeLimit())
             {
                 postingList.clear();
                 for (int j = 0; j < realVectorNum; j++)
@@ -1269,7 +1269,7 @@ namespace SPTAG
                 }
                 return ErrorCode::Success;
             }
-            if (m_postingSizes[headID].load() + appendNum > m_options.m_postingVectorLimit) {
+            if (m_postingSizes[headID].load() + appendNum > m_extraSearcher->GetPostingSizeLimit()) {
                 // double splitStartTime = sw.getElapsedMs();
                 if (Split(headID, appendNum, *appendPosting) == ErrorCode::FailSplit) {
                     goto checkDeleted;
