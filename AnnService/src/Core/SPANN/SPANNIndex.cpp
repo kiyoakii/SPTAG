@@ -644,8 +644,8 @@ namespace SPTAG
 						m_postingSizes[idx].store(tmp);
 					}
 
-					input.close();    
-                }       
+					input.close();
+                }
             }
             if (m_options.m_update) {
                 m_rwLocks = std::make_unique<std::shared_timed_mutex[]>(500000000);
@@ -825,7 +825,6 @@ namespace SPTAG
                 }
 
                 char insertCode = 0;
-                SizeType assignID = 0;
                 for (int i = 0; i < replicaCount; i++)
                 {
                     std::string assignment;
@@ -833,7 +832,6 @@ namespace SPTAG
                     assignment += Helper::Convert::Serialize<int>(&selections[i].headID, 1);
                     assignment += Helper::Convert::Serialize<int>(&VID, 1);
                     assignment += Helper::Convert::Serialize<T>(p_queryResults[k].GetTarget(), m_options.m_dim);
-                    assignID = m_persistentBuffer->PutAssignment(assignment);
                 }
             }
             return ErrorCode::Success;
