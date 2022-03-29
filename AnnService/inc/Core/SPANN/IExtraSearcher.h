@@ -177,7 +177,7 @@ namespace SPTAG {
             virtual void SearchIndex(ExtraWorkSpace* p_exWorkSpace,
                 QueryResult& p_queryResults,
                 std::shared_ptr<VectorIndex> p_index,
-                SearchStats* p_stats, std::set<int>* truth = nullptr, std::map<int, std::set<int>>* found = nullptr) = 0;
+                SearchStats* p_stats, const COMMON::Labelset& m_deletedID, std::set<int>* truth = nullptr, std::map<int, std::set<int>>* found = nullptr) = 0;
 
             virtual bool BuildIndex(std::shared_ptr<Helper::VectorSetReader>& p_reader, 
                 std::shared_ptr<VectorIndex> p_index, 

@@ -193,7 +193,7 @@ namespace SPTAG
                 }
 
                 p_queryResults->Reverse();
-                m_extraSearcher->SearchIndex(workSpace.get(), *p_queryResults, m_index, nullptr);
+                m_extraSearcher->SearchIndex(workSpace.get(), *p_queryResults, m_index, nullptr, m_deletedID);
                 p_queryResults->SortResult();
                 m_workSpacePool->Return(workSpace);
             }
@@ -244,7 +244,7 @@ namespace SPTAG
                     auto_ws->m_postingIDs.emplace_back(res->VID);
                 }
 
-                m_extraSearcher->SearchIndex(auto_ws.get(), newResults, m_index, p_stats, truth, found);
+                m_extraSearcher->SearchIndex(auto_ws.get(), newResults, m_index, p_stats, m_deletedID, truth, found);
             }
 
             m_workSpacePool->Return(auto_ws);
@@ -1128,14 +1128,14 @@ namespace SPTAG
                 for (auto it = reAssignVectors.begin(); it != reAssignVectors.end(); ++it) {
                     //m_currerntReassignTaskNum++;
                     //PrintFirstFiveDimInt8(reinterpret_cast<uint8_t*>(it->second), it->first);
-                    auto vectorContain = std::make_shared<std::string>(std::move(Helper::Convert::Serialize<uint8_t>(it->second, m_options.m_dim)));
+                    auto vectorContain = std::make_shared<std::string>(std::move(Helper::Convert::Serialize<ValueType>(it->second, m_options.m_dim)));
                     //PrintFirstFiveDimInt8(reinterpret_cast<uint8_t*>(&vectorContain->front()), it->first);
                     ReassignAsync(vectorContain, newFirstVID + count, newHeadsID, false, it->first);
                     count++;
                 }
             } else {
                 for (auto it = reAssignVectors.begin(); it != reAssignVectors.end(); ++it) {
-                    auto vectorContain = std::make_shared<std::string>(std::move(Helper::Convert::Serialize<uint8_t>(it->second, m_options.m_dim)));
+                    auto vectorContain = std::make_shared<std::string>(std::move(Helper::Convert::Serialize<ValueType>(it->second, m_options.m_dim)));
                     ReassignAsync(vectorContain, 0, newHeadsID, true, it->first);
                 }
             }
@@ -1223,7 +1223,7 @@ namespace SPTAG
                 newPart += Helper::Convert::Serialize<int>(&VID, 1);
                 newPart += Helper::Convert::Serialize<ValueType>(p_queryResults.GetTarget(), m_options.m_dim);
                 auto headID = selections[i].headID;
-                //LOG(Helper::LogLevel::LL_Info, "Reassign: headID :%d, oldVID:%d, newVID:%d, posting length: %d, dist: %f\n", headID, oldVID, VID, m_postingSizes[headID].load(), selections[i].distance);
+                //LOG(Helper::LogLevel::LL_Info, "Reassign: headID :%d, oldVID:%d, newVID:%d, posting length: %d, dist: %f, string size: %d\n", headID, oldVID, VID, m_postingSizes[headID].load(), selections[i].distance, newPart.size());
                 Append(headID, 1, newPart, oldVID);
             }
 //            m_reassignSsdCost += sw.getElapsedMs() - selectionEndTime;
@@ -1257,6 +1257,7 @@ namespace SPTAG
         checkDeleted:
             if (!m_index->ContainSample(headID)) {
                 m_headMiss++;
+                /*
                 int newVID = m_vectorNum.fetch_add(appendNum);
                 {
                     std::lock_guard<std::mutex> lock(m_dataAddLock);
@@ -1272,6 +1273,7 @@ namespace SPTAG
                     auto vectorContain = std::make_shared<std::string>(appendPosting.substr(idx + sizeof(int), m_options.m_dim * sizeof(ValueType)));
                     ReassignAsync(vectorContain, newVID + i, newHeads, false, *(int*)(&appendPosting[idx]));
                 }
+                */
                 return ErrorCode::Success;
             }
             if (m_postingSizes[headID].load() + appendNum > m_extraSearcher->GetPostingSizeLimit()) {

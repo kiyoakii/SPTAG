@@ -123,7 +123,7 @@ namespace SPTAG {
                             if (visited[j] || results[i].GetResult(j)->VID < 0) continue;
 
                             if (vectorSet != nullptr) {
-                                float dist = COMMON::DistanceUtils::ComputeDistance((const T*)querySet->GetVector(i), (const T*)vectorSet->GetVector(results[i].GetResult(j)->VID), vectorSet->Dimension(), index->GetDistCalcMethod());
+                                float dist = results[i].GetResult(j)->Dist;
                                 float truthDist = COMMON::DistanceUtils::ComputeDistance((const T*)querySet->GetVector(i), (const T*)vectorSet->GetVector(id), vectorSet->Dimension(), index->GetDistCalcMethod());
                                 if (index->GetDistCalcMethod() == SPTAG::DistCalcMethod::Cosine && fabs(dist - truthDist) < Epsilon) {
                                     thisrecall[i] += 1;

@@ -187,7 +187,7 @@ namespace SPTAG
             virtual void SearchIndex(ExtraWorkSpace* p_exWorkSpace,
                 QueryResult& p_queryResults,
                 std::shared_ptr<VectorIndex> p_index,
-                SearchStats* p_stats, std::set<int>* truth, std::map<int, std::set<int>>* found)
+                SearchStats* p_stats, const COMMON::Labelset& m_deletedID, std::set<int>* truth, std::map<int, std::set<int>>* found)
             {
                 const auto postingListCount = static_cast<uint32_t>(p_exWorkSpace->m_postingIDs.size());
 
@@ -214,7 +214,7 @@ namespace SPTAG
                     for (int i = 0; i < vectorNum; i++) {
                         char* vectorInfo = postingList.data() + i * m_vectorInfoSize;
                         int vectorID = *(reinterpret_cast<int*>(vectorInfo));
-                        if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID)) continue;
+                        if (m_deletedID.Contains(vectorID) || p_exWorkSpace->m_deduper.CheckAndSet(vectorID)) continue;
                         auto distance2leaf = p_index->ComputeDistance(queryResults.GetQuantizedTarget(), vectorInfo + sizeof(int));
                         queryResults.AddPoint(vectorID, distance2leaf);
                     }
