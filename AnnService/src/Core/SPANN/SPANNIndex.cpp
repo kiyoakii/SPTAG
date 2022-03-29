@@ -955,7 +955,7 @@ namespace SPTAG
             for (int j = 0; j < postVectorNum; j++)
             {
                 uint8_t* vectorId = postingP + j * vectorInfoSize;
-                //LOG(Helper::LogLevel::LL_Info, "vector index/total:id: %d/%d:%d\n", j, m_postingSizes[selections[i].headID], *(reinterpret_cast<int*>(vectorId)));
+                //LOG(Helper::LogLevel::LL_Info, "vector index/total:id: %d/%d:%d\n", j, m_postingSizes[headID].load(), *(reinterpret_cast<int*>(vectorId)));
                 if (CheckIdDeleted(*(reinterpret_cast<int*>(vectorId)))) {
                     realVectorNum--;
                 } else {
@@ -984,9 +984,9 @@ namespace SPTAG
             //LOG(Helper::LogLevel::LL_Info, "Resize\n");
             localIndicesInsert.resize(realVectorNum);
             localIndices.resize(realVectorNum);
-            smallSample.Initialize(realVectorNum, m_options.m_dim, m_iDataBlockSize, m_iDataCapacity, reinterpret_cast<ValueType*>(vectorBuffer.get()), false);
+            smallSample.Initialize(realVectorNum, m_options.m_dim, m_index->m_iDataBlockSize, m_index->m_iDataCapacity, reinterpret_cast<ValueType*>(vectorBuffer.get()), false);
 
-            //LOG(Helper::LogLevel::LL_Info, "Headid: %d Sample Vector Num: %d, Real Vector Num: %d\n", selections[i].headID, smallSample.R(), realVectorNum);
+            //LOG(Helper::LogLevel::LL_Info, "Headid: %d Sample Vector Num: %d, Real Vector Num: %d\n", headID, smallSample.R(), realVectorNum);
 
             // k = 2, maybe we can change the split number, now it is fixed
             SPTAG::COMMON::KmeansArgs<ValueType> args(2, smallSample.C(), (SizeType)localIndicesInsert.size(), 1, m_index->GetDistCalcMethod());
@@ -1025,7 +1025,7 @@ namespace SPTAG
                 m_index->AddIndexId(smallSample[args.clusterIdx[k]], 1, m_options.m_dim, begin, end);
                 newHeadVID = begin;
                 newHeadsID.push_back(begin);
-                //LOG(Helper::LogLevel::LL_Info, "Head id: %d split into : %d\n", headID, newHeadVID);
+                // LOG(Helper::LogLevel::LL_Info, "Head id: %d split into : %d, length: %d\n", headID, newHeadVID, args.counts[k]);
 
                 for (int j = 0; j < args.counts[k]; j++)
                 {
@@ -1241,6 +1241,7 @@ namespace SPTAG
             m_appendTaskNum++;
 
             //debug code
+            /*
             LOG(Helper::LogLevel::LL_Info, "Append: headID: %d, appendNum: %d, posting size: %d\n", headID, appendNum, appendPosting.size());
             auto postingP = reinterpret_cast<uint8_t*>(&appendPosting[0]);
             for (int i = 0; i < appendNum; i++)
@@ -1248,6 +1249,7 @@ namespace SPTAG
                 uint8_t* vid = postingP +  i * vectorInfoSize;
                 LOG(Helper::LogLevel::LL_Info, "Append: vid: %d\n", *reinterpret_cast<int*>(vid));
             }
+            */
 
             if (appendNum == 0) {
                 LOG(Helper::LogLevel::LL_Info, "Error!, headID :%d, appendNum:%d\n", headID, appendNum);
