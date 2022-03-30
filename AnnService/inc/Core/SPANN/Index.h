@@ -79,7 +79,7 @@ namespace SPTAG
                                  std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check,
                                  SizeType oldVID, std::function<void()> p_callback)
                         : m_index(m_index),
-                          vectorContain(vectorContain), VID(VID), newHeads(newHeads), check(check), oldVID(oldVID), m_callback(std::move(p_callback)) {}
+                          vectorContain(std::move(vectorContain)), VID(VID), newHeads(newHeads), check(check), oldVID(oldVID), m_callback(std::move(p_callback)) {}
 
                 ~ReassignAsyncJob() {}
 
