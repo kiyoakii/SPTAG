@@ -108,6 +108,90 @@ namespace SPTAG {
             }
 
             template <typename T>
+            void ProfilingQueryVer1(VectorIndex* index, std::vector<QueryResult>& results, const std::vector<std::set<SizeType>>& truthPrev, const std::vector<std::set<SizeType>>& truthAfter, int K, int truthK, std::shared_ptr<SPTAG::VectorSet> querySet, std::shared_ptr<SPTAG::VectorSet> vectorSet, SizeType NumQuerys, std::vector<int>& recallPrev, std::vector<int>& recallAfter)
+            {
+                std::unique_ptr<bool[]> visited(new bool[K]);
+                for (SizeType i = 0; i < NumQuerys; i++)
+                {
+                    recallAfter[i] = 0;
+                    memset(visited.get(), 0, K * sizeof(bool));
+                    for (SizeType id : truthAfter[i])
+                    {
+                        for (int j = 0; j < K; j++)
+                        {
+                            if (visited[j] || results[i].GetResult(j)->VID < 0) continue;
+
+                            if (vectorSet != nullptr) {
+                                float dist = results[i].GetResult(j)->Dist;
+                                float truthDist = COMMON::DistanceUtils::ComputeDistance((const T*)querySet->GetVector(i), (const T*)vectorSet->GetVector(id), vectorSet->Dimension(), index->GetDistCalcMethod());
+                                if (index->GetDistCalcMethod() == SPTAG::DistCalcMethod::Cosine && fabs(dist - truthDist) < Epsilon) {
+                                    recallAfter[i] += 1;
+                                    visited[j] = true;
+                                    break;
+                                }
+                                else if (index->GetDistCalcMethod() == SPTAG::DistCalcMethod::L2 && fabs(dist - truthDist) < Epsilon * (dist + Epsilon)) {
+                                    recallAfter[i] += 1;
+                                    visited[j] = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (!recallPrev.empty())
+                {
+                    int stableCount = 0;
+                    std::map<int, int> recallChangeMapTotal;
+                    std::map<int, int> recallChangeMapTopKChange;
+                    std::map<int, int> recallChangeMapTopKUnchange;
+                    std::vector<int> topKChange(NumQuerys, 0);
+                    int topKChangeNum = 0;
+                    for (SizeType i = 0; i < NumQuerys; i++)
+                    {
+                        for (SizeType id : truthPrev[i])
+                        {
+                            if (!truthAfter[i].count(id)) topKChange[i]++;
+                        }
+                        int recallChange = recallAfter[i] - recallPrev[i];
+                        if (recallChangeMapTotal.find(recallChange) == recallChangeMapTotal.end()) recallChangeMapTotal[recallChange] = 1;
+                        else recallChangeMapTotal[recallChange]++;
+                        if (topKChange[i])
+                        {
+                            topKChangeNum++;
+                            if (recallChangeMapTopKChange.find(recallChange) == recallChangeMapTopKChange.end()) recallChangeMapTopKChange[recallChange] = 1;
+                            else recallChangeMapTopKChange[recallChange]++;
+                        } else 
+                        {
+                            if (recallChangeMapTopKUnchange.find(recallChange) == recallChangeMapTopKUnchange.end()) recallChangeMapTopKUnchange[recallChange] = 1;
+                            else recallChangeMapTopKUnchange[recallChange]++;
+                        }
+                        if (recallAfter[i] >= recallPrev[i]) stableCount++;
+                    }
+                    LOG(Helper::LogLevel::LL_Info, "Query Profiling:\n");
+                    LOG(Helper::LogLevel::LL_Info, "After Update Batch, %d Queries of totally %d Queries change Top%d truth, %d Queries keep recall stable\n", topKChangeNum, NumQuerys, K, stableCount);
+                    LOG(Helper::LogLevel::LL_Info, "Totally Recall Change Distribution:\n");
+                    LOG(Helper::LogLevel::LL_Info, "Change Size\tNumber\n");
+                    for (auto it = recallChangeMapTotal.begin(); it != recallChangeMapTotal.end(); it++)
+                    {
+                        LOG(Helper::LogLevel::LL_Info, "%d\t%d:\n", it->first, it->second);
+                    }
+                    LOG(Helper::LogLevel::LL_Info, "TopK Change Recall Change Distribution:\n");
+                    LOG(Helper::LogLevel::LL_Info, "Change Size\tNumber\n");
+                    for (auto it = recallChangeMapTopKChange.begin(); it != recallChangeMapTopKChange.end(); it++)
+                    {
+                        LOG(Helper::LogLevel::LL_Info, "%d\t%d:\n", it->first, it->second);
+                    }
+                    LOG(Helper::LogLevel::LL_Info, "TopK Unchange Recall Change Distribution:\n");
+                    LOG(Helper::LogLevel::LL_Info, "Change Size\tNumber\n");
+                    for (auto it = recallChangeMapTopKUnchange.begin(); it != recallChangeMapTopKUnchange.end(); it++)
+                    {
+                        LOG(Helper::LogLevel::LL_Info, "%d\t%d:\n", it->first, it->second);
+                    }
+
+                }
+            }
+
+            template <typename T>
             static float CalculateRecallSPFresh(VectorIndex* index, std::vector<QueryResult>& results, const std::vector<std::set<SizeType>>& truth, int K, int truthK, std::shared_ptr<SPTAG::VectorSet> querySet, std::shared_ptr<SPTAG::VectorSet> vectorSet, SizeType NumQuerys, std::ofstream* log = nullptr, bool debug = false)
             {
                 float meanrecall = 0, minrecall = MaxDist, maxrecall = 0, stdrecall = 0;
@@ -444,7 +528,9 @@ namespace SPTAG {
                 {
                     insertCount = p_opts.m_endVectorNum - curCount;
                 }
-                std::vector<std::set<SizeType>> truth;
+                std::vector<std::vector<std::set<SizeType>>> truth(2);
+                std::vector<std::vector<int>> thisrecall(2);
+                thisrecall[0].resize(numQueries);
                 float recall;
 
                 std::vector<QueryResult> results(numQueries, QueryResult(NULL, max(K, internalResultNum), false));
@@ -452,20 +538,22 @@ namespace SPTAG {
                 StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 
                 LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
-
                 auto ptr = f_createIO();
                 if (ptr == nullptr || !ptr->Initialize(GetTruthFileName(truthFilePrefix, curCount).c_str(), std::ios::in | std::ios::binary)) {
                     LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", GetTruthFileName(truthFilePrefix, curCount).c_str());
                     exit(1);
                 }
                 int originalK = truthK;
-                COMMON::TruthSet::LoadTruth(ptr, truth, numQueries, originalK, truthK, p_opts.m_truthType);
+                COMMON::TruthSet::LoadTruth(ptr, truth[0], numQueries, originalK, truthK, p_opts.m_truthType);
                 char tmp[4];
                 if (ptr->ReadBinary(4, tmp) == 4) {
                     LOG(Helper::LogLevel::LL_Error, "Truth number is larger than query number(%d)!\n", numQueries);
                 }
 
-                recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth, K, truthK, querySet, vectorSet, numQueries);
+                LOG(Helper::LogLevel::LL_Info, "Start Calculating Recall\n");
+                recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[0], K, truthK, querySet, vectorSet, numQueries);
+                ProfilingQueryVer1<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[1], truth[0], K, truthK, querySet, vectorSet, numQueries, thisrecall[1], thisrecall[0]);
+                thisrecall[1].resize(numQueries);
                 LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", truthK, K, recall);
 
                 LOG(Helper::LogLevel::LL_Info,
@@ -542,7 +630,7 @@ namespace SPTAG {
 
                     LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
 
-                    truth.clear();
+                    truth[(i+1) % 2].clear();
 
                     auto ptr = f_createIO();
                     if (ptr == nullptr || !ptr->Initialize(GetTruthFileName(truthFilePrefix, curCount).c_str(), std::ios::in | std::ios::binary)) {
@@ -550,13 +638,14 @@ namespace SPTAG {
                         exit(1);
                     }
                     int originalK = truthK;
-                    COMMON::TruthSet::LoadTruth(ptr, truth, numQueries, originalK, truthK, p_opts.m_truthType);
+                    COMMON::TruthSet::LoadTruth(ptr, truth[(i+1) % 2], numQueries, originalK, truthK, p_opts.m_truthType);
                     char tmp[4];
                     if (ptr->ReadBinary(4, tmp) == 4) {
                         LOG(Helper::LogLevel::LL_Error, "Truth number is larger than query number(%d)!\n", numQueries);
                     }
 
-                    recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth, K, truthK, querySet, vectorSet, numQueries);
+                    recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[(i+1) % 2], K, truthK, querySet, vectorSet, numQueries);
+                    ProfilingQueryVer1<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[i % 2], truth[(i+1) % 2], K, truthK, querySet, vectorSet, numQueries, thisrecall[i % 2], thisrecall[(i+1) % 2]);
                     LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", truthK, K, recall);
 
                     LOG(Helper::LogLevel::LL_Info,
