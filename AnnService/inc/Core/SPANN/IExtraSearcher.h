@@ -188,6 +188,7 @@ namespace SPTAG {
             virtual ErrorCode SearchIndex(SizeType headID, std::string& posting) = 0;
             virtual ErrorCode AddIndex(SizeType headID, const std::string& posting) = 0;
             virtual ErrorCode DeleteIndex(SizeType headID) = 0;
+            virtual ErrorCode OverrideIndex(SizeType headID, const std::string& posting) = 0;
             virtual SizeType  GetIndexSize() = 0;
             virtual SizeType  GetPostingSizeLimit() = 0;
         };

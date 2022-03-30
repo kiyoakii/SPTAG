@@ -977,7 +977,7 @@ namespace SPTAG
                     postingList += Helper::Convert::Serialize<ValueType>(vectorBuffer.get() + j * m_options.m_dim * sizeof(ValueType), m_options.m_dim);
                 }
                 m_postingSizes[headID].store(realVectorNum);
-                m_extraSearcher->AddIndex(headID, postingList);
+                m_extraSearcher->OverrideIndex(headID, postingList);
                 // m_splitWriteBackCost += sw.getElapsedMs() - gcEndTime;
                 return ErrorCode::Success;
             }

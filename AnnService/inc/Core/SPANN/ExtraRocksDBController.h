@@ -487,7 +487,7 @@ namespace SPTAG
             virtual inline ErrorCode SearchIndex(SizeType headID, std::string& posting) {  return db.Get(headID, &posting); }
             virtual inline ErrorCode AddIndex(SizeType headID, const std::string& posting) { m_postingNum++; return db.Put(headID, posting); }
             virtual inline ErrorCode DeleteIndex(SizeType headID) { m_postingNum--; return db.Delete(headID); }
-            virtual inline SizeType  GetIndexSize() { return m_postingNum; }
+        inline ErrorCode OverrideIndex(SizeType headID, const std::string& posting) override { return db.Put(headID, posting); }
             virtual inline SizeType  GetPostingSizeLimit() { return m_postingSizeLimit; }
         private:
             struct ListInfo
