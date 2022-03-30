@@ -1125,22 +1125,19 @@ namespace SPTAG
 
                 int count = 0;
                 auto newFirstVID = m_vectorNum.fetch_add(numQueries);
-                for (auto it = reAssignVectors.begin(); it != reAssignVectors.end(); ++it) {
-                    //m_currerntReassignTaskNum++;
+                for (auto &it : reAssignVectors) {
                     //PrintFirstFiveDimInt8(reinterpret_cast<uint8_t*>(it->second), it->first);
-                    auto vectorContain = std::make_shared<std::string>(std::move(Helper::Convert::Serialize<ValueType>(it->second, m_options.m_dim)));
+                    auto vectorContain = std::make_shared<std::string>(Helper::Convert::Serialize<uint8_t>(it.second, m_options.m_dim));
                     //PrintFirstFiveDimInt8(reinterpret_cast<uint8_t*>(&vectorContain->front()), it->first);
-                    ReassignAsync(vectorContain, newFirstVID + count, newHeadsID, false, it->first);
+                    ReassignAsync(vectorContain, newFirstVID + count, newHeadsID, false, it.first);
                     count++;
                 }
             } else {
                 for (auto it = reAssignVectors.begin(); it != reAssignVectors.end(); ++it) {
-                    auto vectorContain = std::make_shared<std::string>(std::move(Helper::Convert::Serialize<ValueType>(it->second, m_options.m_dim)));
+                    auto vectorContain = std::make_shared<std::string>(Helper::Convert::Serialize<uint8_t>(it->second, m_options.m_dim));
                     ReassignAsync(vectorContain, 0, newHeadsID, true, it->first);
                 }
             }
-
-//            m_reassigned += numQueries;
         }
 
         template <typename ValueType>
@@ -1242,13 +1239,13 @@ namespace SPTAG
 
             //debug code
             /*
-            LOG(Helper::LogLevel::LL_Info, "Append: headID: %d, appendNum: %d, posting size: %d\n", headID, appendNum, appendPosting.size());
-            auto postingP = reinterpret_cast<uint8_t*>(&appendPosting[0]);
-            for (int i = 0; i < appendNum; i++)
-            {
-                uint8_t* vid = postingP +  i * vectorInfoSize;
-                LOG(Helper::LogLevel::LL_Info, "Append: vid: %d\n", *reinterpret_cast<int*>(vid));
-            }
+//            LOG(Helper::LogLevel::LL_Info, "Append: headID: %d, appendNum: %d, posting size: %d\n", headID, appendNum, appendPosting.size());
+//            auto postingP = reinterpret_cast<uint8_t*>(&appendPosting[0]);
+//            for (int i = 0; i < appendNum; i++)
+//            {
+//                uint8_t* vid = postingP +  i * vectorInfoSize;
+//                LOG(Helper::LogLevel::LL_Info, "Append: vid: %d\n", *reinterpret_cast<int*>(vid));
+//            }
             */
 
             if (appendNum == 0) {
