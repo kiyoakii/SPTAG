@@ -142,7 +142,9 @@ namespace SPTAG {
                 {
                     int stableCount = 0;
                     std::map<int, int> recallChangeMapTotal;
+                    int stableCountKChange = 0;
                     std::map<int, int> recallChangeMapTopKChange;
+                    int stableCountKUnchange = 0;
                     std::map<int, int> recallChangeMapTopKUnchange;
                     std::vector<int> topKChange(NumQuerys, 0);
                     int topKChangeNum = 0;
@@ -160,10 +162,14 @@ namespace SPTAG {
                             topKChangeNum++;
                             if (recallChangeMapTopKChange.find(recallChange) == recallChangeMapTopKChange.end()) recallChangeMapTopKChange[recallChange] = 1;
                             else recallChangeMapTopKChange[recallChange]++;
+
+                            if (recallChange >= 0) stableCountKChange++;
                         } else 
                         {
                             if (recallChangeMapTopKUnchange.find(recallChange) == recallChangeMapTopKUnchange.end()) recallChangeMapTopKUnchange[recallChange] = 1;
                             else recallChangeMapTopKUnchange[recallChange]++;
+
+                            if (recallChange >= 0) stableCountKUnchange++;
                         }
                         if (recallAfter[i] >= recallPrev[i]) stableCount++;
                     }
@@ -175,13 +181,13 @@ namespace SPTAG {
                     {
                         LOG(Helper::LogLevel::LL_Info, "%d\t%d:\n", it->first, it->second);
                     }
-                    LOG(Helper::LogLevel::LL_Info, "TopK Change Recall Change Distribution:\n");
+                    LOG(Helper::LogLevel::LL_Info, "TopK Change Recall Change Distribution: %d/%d Queries keep recall stable\n", stableCountKChange, topKChangeNum);
                     LOG(Helper::LogLevel::LL_Info, "Change Size\tNumber\n");
                     for (auto it = recallChangeMapTopKChange.begin(); it != recallChangeMapTopKChange.end(); it++)
                     {
                         LOG(Helper::LogLevel::LL_Info, "%d\t%d:\n", it->first, it->second);
                     }
-                    LOG(Helper::LogLevel::LL_Info, "TopK Unchange Recall Change Distribution:\n");
+                    LOG(Helper::LogLevel::LL_Info, "TopK Unchange Recall Change Distribution: %d/%d Queries keep recall stable\n", stableCountKUnchange, NumQuerys-topKChangeNum);
                     LOG(Helper::LogLevel::LL_Info, "Change Size\tNumber\n");
                     for (auto it = recallChangeMapTopKUnchange.begin(); it != recallChangeMapTopKUnchange.end(); it++)
                     {
