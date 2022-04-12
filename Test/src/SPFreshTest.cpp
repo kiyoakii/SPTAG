@@ -536,7 +536,7 @@ namespace SPTAG {
                 }
                 std::vector<std::vector<std::set<SizeType>>> truth(2);
                 std::vector<std::vector<int>> thisrecall(2);
-                thisrecall[0].resize(numQueries);
+                thisrecall[1].resize(numQueries);
                 float recall;
 
                 std::vector<QueryResult> results(numQueries, QueryResult(NULL, max(K, internalResultNum), false));
@@ -550,8 +550,34 @@ namespace SPTAG {
                     exit(1);
                 }
                 int originalK = truthK;
-                COMMON::TruthSet::LoadTruth(ptr, truth[0], numQueries, originalK, truthK, p_opts.m_truthType);
+                COMMON::TruthSet::LoadTruth(ptr, truth[1], numQueries, originalK, truthK, p_opts.m_truthType);
                 char tmp[4];
+                if (ptr->ReadBinary(4, tmp) == 4) {
+                    LOG(Helper::LogLevel::LL_Error, "Truth number is larger than query number(%d)!\n", numQueries);
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "Start Calculating Recall\n");
+                recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[1], K, truthK, querySet, vectorSet, numQueries);
+                ProfilingQueryVer1<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[0], truth[1], K, truthK, querySet, vectorSet, numQueries, thisrecall[0], thisrecall[1]);
+                LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", truthK, K, recall);
+
+                LOG(Helper::LogLevel::LL_Info,
+                    "Recall: %f\n",
+                    recall);
+
+                thisrecall[0].resize(numQueries);
+                //PreReassign
+
+                p_index->PreReassign();
+                
+                StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
+
+                LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
+                if (ptr == nullptr || !ptr->Initialize(GetTruthFileName(truthFilePrefix, curCount).c_str(), std::ios::in | std::ios::binary)) {
+                    LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", GetTruthFileName(truthFilePrefix, curCount).c_str());
+                    exit(1);
+                }
+                COMMON::TruthSet::LoadTruth(ptr, truth[0], numQueries, originalK, truthK, p_opts.m_truthType);
                 if (ptr->ReadBinary(4, tmp) == 4) {
                     LOG(Helper::LogLevel::LL_Error, "Truth number is larger than query number(%d)!\n", numQueries);
                 }
@@ -559,7 +585,6 @@ namespace SPTAG {
                 LOG(Helper::LogLevel::LL_Info, "Start Calculating Recall\n");
                 recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[0], K, truthK, querySet, vectorSet, numQueries);
                 ProfilingQueryVer1<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[1], truth[0], K, truthK, querySet, vectorSet, numQueries, thisrecall[1], thisrecall[0]);
-                thisrecall[1].resize(numQueries);
                 LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", truthK, K, recall);
 
                 LOG(Helper::LogLevel::LL_Info,

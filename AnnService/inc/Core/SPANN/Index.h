@@ -333,7 +333,6 @@ namespace SPTAG
                 m_dispatcher->stop();
             }
 
-            template <typename ValueType>
             void PreReassign()
             {
                 //Pre Split
@@ -343,6 +342,7 @@ namespace SPTAG
                     splited = false;
                     for (int i = 0; i < m_extraSearcher->GetIndexSize(); i++)
                     {
+                        if ((i+1) % 10000 == 0) LOG(Helper::LogLevel::LL_Info, "Processing to No.%d...\n", i);
                         if (m_index->ContainSample(i) && m_postingSizes[i].load() > (m_extraSearcher->GetPostingSizeLimit() * 0.8) )
                         {
                             int headID = i;
@@ -353,10 +353,10 @@ namespace SPTAG
 
                             // reinterpret postingList to vectors and IDs
                             auto* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
-                            size_t vectorInfoSize = m_options.m_dim * sizeof(ValueType) + sizeof(int);
+                            size_t vectorInfoSize = m_options.m_dim * sizeof(T) + sizeof(int);
                             size_t postVectorNum = postingList.size() / vectorInfoSize;
-                            COMMON::Dataset<ValueType> smallSample;  // smallSample[i] -> VID
-                            std::shared_ptr<uint8_t> vectorBuffer(new uint8_t[m_options.m_dim * sizeof(ValueType) * postVectorNum], std::default_delete<uint8_t[]>());
+                            COMMON::Dataset<T> smallSample;  // smallSample[i] -> VID
+                            std::shared_ptr<uint8_t> vectorBuffer(new uint8_t[m_options.m_dim * sizeof(T) * postVectorNum], std::default_delete<uint8_t[]>());
                             std::vector<int> localIndicesInsert(postVectorNum);  // smallSample[i] = j <-> localindices[j] = i
                             std::vector<int> localIndices(postVectorNum);
                             auto vectorBuf = vectorBuffer.get();
@@ -373,8 +373,8 @@ namespace SPTAG
                                     localIndicesInsert[index] = *(reinterpret_cast<int*>(vectorId));
                                     localIndices[index] = index;
                                     index++;
-                                    memcpy(vectorBuf, vectorId + sizeof(int), m_options.m_dim * sizeof(ValueType));
-                                    vectorBuf += m_options.m_dim * sizeof(ValueType);
+                                    memcpy(vectorBuf, vectorId + sizeof(int), m_options.m_dim * sizeof(T));
+                                    vectorBuf += m_options.m_dim * sizeof(T);
                                 }
                             }
                             // double gcEndTime = sw.getElapsedMs();
@@ -385,22 +385,22 @@ namespace SPTAG
                                 for (int j = 0; j < realVectorNum; j++)
                                 {
                                     postingList += Helper::Convert::Serialize<int>(&localIndicesInsert[j], 1);
-                                    postingList += Helper::Convert::Serialize<ValueType>(vectorBuffer.get() + j * m_options.m_dim * sizeof(ValueType), m_options.m_dim);
+                                    postingList += Helper::Convert::Serialize<T>(vectorBuffer.get() + j * m_options.m_dim * sizeof(T), m_options.m_dim);
                                 }
                                 m_postingSizes[headID].store(realVectorNum);
-                                m_extraSearcher->AddIndex(headID, postingList);
+                                m_extraSearcher->OverrideIndex(headID, postingList);
                                 // m_splitWriteBackCost += sw.getElapsedMs() - gcEndTime;
                                 continue;
                             }
                             //LOG(Helper::LogLevel::LL_Info, "Resize\n");
                             localIndicesInsert.resize(realVectorNum);
                             localIndices.resize(realVectorNum);
-                            smallSample.Initialize(realVectorNum, m_options.m_dim, m_index->m_iDataBlockSize, m_index->m_iDataCapacity, reinterpret_cast<ValueType*>(vectorBuffer.get()), false);
+                            smallSample.Initialize(realVectorNum, m_options.m_dim, m_index->m_iDataBlockSize, m_index->m_iDataCapacity, reinterpret_cast<T*>(vectorBuffer.get()), false);
 
                             //LOG(Helper::LogLevel::LL_Info, "Headid: %d Sample Vector Num: %d, Real Vector Num: %d\n", headID, smallSample.R(), realVectorNum);
 
                             // k = 2, maybe we can change the split number, now it is fixed
-                            SPTAG::COMMON::KmeansArgs<ValueType> args(2, smallSample.C(), (SizeType)localIndicesInsert.size(), 1, m_index->GetDistCalcMethod());
+                            SPTAG::COMMON::KmeansArgs<T> args(2, smallSample.C(), (SizeType)localIndicesInsert.size(), 1, m_index->GetDistCalcMethod());
                             std::shuffle(localIndices.begin(), localIndices.end(), std::mt19937(std::random_device()()));
                             int numClusters = SPTAG::COMMON::KmeansClustering(smallSample, localIndices, 0, (SizeType)localIndices.size(), args);
                             if (numClusters <= 1)
@@ -410,12 +410,12 @@ namespace SPTAG
                                 for (int j = 0; j < realVectorNum; j++)
                                 {
                                     postingList += Helper::Convert::Serialize<int>(&localIndicesInsert[j], 1);
-                                    postingList += Helper::Convert::Serialize<ValueType>(vectorBuffer.get() + j * m_options.m_dim * sizeof(ValueType), m_options.m_dim);
-                                    auto dist = m_index->ComputeDistance(vectorBuffer.get() + j * m_options.m_dim * sizeof(ValueType), m_index->GetSample(headID));
+                                    postingList += Helper::Convert::Serialize<T>(vectorBuffer.get() + j * m_options.m_dim * sizeof(T), m_options.m_dim);
+                                    auto dist = m_index->ComputeDistance(vectorBuffer.get() + j * m_options.m_dim * sizeof(T), m_index->GetSample(headID));
                                     r = std::max<float>(r, dist);
                                 }
                                 m_postingSizes[headID].store(realVectorNum);
-                                m_extraSearcher->AddIndex(headID, postingList);
+                                m_extraSearcher->OverrideIndex(headID, postingList);
                                 continue;
                             }
                             // double clusterEndTime = sw.getElapsedMs();
@@ -442,7 +442,7 @@ namespace SPTAG
                                 for (int j = 0; j < args.counts[k]; j++)
                                 {
                                     postingList += Helper::Convert::Serialize<SizeType>(&localIndicesInsert[localIndices[first + j]], 1);
-                                    postingList += Helper::Convert::Serialize<ValueType>(smallSample[localIndices[first + j]], m_options.m_dim);
+                                    postingList += Helper::Convert::Serialize<T>(smallSample[localIndices[first + j]], m_options.m_dim);
                                 }
                                 m_extraSearcher->AddIndex(newHeadVID, postingList);
                                 newPostingLists.push_back(postingList);
