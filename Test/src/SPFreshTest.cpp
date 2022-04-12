@@ -568,7 +568,7 @@ namespace SPTAG {
                 thisrecall[0].resize(numQueries);
                 //PreReassign
 
-                p_index->PreReassign();
+                //p_index->PreReassign();
                 
                 StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 

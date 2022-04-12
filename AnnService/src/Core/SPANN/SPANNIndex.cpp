@@ -98,8 +98,7 @@ namespace SPTAG
 
             m_deletedID.Load(m_options.m_fullDeletedIDFile, m_iDataBlockSize, m_iDataCapacity);
 
-            // TODO: choose a proper size
-            m_rwLocks = std::make_unique<std::shared_timed_mutex[]>(500000000);
+            //m_rwLocks = std::make_unique<std::shared_timed_mutex[]>(500000000);
             m_postingSizes = std::make_unique<std::atomic_uint32_t[]>(500000000);
 
             for (int idx = 0; idx < m_extraSearcher->GetIndexSize(); idx++) {
@@ -648,7 +647,7 @@ namespace SPTAG
                 }
             }
             if (m_options.m_update) {
-                m_rwLocks = std::make_unique<std::shared_timed_mutex[]>(500000000);
+                //m_rwLocks = std::make_unique<std::shared_timed_mutex[]>(500000000);
                 m_reassignedID.Initialize(m_vectorNum.load(), m_options.m_datasetRowsInBlock, m_options.m_datasetCapacity);
                 m_deletedID.Initialize(m_vectorNum.load(), m_options.m_datasetRowsInBlock, m_options.m_datasetCapacity);
                 LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize persistent buffer\n");
