@@ -29,6 +29,7 @@
 #include <shared_mutex>
 #include <utility>
 #include <random>
+#include <tbb/concurrent_hash_map.h>
 
 namespace SPTAG
 {
@@ -160,6 +161,12 @@ namespace SPTAG
                            && appendThreadPool->runningJobs() == 0
                            && reassignThreadPool->runningJobs() == 0;
                 }
+
+                inline bool allFinishedExceptReassign()
+                {
+                    return sentAssignment == m_persistentBuffer->GetCurrentAssignmentID()
+                           && appendThreadPool->runningJobs() == 0;
+                }
             };
 
             struct EdgeInsert
@@ -196,7 +203,10 @@ namespace SPTAG
             std::shared_ptr<ThreadPool> m_reassignThreadPool;
 
             COMMON::Labelset m_deletedID;
-            COMMON::Labelset m_reassignedID;
+            //COMMON::Labelset m_reassignedID;
+
+            tbb::concurrent_hash_map<SizeType, SizeType> m_reassignMap;
+
             std::atomic_uint32_t m_headMiss{0};
             uint32_t m_appendTaskNum{0};
             uint32_t m_splitTaskNum{0};
@@ -324,6 +334,8 @@ namespace SPTAG
 
             bool AllFinished() {return m_dispatcher->allFinished();}
 
+            bool AllFinishedExceptReassign() {return m_dispatcher->allFinishedExceptReassign();}
+
             void ForceCompaction() {if (m_options.m_useKV) m_extraSearcher->ForceCompaction();}
 
             int getSplitTimes() {return m_splitNum;}
@@ -334,6 +346,73 @@ namespace SPTAG
             {
                 m_persistentBuffer->StopPB();
                 m_dispatcher->stop();
+            }
+
+            void QuantifyAssumptionBrokenTotally()
+            {
+                std::atomic_int assumptionBrokenNum = 0;
+                std::atomic_int deleted = 0;
+                std::vector<std::set<SizeType>> vectorHeadMap(m_vectorNum.load());
+                std::vector<bool> vectorFoundMap(m_vectorNum.load());
+                std::vector<std::string> vectorIdValueMap(m_vectorNum.load());
+                for (int i = 0; i < m_index->GetNumSamples(); i++) {
+                    std::string postingList;
+                    if (!m_index->ContainSample(i)) continue;
+                    m_extraSearcher->SearchIndex(i, postingList);
+                    int postVectorNum = postingList.size() / (m_options.m_dim * sizeof(T)+ sizeof(int));
+                    uint8_t* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
+                    for (int j = 0; j < postVectorNum; j++) {
+                        uint8_t* vectorId = postingP + j * (m_options.m_dim * sizeof(T) + sizeof(int));
+                        SizeType vid = *(reinterpret_cast<SizeType*>(vectorId));
+                        if (m_deletedID.Contains(vid)) continue;
+                        vectorHeadMap[vid].insert(i);
+                        if (vectorFoundMap[vid]) continue;
+                        vectorFoundMap[vid] = true;
+                        vectorIdValueMap[vid] = Helper::Convert::Serialize<uint8_t>(vectorId + sizeof(int), m_options.m_dim * sizeof(T));
+                    }
+                }
+                #pragma omp parallel for num_threads(32)
+                for (int vid = 0; vid < m_vectorNum.load(); vid++) {
+                    if (m_deletedID.Contains(vid)) {
+                        deleted++;
+                        continue;
+                    }
+                    COMMON::QueryResultSet<T> headCandidates(NULL, 64);
+                    headCandidates.SetTarget(reinterpret_cast<T*>(&vectorIdValueMap[vid].front()));
+                    headCandidates.Reset();
+                    m_index->SearchIndex(headCandidates);
+                    int replicaCount = 0;
+                    BasicResult* queryResults = headCandidates.GetResults();
+                    std::vector<EdgeInsert> selections(static_cast<size_t>(m_options.m_replicaCount));
+                    for (int i = 0; i < headCandidates.GetResultNum() && replicaCount < m_options.m_replicaCount; ++i) {
+                        if (queryResults[i].VID == -1) {
+                            break;
+                        }
+                        // RNG Check.
+                        bool rngAccpeted = true;
+                        for (int j = 0; j < replicaCount; ++j) {
+                            float nnDist = m_index->ComputeDistance(
+                                                        m_index->GetSample(queryResults[i].VID),
+                                                        m_index->GetSample(selections[j].headID));
+                            if (nnDist <= queryResults[i].Dist) {
+                                rngAccpeted = false;
+                                break;
+                            }
+                        }
+                        if (!rngAccpeted)
+                            continue;
+
+                        selections[replicaCount].headID = queryResults[i].VID;
+                        ++replicaCount;
+                    }
+                    for (int i = 0; i < replicaCount; i++) {
+                        if (!vectorHeadMap[vid].count(selections[i].headID)) {
+                            assumptionBrokenNum++;
+                            break;
+                        }
+                    }
+                }
+                LOG(Helper::LogLevel::LL_Info, "After Split %d times, %d total vectors, %d assumption broken vectors\n", m_splitNum, m_vectorNum.load() - deleted.load(), assumptionBrokenNum.load());
             }
 
             void PreReassign()

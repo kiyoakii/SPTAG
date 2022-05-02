@@ -30,7 +30,7 @@ namespace SPTAG::SPANN
 
         ~RocksDBIO() override {
             db->Close();
-            DestroyDB(dbPath, dbOptions);
+            //DestroyDB(dbPath, dbOptions);
             delete db;
         }
 
@@ -147,7 +147,7 @@ namespace SPTAG::SPANN
         RocksDBIO db;
         std::atomic_uint64_t m_postingNum{};
     public:
-        ExtraRocksDBController(const char* dbPath, int dim) { db.Initialize(dbPath); m_vectorInfoSize = dim * sizeof(ValueType) + sizeof(int);}
+        ExtraRocksDBController(const char* dbPath, int dim, int vectorlimit) { db.Initialize(dbPath); m_vectorInfoSize = dim * sizeof(ValueType) + sizeof(int); m_postingSizeLimit = vectorlimit;LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", m_postingSizeLimit);}
 
         ~ExtraRocksDBController() override = default;
 

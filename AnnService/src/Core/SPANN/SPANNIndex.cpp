@@ -592,7 +592,7 @@ namespace SPTAG
 
                 if (m_options.m_useKV)
                 {
-                    m_extraSearcher.reset(new ExtraRocksDBController<T>(m_options.m_KVPath.c_str(), m_options.m_dim));
+                    m_extraSearcher.reset(new ExtraRocksDBController<T>(m_options.m_KVPath.c_str(), m_options.m_dim, m_options.m_postingPageLimit * PageSize / (sizeof(T)*m_options.m_dim + sizeof(int) )));
                 } else {
                     m_extraSearcher.reset(new ExtraFullGraphSearcher<T>());
                 }
@@ -644,11 +644,12 @@ namespace SPTAG
 					}
 
 					input.close();
+                    //ForceCompaction();
                 }
             }
             if (m_options.m_update) {
                 //m_rwLocks = std::make_unique<std::shared_timed_mutex[]>(500000000);
-                m_reassignedID.Initialize(m_vectorNum.load(), m_options.m_datasetRowsInBlock, m_options.m_datasetCapacity);
+                //m_reassignedID.Initialize(m_vectorNum.load(), m_options.m_datasetRowsInBlock, m_options.m_datasetCapacity);
                 m_deletedID.Initialize(m_vectorNum.load(), m_options.m_datasetRowsInBlock, m_options.m_datasetCapacity);
                 LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize persistent buffer\n");
                 std::shared_ptr<Helper::KeyValueIO> db;
@@ -789,7 +790,7 @@ namespace SPTAG
                 {
                     std::lock_guard<std::mutex> lock(m_dataAddLock);
                     m_deletedID.AddBatch(1);
-                    m_reassignedID.AddBatch(1);
+                    //m_reassignedID.AddBatch(1);
                 }
 
                 m_index->SearchIndex(p_queryResults[k]);
@@ -1119,7 +1120,7 @@ namespace SPTAG
                 {
                     std::lock_guard<std::mutex> lock(m_dataAddLock);
                     m_deletedID.AddBatch(numQueries);
-                    m_reassignedID.AddBatch(numQueries);
+                    //m_reassignedID.AddBatch(numQueries);
                 }
 
                 int count = 0;
@@ -1176,7 +1177,7 @@ namespace SPTAG
                 {
                     std::lock_guard<std::mutex> lock(m_dataAddLock);
                     m_deletedID.AddBatch(1);
-                    m_reassignedID.AddBatch(1);
+                    //m_reassignedID.AddBatch(1);
                 }
             }
 
@@ -1253,23 +1254,21 @@ namespace SPTAG
         checkDeleted:
             if (!m_index->ContainSample(headID)) {
                 m_headMiss++;
-                /*
                 int newVID = m_vectorNum.fetch_add(appendNum);
                 {
                     std::lock_guard<std::mutex> lock(m_dataAddLock);
                     m_deletedID.AddBatch(appendNum);
-                    m_reassignedID.AddBatch(appendNum);
+                    //m_reassignedID.AddBatch(appendNum);
                 }
 
                 std::vector<SizeType> newHeads;
                 for (int i = 0; i < appendNum; i++)
                 {
-//                    m_currerntReassignTaskNum++;
+//                  m_currerntReassignTaskNum++;
                     uint32_t idx = i * vectorInfoSize;
                     auto vectorContain = std::make_shared<std::string>(appendPosting.substr(idx + sizeof(int), m_options.m_dim * sizeof(ValueType)));
                     ReassignAsync(vectorContain, newVID + i, newHeads, false, *(int*)(&appendPosting[idx]));
                 }
-                */
                 return ErrorCode::Success;
             }
             if (m_postingSizes[headID].load() + appendNum > m_extraSearcher->GetPostingSizeLimit()) {
@@ -1304,14 +1303,20 @@ namespace SPTAG
         {
             //LOG(Helper::LogLevel::LL_Info, "ReassignID: %d, newID: %d\n", oldVID, VID);
 
-            if (m_reassignedID.Contains(oldVID)) {
+            tbb::concurrent_hash_map<SizeType, SizeType>::const_accessor VIDAccessor;
+
+            if (m_deletedID.Contains(oldVID) || m_reassignMap.find(VIDAccessor, oldVID)) {
                 m_deletedID.Insert(VID);
                 return;
             }
 
-            m_reassignedID.Insert(oldVID);
+            //m_reassignedID.Insert(oldVID);
+            tbb::concurrent_hash_map<SizeType, SizeType>::value_type workPair(oldVID, VID);
+            m_reassignMap.insert(workPair);
 
             ReAssignUpdate(vectorContain, VID, newHeads, check, oldVID);
+
+            m_reassignMap.erase(oldVID);
 
             if (p_callback != nullptr) {
                 p_callback();

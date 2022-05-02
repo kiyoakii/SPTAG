@@ -111,6 +111,7 @@ namespace SPTAG {
             void ProfilingQueryVer1(VectorIndex* index, std::vector<QueryResult>& results, const std::vector<std::set<SizeType>>& truthPrev, const std::vector<std::set<SizeType>>& truthAfter, int K, int truthK, std::shared_ptr<SPTAG::VectorSet> querySet, std::shared_ptr<SPTAG::VectorSet> vectorSet, SizeType NumQuerys, std::vector<int>& recallPrev, std::vector<int>& recallAfter)
             {
                 std::unique_ptr<bool[]> visited(new bool[K]);
+                std::vector<int> recallDistribution(K+1, 0);
                 for (SizeType i = 0; i < NumQuerys; i++)
                 {
                     recallAfter[i] = 0;
@@ -137,7 +138,20 @@ namespace SPTAG {
                             }
                         }
                     }
+                    recallDistribution[recallAfter[i]]++;
                 }
+                LOG(Helper::LogLevel::LL_Info, "Recall Distribution:\n");
+                for (int i = 0; i <= K; i++)
+                {
+                    LOG(Helper::LogLevel::LL_Info, "hit %d: %d\t", i, recallDistribution[i]);
+                }
+                LOG(Helper::LogLevel::LL_Info, "\n");
+                PrintPercentiles<int, int>(recallAfter,
+                    [](const int& recall) -> int
+                    {
+                        return recall;
+                    },
+                    "%3d", true);
                 if (!recallPrev.empty())
                 {
                     int stableCount = 0;
@@ -569,6 +583,7 @@ namespace SPTAG {
                 //PreReassign
 
                 //p_index->PreReassign();
+                //p_index->ForceCompaction();
                 
                 StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 
@@ -640,6 +655,17 @@ namespace SPTAG {
                     step/ sendingCost,
                     static_cast<uint32_t>(step));
 
+                    while(!p_index->AllFinishedExceptReassign())
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    }
+                    double appendSyncingCost = sw.getElapsedSec();
+                    LOG(Helper::LogLevel::LL_Info,
+                    "Finish syncing append in %.3lf seconds, actuall throughput is %.2lf, insertion count %u.\n",
+                    appendSyncingCost,
+                    step / appendSyncingCost,
+                    static_cast<uint32_t>(step));
+
                     while(!p_index->AllFinished())
                     {
                         std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -655,7 +681,9 @@ namespace SPTAG {
                     finishedInsert += step;
                     LOG(Helper::LogLevel::LL_Info, "Total Vector num %d \n", curCount);
 
-                    p_index->ForceCompaction();
+                    StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
+
+                    //p_index->ForceCompaction();
 
                     StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 
@@ -685,6 +713,7 @@ namespace SPTAG {
 
                     LOG(Helper::LogLevel::LL_Info, "\n");
                     LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times, head missing %d times\n", finishedInsert, p_index->getSplitTimes(), p_index->getHeadMiss());
+                    //p_index->QuantifyAssumptionBrokenTotally();
                 }
                 p_index->UpdateStop();
             }
@@ -758,6 +787,14 @@ namespace SPTAG {
                 int numQueries = querySet->Count();
 
                 std::vector<QueryResult> results(numQueries, QueryResult(NULL, max(K, internalResultNum), false));
+
+                LOG(Helper::LogLevel::LL_Info, "Start ANN Search...\n");
+
+                StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
+
+                LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
+
+                p_index->ForceCompaction();
 
                 LOG(Helper::LogLevel::LL_Info, "Start ANN Search...\n");
 
