@@ -278,7 +278,7 @@ namespace SPTAG {
             }
 
             template <typename ValueType>
-            void SearchSequential(SPANN::Index<ValueType>* p_index,
+            double SearchSequential(SPANN::Index<ValueType>* p_index,
                 int p_numThreads,
                 std::vector<QueryResult>& p_results,
                 std::vector<SPANN::SearchStats>& p_stats,
@@ -290,7 +290,7 @@ namespace SPTAG {
 
                 std::vector<std::thread> threads;
 
-                LOG(Helper::LogLevel::LL_Info, "Searching: numThread: %d, numQueries: %d.\n", p_numThreads, numQueries);
+                //LOG(Helper::LogLevel::LL_Info, "Searching: numThread: %d, numQueries: %d.\n", p_numThreads, numQueries);
 
                 StopWSPFresh sw;
 
@@ -303,10 +303,12 @@ namespace SPTAG {
                         index = queriesSent.fetch_add(1);
                         if (index < numQueries)
                         {
+                            /*
                             if ((index & ((1 << 14) - 1)) == 0)
                             {
                                 LOG(Helper::LogLevel::LL_Info, "Sent %.2lf%%...\n", index * 100.0 / numQueries);
                             }
+                            */
 
                             double startTime = threadws.getElapsedMs();
                             p_index->GetMemoryIndex()->SearchIndex(p_results[index]);
@@ -328,11 +330,14 @@ namespace SPTAG {
 
                 double sendingCost = sw.getElapsedSec();
 
+                /*
                 LOG(Helper::LogLevel::LL_Info,
                     "Finish sending in %.3lf seconds, actuallQPS is %.2lf, query count %u.\n",
                     sendingCost,
                     numQueries / sendingCost,
                     static_cast<uint32_t>(numQueries));
+                    */
+                return numQueries / sendingCost;
             }
 
             template <typename ValueType>
@@ -477,9 +482,11 @@ namespace SPTAG {
             {
                 if (avgStatsNum == 0) return;
                 int numQueries = results.size();
+                LOG(Helper::LogLevel::LL_Info, "Searching: numThread: %d, numQueries: %d.\n", numThreads, numQueries);
                 std::vector<SPANN::SearchStats> stats(numQueries);
                 std::vector<SPANN::SearchStats> TotalStats(numQueries);
                 ResetStats(TotalStats);
+                double totalQPS = 0;
                 for (int i = 0; i < avgStatsNum; i++)
                 {
                     for (int j = 0; j < numQueries; ++j)
@@ -487,9 +494,10 @@ namespace SPTAG {
                         results[j].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(j)));
                         results[j].Reset();
                     }
-                    SearchSequential(p_index, numThreads, results, stats, queryCountLimit, internalResultNum);
+                    totalQPS += SearchSequential(p_index, numThreads, results, stats, queryCountLimit, internalResultNum);
                     AddStats(TotalStats, stats);
                 }
+                LOG(Helper::LogLevel::LL_Info, "Searching Times: %d, AvgQPS: %.2lf.\n", avgStatsNum, totalQPS/avgStatsNum);
 
                 AvgStats(TotalStats, avgStatsNum);
 
@@ -685,7 +693,7 @@ namespace SPTAG {
 
                     //p_index->ForceCompaction();
 
-                    StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
+                    //StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 
                     LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
 
