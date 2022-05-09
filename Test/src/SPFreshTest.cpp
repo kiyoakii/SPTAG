@@ -691,7 +691,7 @@ namespace SPTAG {
 
                     StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 
-                    //p_index->ForceCompaction();
+                    p_index->ForceCompaction();
 
                     //StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 

@@ -147,7 +147,7 @@ namespace SPTAG::SPANN
         RocksDBIO db;
         std::atomic_uint64_t m_postingNum{};
     public:
-        ExtraRocksDBController(const char* dbPath, int dim, int vectorlimit) { db.Initialize(dbPath); m_vectorInfoSize = dim * sizeof(ValueType) + sizeof(int); m_postingSizeLimit = vectorlimit;LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", m_postingSizeLimit);}
+        ExtraRocksDBController(const char* dbPath, int dim, int vectorlimit) { db.Initialize(dbPath); m_vectorInfoSize = dim * sizeof(ValueType) + sizeof(int) + sizeof(uint8_t); m_postingSizeLimit = vectorlimit;LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", m_postingSizeLimit);}
 
         ~ExtraRocksDBController() override = default;
 
@@ -186,7 +186,7 @@ namespace SPTAG::SPANN
             virtual void SearchIndex(ExtraWorkSpace* p_exWorkSpace,
                 QueryResult& p_queryResults,
                 std::shared_ptr<VectorIndex> p_index,
-                SearchStats* p_stats, const COMMON::Labelset& m_deletedID, std::set<int>* truth, std::map<int, std::set<int>>* found) override
+                SearchStats* p_stats, const COMMON::VersionLabel& m_versionMap, std::set<int>* truth, std::map<int, std::set<int>>* found) override
             {
                 const auto postingListCount = static_cast<uint32_t>(p_exWorkSpace->m_postingIDs.size());
 
@@ -213,8 +213,8 @@ namespace SPTAG::SPANN
                 for (int i = 0; i < vectorNum; i++) {
                     char* vectorInfo = postingList.data() + i * m_vectorInfoSize;
                     int vectorID = *(reinterpret_cast<int*>(vectorInfo));
-                    if (m_deletedID.Contains(vectorID) || p_exWorkSpace->m_deduper.CheckAndSet(vectorID)) continue;
-                    auto distance2leaf = p_index->ComputeDistance(queryResults.GetQuantizedTarget(), vectorInfo + sizeof(int));
+                    if (m_versionMap.Contains(vectorID) || p_exWorkSpace->m_deduper.CheckAndSet(vectorID)) continue;
+                    auto distance2leaf = p_index->ComputeDistance(queryResults.GetQuantizedTarget(), vectorInfo + sizeof(int) + sizeof(uint8_t));
                     queryResults.AddPoint(vectorID, distance2leaf);
                 }
                 if (truth) {
@@ -273,6 +273,7 @@ namespace SPTAG::SPANN
                 auto fullVectors = p_reader->GetVectorSet();
                 fullCount = fullVectors->Count();
                 vectorInfoSize = fullVectors->PerVectorDataSize() + sizeof(int);
+                //vectorInfoSize = fullVectors->PerVectorDataSize() + sizeof(int) + sizeof(uint8_t);
             }
 
             Selection selections(static_cast<size_t>(fullCount) * p_opt.m_replicaCount, p_opt.m_tmpdir);
@@ -424,9 +425,11 @@ namespace SPTAG::SPANN
                         exit(1);
                     }
                     int fullID = selections[selectIdx++].tonode;
+                    uint8_t version = 0;
                     size_t dim = fullVectors->Dimension();
                     // First Vector ID, then Vector
                     postinglist += Helper::Convert::Serialize<int>(&fullID, 1);
+                    postinglist += Helper::Convert::Serialize<uint8_t>(&version, 1);
                     postinglist += Helper::Convert::Serialize<ValueType>(fullVectors->GetVector(fullID), dim);
                 }
 
@@ -462,10 +465,10 @@ namespace SPTAG::SPANN
             }
 
             LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize deleteMap\n");
-            COMMON::Labelset m_deleteID;
-            m_deleteID.Initialize(fullCount, p_headIndex->m_iDataBlockSize, p_headIndex->m_iDataCapacity);
+            COMMON::VersionLabel m_versionMap;
+            m_versionMap.Initialize(fullCount, p_headIndex->m_iDataBlockSize, p_headIndex->m_iDataCapacity);
             LOG(Helper::LogLevel::LL_Info, "SPFresh: save deleteMap\n");
-            m_deleteID.Save(p_opt.m_fullDeletedIDFile);
+            m_versionMap.Save(p_opt.m_fullDeletedIDFile);
 
             auto t5 = std::chrono::high_resolution_clock::now();
             double elapsedSeconds = std::chrono::duration_cast<std::chrono::seconds>(t5 - t1).count();

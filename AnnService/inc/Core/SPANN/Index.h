@@ -14,7 +14,7 @@
 #include "../Common/WorkSpacePool.h"
 #include "../Common/FineGrainedLock.h"
 
-#include "../Common/Labelset.h"
+#include "../Common/VersionLabel.h"
 #include "inc/Helper/SimpleIniReader.h"
 #include "inc/Helper/StringConvert.h"
 #include "inc/Helper/ThreadPool.h"
@@ -73,20 +73,17 @@ namespace SPTAG
                 std::shared_ptr<std::string> vectorContain;
                 SizeType VID;
                 std::vector<SizeType>& newHeads;
-                bool check;
-                SizeType oldVID;
                 std::function<void()> m_callback;
             public:
                 ReassignAsyncJob(VectorIndex* m_index,
-                                 std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check,
-                                 SizeType oldVID, std::function<void()> p_callback)
+                                 std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, std::function<void()> p_callback)
                         : m_index(m_index),
-                          vectorContain(std::move(vectorContain)), VID(VID), newHeads(newHeads), check(check), oldVID(oldVID), m_callback(std::move(p_callback)) {}
+                          vectorContain(std::move(vectorContain)), VID(VID), newHeads(newHeads), m_callback(std::move(p_callback)) {}
 
                 ~ReassignAsyncJob() {}
 
                 void exec(IAbortOperation* p_abort) override {
-                    m_index->ProcessAsyncReassign(vectorContain, VID, newHeads, check, oldVID, std::move(m_callback));
+                    m_index->ProcessAsyncReassign(vectorContain, VID, newHeads, std::move(m_callback));
                 }
             };
 
@@ -202,7 +199,7 @@ namespace SPTAG
             std::shared_ptr<ThreadPool> m_appendThreadPool;
             std::shared_ptr<ThreadPool> m_reassignThreadPool;
 
-            COMMON::Labelset m_deletedID;
+            COMMON::VersionLabel m_versionMap;
             //COMMON::Labelset m_reassignedID;
 
             tbb::concurrent_hash_map<SizeType, SizeType> m_reassignMap;
@@ -288,7 +285,8 @@ namespace SPTAG
             inline const void* GetSample(const SizeType idx) const { return nullptr; }
             inline SizeType GetNumDeleted() const { return 0; }
             inline bool NeedRefine() const { return false; }
-            inline bool CheckIdDeleted(const SizeType& p_id) { return m_deletedID.Contains(p_id); }
+            inline bool CheckIdDeleted(const SizeType& p_id) { return m_versionMap.Contains(p_id); }
+            inline bool CheckVersionValid(const SizeType& p_id, const uint8_t version) {return m_versionMap.GetVersion(p_id) == version;}
 
             ErrorCode RefineSearchIndex(QueryResult &p_query, bool p_searchDeleted = false) const { return ErrorCode::Undefined; }
             ErrorCode SearchTree(QueryResult& p_query) const { return ErrorCode::Undefined; }
@@ -309,11 +307,11 @@ namespace SPTAG
 
             ErrorCode BuildIndexInternal(std::shared_ptr<Helper::VectorSetReader>& p_reader);
 
-            ErrorCode Append(SizeType headID, int appendNum, std::string& appendPosting, SizeType oldVID);
+            ErrorCode Append(SizeType headID, int appendNum, std::string& appendPosting);
             ErrorCode Split(const SizeType headID, int appendNum, std::string& appendPosting);
             ErrorCode ReAssign(SizeType headID, std::vector<std::string>& postingLists, std::vector<SizeType>& newHeadsID);
-            void ReAssignVectors(std::map<SizeType, T*>& reAssignVectors, std::vector<SizeType>& newHeadsID, bool check=false);
-            void ReAssignUpdate(const std::shared_ptr<std::string>&, SizeType VID, std::vector<SizeType>&, bool check = false, SizeType oldVID = 0);
+            void ReAssignVectors(std::map<SizeType, T*>& reAssignVectors, std::vector<SizeType>& newHeadsID);
+            void ReAssignUpdate(const std::shared_ptr<std::string>&, SizeType VID, std::vector<SizeType>&);
 
         public:
             inline void AppendAsync(SizeType headID, int appendNum, std::shared_ptr<std::string> appendPosting, std::function<void()> p_callback=nullptr)
@@ -322,15 +320,13 @@ namespace SPTAG
                 m_appendThreadPool->add(curJob);
             }
 
-            inline void ReassignAsync(std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check = false,
-                                      SizeType oldVID = 0, std::function<void()> p_callback=nullptr)
+            inline void ReassignAsync(std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, std::function<void()> p_callback=nullptr)
             {
-                auto* curJob = new ReassignAsyncJob(this, std::move(vectorContain), VID, newHeads, check, oldVID, p_callback);
+                auto* curJob = new ReassignAsyncJob(this, std::move(vectorContain), VID, newHeads, p_callback);
                 m_reassignThreadPool->add(curJob);
             }
 
-            void ProcessAsyncReassign(std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, bool check,
-                                      SizeType oldVID, std::function<void()> p_callback);
+            void ProcessAsyncReassign(std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, std::function<void()> p_callback);
 
             bool AllFinished() {return m_dispatcher->allFinished();}
 
@@ -364,7 +360,7 @@ namespace SPTAG
                     for (int j = 0; j < postVectorNum; j++) {
                         uint8_t* vectorId = postingP + j * (m_options.m_dim * sizeof(T) + sizeof(int));
                         SizeType vid = *(reinterpret_cast<SizeType*>(vectorId));
-                        if (m_deletedID.Contains(vid)) continue;
+                        if (m_versionMap.Contains(vid)) continue;
                         vectorHeadMap[vid].insert(i);
                         if (vectorFoundMap[vid]) continue;
                         vectorFoundMap[vid] = true;
@@ -373,7 +369,7 @@ namespace SPTAG
                 }
                 #pragma omp parallel for num_threads(32)
                 for (int vid = 0; vid < m_vectorNum.load(); vid++) {
-                    if (m_deletedID.Contains(vid)) {
+                    if (m_versionMap.Contains(vid)) {
                         deleted++;
                         continue;
                     }
