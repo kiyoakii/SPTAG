@@ -522,7 +522,7 @@ namespace SPTAG {
                 int truthK = (p_opts.m_truthResultNum <= 0) ? K : p_opts.m_truthResultNum;
                 int searchTimes = p_opts.m_searchTimes;
 
-                int KList[4] = {1, 10, 20, 50};
+                int KList[5] = {1, 5, 10, 20, 50};
 
                 std::shared_ptr<VectorSet> vectorSet;
 
@@ -579,19 +579,18 @@ namespace SPTAG {
                 }
 
                 LOG(Helper::LogLevel::LL_Info, "Start Calculating Recall\n");
-                recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[1], K, truthK, querySet, vectorSet, numQueries);
-                ProfilingQueryVer1<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[0], truth[1], K, truthK, querySet, vectorSet, numQueries, thisrecall[0], thisrecall[1]);
-                LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", truthK, K, recall);
+                for (int index = 0; index < 5; index++) {
+                    recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[1], KList[index], KList[index], querySet, vectorSet, numQueries);
+                    //ProfilingQueryVer1<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[0], truth[1], K, truthK, querySet, vectorSet, numQueries, thisrecall[0], thisrecall[1]);
+                    LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", KList[index], KList[index], recall);
+                }
 
-                LOG(Helper::LogLevel::LL_Info,
-                    "Recall: %f\n",
-                    recall);
 
                 thisrecall[0].resize(numQueries);
                 //PreReassign
 
                 //p_index->PreReassign();
-                //p_index->ForceCompaction();
+                p_index->ForceCompaction();
                 
                 StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 
@@ -606,13 +605,11 @@ namespace SPTAG {
                 }
 
                 LOG(Helper::LogLevel::LL_Info, "Start Calculating Recall\n");
-                recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[0], K, truthK, querySet, vectorSet, numQueries);
-                ProfilingQueryVer1<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[1], truth[0], K, truthK, querySet, vectorSet, numQueries, thisrecall[1], thisrecall[0]);
-                LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", truthK, K, recall);
-
-                LOG(Helper::LogLevel::LL_Info,
-                    "Recall: %f\n",
-                    recall);
+                for (int index = 0; index < 5; index++) {
+                    recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[1], KList[index], KList[index], querySet, vectorSet, numQueries);
+                    //ProfilingQueryVer1<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[0], truth[1], K, truthK, querySet, vectorSet, numQueries, thisrecall[0], thisrecall[1]);
+                    LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", KList[index], KList[index], recall);
+                }
 
                 LOG(Helper::LogLevel::LL_Info, "\n");
 
@@ -689,11 +686,11 @@ namespace SPTAG {
                     finishedInsert += step;
                     LOG(Helper::LogLevel::LL_Info, "Total Vector num %d \n", curCount);
 
-                    StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
+                    //StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 
                     p_index->ForceCompaction();
 
-                    //StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
+                    StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 
                     LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
 
@@ -711,19 +708,16 @@ namespace SPTAG {
                         LOG(Helper::LogLevel::LL_Error, "Truth number is larger than query number(%d)!\n", numQueries);
                     }
 
-                    recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[(i+1) % 2], K, truthK, querySet, vectorSet, numQueries);
-                    ProfilingQueryVer1<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[i % 2], truth[(i+1) % 2], K, truthK, querySet, vectorSet, numQueries, thisrecall[i % 2], thisrecall[(i+1) % 2]);
-                    LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", truthK, K, recall);
-
-                    LOG(Helper::LogLevel::LL_Info,
-                        "Recall: %f\n",
-                        recall);
+                    for (int index = 0; index < 5; index++) {
+                        recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[(i+1) % 2], KList[index], KList[index], querySet, vectorSet, numQueries);
+                        //ProfilingQueryVer1<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[i % 2], truth[(i+1) % 2], K, truthK, querySet, vectorSet, numQueries, thisrecall[i % 2], thisrecall[(i+1) % 2]);
+                        LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", KList[index], KList[index], recall);
+                    }
 
                     LOG(Helper::LogLevel::LL_Info, "\n");
                     LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times, head missing %d times\n", finishedInsert, p_index->getSplitTimes(), p_index->getHeadMiss());
                     //p_index->QuantifyAssumptionBrokenTotally();
                 }
-                p_index->UpdateStop();
             }
 
             template <typename ValueType>
