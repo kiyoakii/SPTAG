@@ -148,7 +148,10 @@ DefineSSDParameter(m_batch, int, 1000, "Batch")
 // Total Vector Path
 DefineSSDParameter(m_fullVectorPath, std::string, std::string(""), "FullVectorPath")
 
-
+//Stability
+DefineSSDParameter(m_stability, bool, false, "Stability")
+DefineSSDParameter(m_indexSize, float, 0.05, "IndexSize")
+DefineSSDParameter(m_indexBatch, int, 50, "IndexBatch")
 
 // SPANN
 DefineSSDParameter(m_postingVectorLimit, int, 1000, "PostingSearchVectorLimit")

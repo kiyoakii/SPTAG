@@ -143,6 +143,11 @@ namespace SPTAG {
             int m_batch;
             std::string m_fullVectorPath;
 
+            // Stability
+            bool m_stability;
+            float m_indexSize;
+            int m_indexBatch;
+
             Options() {
 #define DefineBasicParameter(VarName, VarType, DefaultValue, RepresentStr) \
                 VarName = DefaultValue; \
