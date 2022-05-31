@@ -72,18 +72,18 @@ namespace SPTAG
                 VectorIndex* m_index;
                 std::shared_ptr<std::string> vectorContain;
                 SizeType VID;
-                std::vector<SizeType>& newHeads;
+                uint8_t version;
                 std::function<void()> m_callback;
             public:
                 ReassignAsyncJob(VectorIndex* m_index,
-                                 std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, std::function<void()> p_callback)
+                                 std::shared_ptr<std::string> vectorContain, SizeType VID, uint8_t version, std::function<void()> p_callback)
                         : m_index(m_index),
-                          vectorContain(std::move(vectorContain)), VID(VID), newHeads(newHeads), m_callback(std::move(p_callback)) {}
+                          vectorContain(std::move(vectorContain)), VID(VID), version(version), m_callback(std::move(p_callback)) {}
 
                 ~ReassignAsyncJob() {}
 
                 void exec(IAbortOperation* p_abort) override {
-                    m_index->ProcessAsyncReassign(vectorContain, VID, newHeads, std::move(m_callback));
+                    m_index->ProcessAsyncReassign(vectorContain, VID, version, std::move(m_callback));
                 }
             };
 
@@ -155,14 +155,19 @@ namespace SPTAG
                 inline bool allFinished()
                 {
                     return sentAssignment == m_persistentBuffer->GetCurrentAssignmentID()
-                           && appendThreadPool->runningJobs() == 0
-                           && reassignThreadPool->runningJobs() == 0;
+                           && appendThreadPool->allClear()
+                           && reassignThreadPool->allClear();
                 }
 
                 inline bool allFinishedExceptReassign()
                 {
                     return sentAssignment == m_persistentBuffer->GetCurrentAssignmentID()
-                           && appendThreadPool->runningJobs() == 0;
+                           && appendThreadPool->allClear();
+                }
+
+                inline bool reassignFinished()
+                {
+                    return reassignThreadPool->allClear();
                 }
             };
 
@@ -174,6 +179,34 @@ namespace SPTAG
                 float distance;
                 char order;
             };
+
+            struct EdgeCompareInsert
+                {
+                    bool operator()(const EdgeInsert& a, int b) const
+                    {
+                        return a.headID < b;
+                    };
+
+                    bool operator()(int a, const EdgeInsert& b) const
+                    {
+                        return a < b.headID;
+                    };
+
+                    bool operator()(const EdgeInsert& a, const EdgeInsert& b) const
+                    {
+                        if (a.headID == b.headID)
+                        {
+                            if (a.distance == b.distance)
+                            {
+                                return a.fullID < b.fullID;
+                            }
+
+                            return a.distance < b.distance;
+                        }
+
+                        return a.headID < b.headID;
+                    };
+                } g_edgeComparerInsert;
 
         private:
             std::shared_ptr<VectorIndex> m_index;
@@ -208,6 +241,7 @@ namespace SPTAG
             uint32_t m_appendTaskNum{0};
             uint32_t m_splitTaskNum{0};
             uint32_t m_splitNum{0};
+            uint32_t m_theSameHeadNum{0};
             std::mutex m_dataAddLock;
 
         public:
@@ -311,7 +345,7 @@ namespace SPTAG
             ErrorCode Split(const SizeType headID, int appendNum, std::string& appendPosting);
             ErrorCode ReAssign(SizeType headID, std::vector<std::string>& postingLists, std::vector<SizeType>& newHeadsID);
             void ReAssignVectors(std::map<SizeType, T*>& reAssignVectors, std::vector<SizeType>& newHeadsID);
-            void ReAssignUpdate(const std::shared_ptr<std::string>&, SizeType VID, std::vector<SizeType>&);
+            void ReAssignUpdate(const std::shared_ptr<std::string>&, SizeType VID, uint8_t version);
 
         public:
             inline void AppendAsync(SizeType headID, int appendNum, std::shared_ptr<std::string> appendPosting, std::function<void()> p_callback=nullptr)
@@ -320,13 +354,15 @@ namespace SPTAG
                 m_appendThreadPool->add(curJob);
             }
 
-            inline void ReassignAsync(std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, std::function<void()> p_callback=nullptr)
+            inline void ReassignAsync(std::shared_ptr<std::string> vectorContain, SizeType VID, std::function<void()> p_callback=nullptr)
             {
-                auto* curJob = new ReassignAsyncJob(this, std::move(vectorContain), VID, newHeads, p_callback);
+                uint8_t newVersion;
+                m_versionMap.IncVersion(VID, &newVersion);
+                auto* curJob = new ReassignAsyncJob(this, std::move(vectorContain), VID, newVersion, p_callback);
                 m_reassignThreadPool->add(curJob);
             }
 
-            void ProcessAsyncReassign(std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, std::function<void()> p_callback);
+            void ProcessAsyncReassign(std::shared_ptr<std::string> vectorContain, SizeType VID, uint8_t version, std::function<void()> p_callback);
 
             bool AllFinished() {return m_dispatcher->allFinished();}
 
@@ -338,10 +374,176 @@ namespace SPTAG
 
             int getHeadMiss() {return m_headMiss.load();}
 
+            int getSameHead() {return m_theSameHeadNum;}
+
             void UpdateStop()
             {
                 m_persistentBuffer->StopPB();
                 m_dispatcher->stop();
+            }
+
+            void Rebuild(std::shared_ptr<Helper::VectorSetReader>& p_reader, SizeType upperBound = -1)
+            {
+                auto fullVectors = p_reader->GetVectorSet();
+                int curCount;
+                if (upperBound == -1) {
+                    curCount = fullVectors->Count();
+                } else {
+                    curCount = upperBound;
+                }
+                LOG(Helper::LogLevel::LL_Info, "Rebuild SSD Index.\n");
+                std::vector<EdgeInsert> selections(static_cast<size_t>(curCount)* m_options.m_replicaCount);
+
+                std::vector<int> replicaCount(curCount, 0);
+                std::vector<std::atomic_int> postingListSize(m_index->GetNumSamples());
+                for (auto& pls : postingListSize) pls = 0;
+                LOG(Helper::LogLevel::LL_Info, "Preparation done, start candidate searching.\n");
+
+                std::vector<std::thread> threads;
+                threads.reserve(64);
+
+                std::atomic_int nextFullID(0);
+                std::atomic_size_t rngFailedCountTotal(0);
+
+                for (int tid = 0; tid < 64; ++tid)
+                {
+                    threads.emplace_back([&, tid]()
+                        {
+                            COMMON::QueryResultSet<T> resultSet(NULL, m_options.m_internalResultNum);
+
+                            size_t rngFailedCount = 0;
+
+                            while (true)
+                            {
+                                int fullID = nextFullID.fetch_add(1);
+                                if (fullID >= curCount)
+                                {
+                                    break;
+                                }
+
+                                T* buffer = reinterpret_cast<T*>(fullVectors->GetVector(fullID));
+                                resultSet.SetTarget(buffer);
+                                resultSet.Reset();
+
+                                m_index->SearchIndex(resultSet);
+
+                                size_t selectionOffset = static_cast<size_t>(fullID)* m_options.m_replicaCount;
+
+                                BasicResult* queryResults = resultSet.GetResults();
+                                for (int i = 0; i < m_options.m_internalResultNum && replicaCount[fullID] < m_options.m_replicaCount; ++i)
+                                {
+                                    if (queryResults[i].VID == -1)
+                                    {
+                                        break;
+                                    }
+
+                                    // RNG Check.
+                                    bool rngAccpeted = true;
+                                    for (int j = 0; j < replicaCount[fullID]; ++j)
+                                    {
+                                        // VQANNSearch::QueryResultSet<ValueType> resultSet(NULL, candidateNum);
+
+                                        float nnDist = m_index->ComputeDistance(
+                                            m_index->GetSample(queryResults[i].VID),
+                                            m_index->GetSample(selections[selectionOffset + j].headID));
+
+                                        // LOG(Helper::LogLevel::LL_Info,  "NNDist: %f Original: %f\n", nnDist, queryResults[i].Score);
+                                        if (nnDist <= queryResults[i].Dist)
+                                        {
+                                            rngAccpeted = false;
+                                            break;
+                                        }
+                                    }
+
+                                    if (!rngAccpeted)
+                                    {
+                                        ++rngFailedCount;
+                                        continue;
+                                    }
+
+                                    ++postingListSize[queryResults[i].VID];
+                                    selections[selectionOffset + replicaCount[fullID]].headID = queryResults[i].VID;
+                                    selections[selectionOffset + replicaCount[fullID]].fullID = fullID;
+                                    selections[selectionOffset + replicaCount[fullID]].distance = queryResults[i].Dist;
+                                    selections[selectionOffset + replicaCount[fullID]].order = (char)replicaCount[fullID];
+                                    ++replicaCount[fullID];
+                                }
+                            }
+
+                            rngFailedCountTotal += rngFailedCount;
+                        });
+                }
+
+                for (int tid = 0; tid < 64; ++tid)
+                {
+                    threads[tid].join();
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "Searching replicas ended. RNG failed count: %llu\n", static_cast<uint64_t>(rngFailedCountTotal.load()));
+
+                std::sort(selections.begin(), selections.end(), g_edgeComparerInsert);
+
+                int postingSizeLimit = INT_MAX;
+                if (m_options.m_postingPageLimit > 0)
+                {
+                    postingSizeLimit = static_cast<int>(m_options.m_postingPageLimit * 4096/ (fullVectors->PerVectorDataSize() + sizeof(int)));
+                }
+
+                LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", postingSizeLimit);
+
+                {
+                    std::vector<int> replicaCountDist(m_options.m_replicaCount + 1, 0);
+                    for (int i = 0; i < replicaCount.size(); ++i)
+                    {
+                        ++replicaCountDist[replicaCount[i]];
+                    }
+
+                    LOG(Helper::LogLevel::LL_Info, "Before Posting Cut:\n");
+                    for (int i = 0; i < replicaCountDist.size(); ++i)
+                    {
+                        LOG(Helper::LogLevel::LL_Info, "Replica Count Dist: %d, %d\n", i, replicaCountDist[i]);
+                    }
+                }
+                for (int i = 0; i < postingListSize.size(); ++i)
+                {
+                    std::size_t selectIdx = std::lower_bound(selections.begin(), selections.end(), i, g_edgeComparerInsert) - selections.begin();
+                    if (postingListSize[i] <= postingSizeLimit) {
+                        continue;
+                    }
+                    for (size_t dropID = postingSizeLimit; dropID < postingListSize[i]; ++dropID) {
+                        int fullID = selections[selectIdx + dropID].fullID;
+                        --replicaCount[fullID];
+                    }
+
+                    postingListSize[i] = postingSizeLimit;
+                }
+                std::string postinglist;
+                for (int id = 0; id < postingListSize.size(); id++) 
+                {
+                    postinglist.resize(0);
+                    postinglist.clear();
+                    std::size_t selectIdx = std::lower_bound(selections.begin(), selections.end(), id, g_edgeComparerInsert)
+                                            - selections.begin();
+                    for (int j = 0; j < postingListSize[id]; ++j) {
+                        if (selections[selectIdx].headID != id) {
+                            LOG(Helper::LogLevel::LL_Error, "Selection ID NOT MATCH\n");
+                            exit(1);
+                        }
+                        int fullID = selections[selectIdx++].fullID;
+                        uint8_t version = 0;
+                        m_versionMap.UpdateVersion(fullID, 0);
+                        size_t dim = fullVectors->Dimension();
+                        // First Vector ID, then Vector
+                        postinglist += Helper::Convert::Serialize<int>(&fullID, 1);
+                        postinglist += Helper::Convert::Serialize<uint8_t>(&version, 1);
+                        postinglist += Helper::Convert::Serialize<T>(fullVectors->GetVector(fullID), dim);
+                    }
+                    m_extraSearcher->AddIndex(id, postinglist);
+                }
+                for(int id = 0; id < postingListSize.size(); id++)
+                {
+                    m_postingSizes[id].store(postingListSize[id]);
+                }
             }
 
             void QuantifyAssumptionBrokenTotally()

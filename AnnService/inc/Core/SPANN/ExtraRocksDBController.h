@@ -15,6 +15,7 @@
 #include "rocksdb/slice.h"
 #include "rocksdb/options.h"
 #include "rocksdb/merge_operator.h"
+#include "rocksdb/table.h"
 
 #include <map>
 #include <cmath>
@@ -41,6 +42,11 @@ namespace SPTAG::SPANN
             dbOptions.IncreaseParallelism();
             dbOptions.OptimizeLevelStyleCompaction();
             dbOptions.merge_operator.reset(new AnnMergeOperator);
+            dbOptions.use_direct_io_for_flush_and_compaction = true;
+            dbOptions.use_direct_reads = true;
+            rocksdb::BlockBasedTableOptions table_options;
+            table_options.no_block_cache = true;
+            dbOptions.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
 
             auto s = rocksdb::DB::Open(dbOptions, dbPath, &db);
             LOG(Helper::LogLevel::LL_Info, "SPFresh: New Rocksdb: %s\n", filePath);
@@ -198,25 +204,41 @@ namespace SPTAG::SPANN
             int diskIO = 0;
             int listElements = 0;
 
+            double compLatency = 0;
+            double readLatency = 0;
+
             for (uint32_t pi = 0; pi < postingListCount; ++pi)
             {
                 auto curPostingID = p_exWorkSpace->m_postingIDs[pi];
                 std::string postingList;
 
+                auto readStart = std::chrono::high_resolution_clock::now();
                 SearchIndex(curPostingID, postingList);
+                auto readEnd = std::chrono::high_resolution_clock::now();
+
+                readLatency += ((double)std::chrono::duration_cast<std::chrono::microseconds>(readEnd - readStart).count());
+
                 int vectorNum = postingList.size() / m_vectorInfoSize;
 
                 diskIO++;
-                diskRead++;
+                diskRead += postingList.size();
                 listElements += vectorNum;
 
+                auto compStart = std::chrono::high_resolution_clock::now();
                 for (int i = 0; i < vectorNum; i++) {
                     char* vectorInfo = postingList.data() + i * m_vectorInfoSize;
                     int vectorID = *(reinterpret_cast<int*>(vectorInfo));
-                    if (m_versionMap.Contains(vectorID) || p_exWorkSpace->m_deduper.CheckAndSet(vectorID)) continue;
+                    if (m_versionMap.Contains(vectorID) || p_exWorkSpace->m_deduper.CheckAndSet(vectorID)) {
+                        listElements--;
+                        continue;
+                    }
                     auto distance2leaf = p_index->ComputeDistance(queryResults.GetQuantizedTarget(), vectorInfo + sizeof(int) + sizeof(uint8_t));
                     queryResults.AddPoint(vectorID, distance2leaf);
                 }
+                auto compEnd = std::chrono::high_resolution_clock::now();
+
+                compLatency += ((double)std::chrono::duration_cast<std::chrono::microseconds>(compEnd - compStart).count());
+
                 if (truth) {
                     for (int i = 0; i < vectorNum; ++i) {
                         char* vectorInfo = postingList.data() + i * m_vectorInfoSize;
@@ -229,9 +251,11 @@ namespace SPTAG::SPANN
 
             if (p_stats)
             {
+                p_stats->m_compLatency = compLatency / 1000;
+                p_stats->m_diskReadLatency = readLatency / 1000;
                 p_stats->m_totalListElementsCount = listElements;
                 p_stats->m_diskIOCount = diskIO;
-                p_stats->m_diskAccessCount = diskRead;
+                p_stats->m_diskAccessCount = diskRead / 1024;
             }
         }
 
@@ -415,6 +439,11 @@ namespace SPTAG::SPANN
             auto fullVectors = p_reader->GetVectorSet();
             if (p_opt.m_distCalcMethod == DistCalcMethod::Cosine && !p_reader->IsNormalized()) fullVectors->Normalize(p_opt.m_iSSDNumberOfThreads);
 
+            LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize versionMap\n");
+            COMMON::VersionLabel m_versionMap;
+            m_versionMap.Initialize(fullCount, p_headIndex->m_iDataBlockSize, p_headIndex->m_iDataCapacity);
+            LOG(Helper::LogLevel::LL_Info, "SPFresh: save versionMap\n");
+
             for (int id = 0; id < postingListSize.size(); id++)
             {
                 std::string postinglist;
@@ -426,6 +455,7 @@ namespace SPTAG::SPANN
                     }
                     int fullID = selections[selectIdx++].tonode;
                     uint8_t version = 0;
+                    m_versionMap.UpdateVersion(fullID, 0);
                     size_t dim = fullVectors->Dimension();
                     // First Vector ID, then Vector
                     postinglist += Helper::Convert::Serialize<int>(&fullID, 1);
@@ -464,10 +494,6 @@ namespace SPTAG::SPANN
                 }
             }
 
-            LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize deleteMap\n");
-            COMMON::VersionLabel m_versionMap;
-            m_versionMap.Initialize(fullCount, p_headIndex->m_iDataBlockSize, p_headIndex->m_iDataCapacity);
-            LOG(Helper::LogLevel::LL_Info, "SPFresh: save deleteMap\n");
             m_versionMap.Save(p_opt.m_fullDeletedIDFile);
 
             auto t5 = std::chrono::high_resolution_clock::now();
@@ -491,7 +517,7 @@ namespace SPTAG::SPANN
         inline ErrorCode DeleteIndex(SizeType headID) override { m_postingNum--; return db.Delete(headID); }
         inline ErrorCode OverrideIndex(SizeType headID, const std::string& posting) override { return db.Put(headID, posting); }
         inline SizeType  GetIndexSize() override { return m_postingNum; }
-        inline SizeType  GetPostingSizeLimit() override { return m_postingSizeLimit; }
+        inline SizeType  GetPostingSizeLimit() override { return m_postingSizeLimit; /*return INT_MAX*/; }
     private:
         struct ListInfo
         {

@@ -359,6 +359,22 @@ namespace SPTAG {
                     },
                     "%.3lf");
 
+                LOG(Helper::LogLevel::LL_Info, "\nComp Latency Distribution:\n");
+                PrintPercentiles<double, SPANN::SearchStats>(stats,
+                    [](const SPANN::SearchStats& ss) -> double
+                    {
+                        return ss.m_compLatency;
+                    },
+                    "%.3lf");
+
+                LOG(Helper::LogLevel::LL_Info, "\nRocksDB Latency Distribution:\n");
+                PrintPercentiles<double, SPANN::SearchStats>(stats,
+                    [](const SPANN::SearchStats& ss) -> double
+                    {
+                        return ss.m_diskReadLatency;
+                    },
+                    "%.3lf");
+
                 LOG(Helper::LogLevel::LL_Info, "\nEx Latency Distribution:\n");
                 PrintPercentiles<double, SPANN::SearchStats>(stats,
                     [](const SPANN::SearchStats& ss) -> double
@@ -375,7 +391,7 @@ namespace SPTAG {
                     },
                     "%.3lf");
 
-                LOG(Helper::LogLevel::LL_Info, "\nTotal Disk Page Access Distribution:\n");
+                LOG(Helper::LogLevel::LL_Info, "\nTotal Disk Page Access Distribution(KB):\n");
                 PrintPercentiles<int, SPANN::SearchStats>(stats,
                     [](const SPANN::SearchStats& ss) -> int
                     {
@@ -403,6 +419,8 @@ namespace SPTAG {
                     totalStats[i].m_totalSearchLatency = 0;
                     totalStats[i].m_diskAccessCount = 0;
                     totalStats[i].m_diskIOCount = 0;
+                    totalStats[i].m_compLatency = 0;
+                    totalStats[i].m_diskReadLatency = 0;
                 }
             }
 
@@ -415,6 +433,8 @@ namespace SPTAG {
                     totalStats[i].m_totalSearchLatency += addedStats[i].m_totalSearchLatency;
                     totalStats[i].m_diskAccessCount += addedStats[i].m_diskAccessCount;
                     totalStats[i].m_diskIOCount += addedStats[i].m_diskIOCount;
+                    totalStats[i].m_compLatency += addedStats[i].m_compLatency;
+                    totalStats[i].m_diskReadLatency += addedStats[i].m_diskReadLatency;
                 }
             }
 
@@ -427,6 +447,8 @@ namespace SPTAG {
                     totalStats[i].m_totalSearchLatency /= avgStatsNum;
                     totalStats[i].m_diskAccessCount /= avgStatsNum;
                     totalStats[i].m_diskIOCount /= avgStatsNum;
+                    totalStats[i].m_compLatency /= avgStatsNum;
+                    totalStats[i].m_diskReadLatency /= avgStatsNum;
                 }
             }
 
@@ -482,7 +504,7 @@ namespace SPTAG {
             {
                 if (avgStatsNum == 0) return;
                 int numQueries = results.size();
-                LOG(Helper::LogLevel::LL_Info, "Searching: numThread: %d, numQueries: %d.\n", numThreads, numQueries);
+                LOG(Helper::LogLevel::LL_Info, "Searching: numThread: %d, numQueries: %d, searchTimes: %d.\n", numThreads, numQueries, avgStatsNum);
                 std::vector<SPANN::SearchStats> stats(numQueries);
                 std::vector<SPANN::SearchStats> TotalStats(numQueries);
                 ResetStats(TotalStats);
@@ -495,6 +517,7 @@ namespace SPTAG {
                         results[j].Reset();
                     }
                     totalQPS += SearchSequential(p_index, numThreads, results, stats, queryCountLimit, internalResultNum);
+                    //PrintStats<ValueType>(stats);
                     AddStats(TotalStats, stats);
                 }
                 LOG(Helper::LogLevel::LL_Info, "Searching Times: %d, AvgQPS: %.2lf.\n", avgStatsNum, totalQPS/avgStatsNum);
@@ -758,16 +781,16 @@ namespace SPTAG {
 
                 LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
                 auto ptr = f_createIO();
+                /*
                 if (ptr == nullptr || !ptr->Initialize(GetTruthFileName(truthFilePrefix, curCount).c_str(), std::ios::in | std::ios::binary)) {
                     LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", GetTruthFileName(truthFilePrefix, curCount).c_str());
                     exit(1);
                 }
-                /*
+                */
                 if (ptr == nullptr || !ptr->Initialize((truthFilePrefix + std::to_string(0)).c_str(), std::ios::in | std::ios::binary)) {
                     LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", (truthFilePrefix + std::to_string(0)).c_str());
                     exit(1);
                 }
-                */
                 int originalK = truthK;
                 COMMON::TruthSet::LoadTruth(ptr, truth[1], numQueries, originalK, truthK, p_opts.m_truthType);
                 char tmp[4];
@@ -797,16 +820,16 @@ namespace SPTAG {
                 StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 
                 LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
+                /*
                 if (ptr == nullptr || !ptr->Initialize(GetTruthFileName(truthFilePrefix, curCount).c_str(), std::ios::in | std::ios::binary)) {
                     LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", GetTruthFileName(truthFilePrefix, curCount).c_str());
                     exit(1);
                 }
-                /*
+                */
                 if (ptr == nullptr || !ptr->Initialize((truthFilePrefix + std::to_string(0)).c_str(), std::ios::in | std::ios::binary)) {
                     LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", (truthFilePrefix + std::to_string(0)).c_str());
                     exit(1);
                 }
-                */
                 COMMON::TruthSet::LoadTruth(ptr, truth[0], numQueries, originalK, truthK, p_opts.m_truthType);
                 if (ptr->ReadBinary(4, tmp) == 4) {
                     LOG(Helper::LogLevel::LL_Error, "Truth number is larger than query number(%d)!\n", numQueries);
@@ -826,8 +849,8 @@ namespace SPTAG {
                 LOG(Helper::LogLevel::LL_Info, "\n");
 
 
-                int batch = insertCount / step;
-                //int batch = 1;
+                //int batch = insertCount / step;
+                int batch = 5;
                 
                 int finishedInsert = 0;
                 int insertThreads = p_opts.m_insertThreadNum;
@@ -837,10 +860,9 @@ namespace SPTAG {
                 LOG(Helper::LogLevel::LL_Info, "Start updating...\n");
                 for (int i = 0; i < batch; i++)
                 {
-                    /*
                     std::shared_ptr<VectorSet> insertSet;
 
-                    std::string extraInsertPath = "/home/yuming/ann_search/data/spacev_clustering_2/temp_extra" + std::to_string(i+1);
+                    std::string extraInsertPath = "/home/yuming/ann_search/data/spacev_clustering/spacev_clustering_extra" + std::to_string(i);
                     LOG(Helper::LogLevel::LL_Info, "Start loading Insert File: %s\n", extraInsertPath.c_str());
 
                     if (fileexists(extraInsertPath.c_str())) {
@@ -854,7 +876,7 @@ namespace SPTAG {
                     }
 
                     step = insertSet->Count();
-                    */
+
                     LOG(Helper::LogLevel::LL_Info, "Updating Batch %d: numThread: %d, step: %d.\n", i, insertThreads, step);
                     StopWSPFresh sw;
 
@@ -875,8 +897,8 @@ namespace SPTAG {
                                     LOG(Helper::LogLevel::LL_Info, "Sent %.2lf%%...\n", index * 100.0 / step);
                                 }
 
-                                p_index->AddIndex(vectorSet->GetVector(index + curCount), 1, p_opts.m_dim, nullptr);
-                                //p_index->AddIndex(insertSet->GetVector(index), 1, p_opts.m_dim, nullptr);
+                                //p_index->AddIndex(vectorSet->GetVector(index + curCount), 1, p_opts.m_dim, nullptr);
+                                p_index->AddIndex(insertSet->GetVector(index), 1, p_opts.m_dim, nullptr);
                             }
                             else
                             {
@@ -922,6 +944,17 @@ namespace SPTAG {
 
                     //StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 
+                    /*
+                    std::string rebuildPath = "/home/yuming/ann_search/data/spacev_clustering/spacev_clustering" + std::to_string(i+1);
+
+                    std::shared_ptr<Helper::ReaderOptions> rebuildOptions(new Helper::ReaderOptions(p_opts.m_valueType, p_opts.m_dim, p_opts.m_vectorType, p_opts.m_vectorDelimiter));
+                    auto rebuildReader = Helper::VectorSetReader::CreateInstance(rebuildOptions);
+                    if (ErrorCode::Success == rebuildReader->LoadFile(rebuildPath))
+                    {
+                        p_index->Rebuild(rebuildReader);
+                    }
+                    */
+
                     p_index->ForceCompaction();
 
                     StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
@@ -931,17 +964,16 @@ namespace SPTAG {
                     truth[(i+1) % 2].clear();
 
                     auto ptr = f_createIO();
-
+                    /*
                     if (ptr == nullptr || !ptr->Initialize(GetTruthFileName(truthFilePrefix, curCount).c_str(), std::ios::in | std::ios::binary)) {
                         LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", GetTruthFileName(truthFilePrefix, curCount).c_str());
                         exit(1);
                     }
-                    /*
+                    */
                     if (ptr == nullptr || !ptr->Initialize((truthFilePrefix + std::to_string(i+1)).c_str(), std::ios::in | std::ios::binary)) {
                         LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", (truthFilePrefix + std::to_string(i+1)).c_str());
                         exit(1);
                     }
-                    */
                     int originalK = truthK;
                     COMMON::TruthSet::LoadTruth(ptr, truth[(i+1) % 2], numQueries, originalK, truthK, p_opts.m_truthType);
                     char tmp[4];
@@ -961,7 +993,7 @@ namespace SPTAG {
                     LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", K, truthK, recall);
 
                     LOG(Helper::LogLevel::LL_Info, "\n");
-                    LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times, head missing %d times\n", finishedInsert, p_index->getSplitTimes(), p_index->getHeadMiss());
+                    LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times, head missing %d times, same head %d times\n", finishedInsert, p_index->getSplitTimes(), p_index->getHeadMiss(), p_index->getSameHead());
                     //p_index->QuantifyAssumptionBrokenTotally();
                 }
             }
@@ -1036,11 +1068,11 @@ namespace SPTAG {
 
                 std::vector<QueryResult> results(numQueries, QueryResult(NULL, max(K, internalResultNum), false));
 
-                LOG(Helper::LogLevel::LL_Info, "Start ANN Search...\n");
+                //LOG(Helper::LogLevel::LL_Info, "Start ANN Search...\n");
 
-                StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
+                //StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 
-                LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
+                //LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
 
                 p_index->ForceCompaction();
 

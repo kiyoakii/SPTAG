@@ -96,7 +96,7 @@ namespace SPTAG
             m_workSpacePool = std::make_unique<COMMON::WorkSpacePool<ExtraWorkSpace>>();
             m_workSpacePool->Init(m_options.m_iSSDNumberOfThreads, m_options.m_maxCheck, m_options.m_hashExp, m_options.m_searchInternalResultNum, min(m_options.m_postingPageLimit, m_options.m_searchPostingPageLimit + 1) << PageSizeEx);
 
-            m_versionMap.Load(m_options.m_fullDeletedIDFile, m_iDataBlockSize, m_iDataCapacity);
+            m_versionMap.Load(m_options.m_fullDeletedIDFile, m_index->m_iDataBlockSize, m_index->m_iDataCapacity);
 
             //m_rwLocks = std::make_unique<std::shared_timed_mutex[]>(500000000);
             m_postingSizes = std::make_unique<std::atomic_uint32_t[]>(500000000);
@@ -617,7 +617,7 @@ namespace SPTAG
                     IOBINARY(ptr, ReadBinary, sizeof(std::uint64_t) * m_index->GetNumSamples(), (char*)(m_vectorTranslateMap.get()));
                 } else {
                     //data structrue initialization
-                    m_versionMap.Load(m_options.m_fullDeletedIDFile, m_iDataBlockSize, m_iDataCapacity);
+                    m_versionMap.Load(m_options.m_fullDeletedIDFile, m_index->m_iDataBlockSize, m_index->m_iDataCapacity);
                     m_postingSizes = std::make_unique<std::atomic_uint32_t[]>(500000000);
                     std::ifstream input(m_options.m_ssdInfoFile, std::ios::binary);
                     if (!input.is_open())
@@ -647,10 +647,11 @@ namespace SPTAG
                     //ForceCompaction();
                 }
             }
+            /*
             if (m_options.m_update) {
+                */
                 //m_rwLocks = std::make_unique<std::shared_timed_mutex[]>(500000000);
                 //m_reassignedID.Initialize(m_vectorNum.load(), m_options.m_datasetRowsInBlock, m_options.m_datasetCapacity);
-                m_versionMap.Initialize(m_vectorNum.load(), m_options.m_datasetRowsInBlock, m_options.m_datasetCapacity);
                 LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize persistent buffer\n");
                 std::shared_ptr<Helper::KeyValueIO> db;
                 db.reset(new SPANN::RocksDBIO());
@@ -668,7 +669,9 @@ namespace SPTAG
 
                 m_dispatcher->run();
                 LOG(Helper::LogLevel::LL_Info, "SPFresh: finish initialization\n");
+            /*
             }
+            */
             auto t4 = std::chrono::high_resolution_clock::now();
             double buildSSDTime = std::chrono::duration_cast<std::chrono::seconds>(t4 - t3).count();
             LOG(Helper::LogLevel::LL_Info, "select head time: %.2lfs build head time: %.2lfs build ssd time: %.2lfs\n", selectHeadTime, buildHeadTime, buildSSDTime);
@@ -789,7 +792,11 @@ namespace SPTAG
                 auto VID = m_vectorNum++;
                 {
                     std::lock_guard<std::mutex> lock(m_dataAddLock);
-                    m_versionMap.AddBatch(1);
+                    auto ret = m_versionMap.AddBatch(1);
+                    if (ret == ErrorCode::MemoryOverFlow) {
+                        LOG(Helper::LogLevel::LL_Info, "VID: %d, Map Size:%d\n", VID, m_versionMap.BufferSize());
+                        exit(1);
+                    }
                     //m_reassignedID.AddBatch(1);
                 }
 
@@ -825,11 +832,9 @@ namespace SPTAG
                 }
 
                 char insertCode = 0;
-                uint8_t version = m_versionMap.GetVersion(VID);
-                if (version != 0) {
-                    LOG(Helper::LogLevel::LL_Error, "Initial Version Error");
-                    return ErrorCode::ExternalAbort;
-                }
+                uint8_t version = 0;
+                m_versionMap.UpdateVersion(VID, version);
+
                 for (int i = 0; i < replicaCount; i++)
                 {
                     std::string assignment;
@@ -863,6 +868,7 @@ namespace SPTAG
         template <typename T>
         void SPTAG::SPANN::Index<T>::Dispatcher::dispatch()
         {
+            int32_t vectorInfoSize = m_index->GetValueSize() + sizeof(int) + sizeof(uint8_t);
             while (running) {
                 bool noAssignment = true;
                 int currentAssignmentID = m_persistentBuffer->GetCurrentAssignmentID();
@@ -887,7 +893,6 @@ namespace SPTAG
                         LOG(Helper::LogLevel::LL_Info, "ScanNum: %d, SentNum: %d, CurrentAssignNum: %d, ProcessingAssignment: %d\n", scanNum, sentAssignment.load(), currentAssignmentID, i);
                         exit(1);
                     }
-                    int32_t vectorInfoSize = m_index->GetValueSize() + sizeof(int) + sizeof(uint8_t);
                     if (code == 0) {
                         // insert
                         char* headPointer = assignment.data() + sizeof(char);
@@ -918,7 +923,8 @@ namespace SPTAG
                 }
 
                 for (auto & iter : newPart) {
-                    int appendNum = (*iter.second).size() / (m_index->GetValueSize() + sizeof(int) + sizeof(uint8_t));
+                    int appendNum = (*iter.second).size() / (vectorInfoSize);
+                    if (appendNum == 0) LOG(Helper::LogLevel::LL_Info, "Error!, headID :%d, appendNum :%d, size :%d\n", iter.first, appendNum, iter.second);
                     m_index->AppendAsync(iter.first, appendNum, iter.second);
                 }
 
@@ -1020,37 +1026,48 @@ namespace SPTAG
             int first = 0;
             std::vector<SizeType> newHeadsID(2);
             std::vector<std::string> newPostingLists;
+            bool theSameHead = false;
             for (int k = 0; k < 2; k++) {
-                int begin, end = 0;
                 std::string postingList;
                 if (args.counts[k] == 0)	continue;
-
-                // LOG(Helper::LogLevel::LL_Info, "Insert new head vector\n");
-                // Notice: newHeadVID maybe an existing head vector
-
-                m_index->AddIndexId(smallSample[args.clusterIdx[k]], 1, m_options.m_dim, begin, end);
-                newHeadVID = begin;
-                newHeadsID.push_back(begin);
-                // LOG(Helper::LogLevel::LL_Info, "Head id: %d split into : %d, length: %d\n", headID, newHeadVID, args.counts[k]);
-
-                for (int j = 0; j < args.counts[k]; j++)
-                {
-                    postingList += Helper::Convert::Serialize<SizeType>(&localIndicesInsert[localIndices[first + j]], 1);
-                    postingList += Helper::Convert::Serialize<uint8_t>(&localIndicesInsertVersion[localIndices[first + j]], 1);
-                    postingList += Helper::Convert::Serialize<ValueType>(smallSample[localIndices[first + j]], m_options.m_dim);
+                if (!theSameHead && m_index->ComputeDistance(smallSample[args.clusterIdx[k]], m_index->GetSample(headID)) < Epsilon) {
+                    newHeadsID.push_back(headID);
+                    newHeadVID = headID;
+                    theSameHead = true;
+                    for (int j = 0; j < args.counts[k]; j++)
+                    {
+                        postingList += Helper::Convert::Serialize<SizeType>(&localIndicesInsert[localIndices[first + j]], 1);
+                        postingList += Helper::Convert::Serialize<uint8_t>(&localIndicesInsertVersion[localIndices[first + j]], 1);
+                        postingList += Helper::Convert::Serialize<ValueType>(smallSample[localIndices[first + j]], m_options.m_dim);
+                    }
+                    m_extraSearcher->AddIndex(newHeadVID, postingList);
+                    m_theSameHeadNum++;
                 }
-                m_extraSearcher->AddIndex(newHeadVID, postingList);
+                else {
+                    int begin, end = 0;
+                    m_index->AddIndexId(smallSample[args.clusterIdx[k]], 1, m_options.m_dim, begin, end);
+                    newHeadVID = begin;
+                    newHeadsID.push_back(begin);
+                    for (int j = 0; j < args.counts[k]; j++)
+                    {
+                        postingList += Helper::Convert::Serialize<SizeType>(&localIndicesInsert[localIndices[first + j]], 1);
+                        postingList += Helper::Convert::Serialize<uint8_t>(&localIndicesInsertVersion[localIndices[first + j]], 1);
+                        postingList += Helper::Convert::Serialize<ValueType>(smallSample[localIndices[first + j]], m_options.m_dim);
+                    }
+                    m_extraSearcher->AddIndex(newHeadVID, postingList);
+                    m_index->AddIndexIdx(begin, end);
+                }
                 newPostingLists.push_back(postingList);
+                // LOG(Helper::LogLevel::LL_Info, "Head id: %d split into : %d, length: %d\n", headID, newHeadVID, args.counts[k]);
                 first += args.counts[k];
-
                 m_postingSizes[newHeadVID] = args.counts[k];
-                m_index->AddIndexIdx(begin, end);
             }
 
-            m_index->DeleteIndex(headID);
-            m_extraSearcher->DeleteIndex(headID);
-
-            m_postingSizes[headID] = 0;
+            if (!theSameHead) {
+                m_index->DeleteIndex(headID);
+                m_extraSearcher->DeleteIndex(headID);
+                m_postingSizes[headID] = 0;
+            }
             lock.unlock();
             ++m_splitNum;
             // m_splitUpdateIndexCost += sw.getElapsedMs() - clusterEndTime;
@@ -1097,14 +1114,15 @@ namespace SPTAG
                 for (int j = 0; j < postVectorNum; j++) {
                     uint8_t* vectorId = postingP + j * vectorInfoSize;
                     SizeType vid = *(reinterpret_cast<SizeType*>(vectorId));
+                    uint8_t version = *(reinterpret_cast<uint8_t*>(vectorId + sizeof(int)));
                     if (i <= 1) {
-                        if (reAssignVectorsTop0.find(vid) == reAssignVectorsTop0.end() && !CheckIdDeleted(vid))
+                        if (reAssignVectorsTop0.find(vid) == reAssignVectorsTop0.end() && !CheckIdDeleted(vid) && CheckVersionValid(vid, version))
                             reAssignVectorsTop0[vid] = reinterpret_cast<ValueType*>(vectorId + sizeof(int) + sizeof(uint8_t));
                         //PrintFirstFiveDimInt8(vectorId + sizeof(int), vid);
                     } else {
                         if (reAssignVectorsTop0.find(vid) == reAssignVectorsTop0.end())
                         {
-                            if (reAssignVectorsTopK.find(vid) == reAssignVectorsTopK.end() && !CheckIdDeleted(vid))
+                            if (reAssignVectorsTopK.find(vid) == reAssignVectorsTopK.end() && !CheckIdDeleted(vid) && CheckVersionValid(vid, version))
                                 reAssignVectorsTopK[vid] = reinterpret_cast<ValueType*>(vectorId + sizeof(int) + sizeof(uint8_t));
                         }
                     }
@@ -1125,13 +1143,18 @@ namespace SPTAG
                 //PrintFirstFiveDimInt8(reinterpret_cast<uint8_t*>(it->second), it->first);
                 auto vectorContain = std::make_shared<std::string>(Helper::Convert::Serialize<uint8_t>(it->second, m_options.m_dim));
                 //PrintFirstFiveDimInt8(reinterpret_cast<uint8_t*>(&vectorContain->front()), it->first);
-                ReassignAsync(vectorContain, it->first, newHeadsID);
+                ReassignAsync(vectorContain, it->first);
             }
+            /*
+            while (!m_dispatcher->reassignFinished()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+            */
         }
 
         template <typename ValueType>
         void SPTAG::SPANN::Index<ValueType>::ReAssignUpdate
-                (const std::shared_ptr<std::string>& vectorContain, SizeType VID, std::vector<SizeType> &newHeads)
+                (const std::shared_ptr<std::string>& vectorContain, SizeType VID, uint8_t version)
         {
 //            TimeUtils::StopW sw;
 
@@ -1179,11 +1202,7 @@ namespace SPTAG
 
             //LOG(Helper::LogLevel::LL_Info, "Reassign: oldVID:%d, replicaCount:%d, candidateNum:%d, dist0:%f\n", oldVID, replicaCount, i, selections[0].distance);
 
-            uint8_t version = m_versionMap.GetVersion(VID);
-            version = (version + 1) & 0x7f;
-            m_versionMap.UpdateVersion(VID, version);
-
-            for (i = 0; i < replicaCount; i++) {
+            for (i = 0; i < replicaCount && CheckVersionValid(VID, version); i++) {
                 std::string newPart;
                 newPart += Helper::Convert::Serialize<int>(&VID, 1);
                 newPart += Helper::Convert::Serialize<uint8_t>(&version, 1);
@@ -1191,6 +1210,12 @@ namespace SPTAG
                 auto headID = selections[i].headID;
                 //LOG(Helper::LogLevel::LL_Info, "Reassign: headID :%d, oldVID:%d, newVID:%d, posting length: %d, dist: %f, string size: %d\n", headID, oldVID, VID, m_postingSizes[headID].load(), selections[i].distance, newPart.size());
                 Append(headID, 1, newPart);
+                /*
+                if (m_extraSearcher->AppendPosting(headID, newPart) != ErrorCode::Success) {
+                    LOG(Helper::LogLevel::LL_Error, "Merge failed!\n");
+                }
+                m_postingSizes[headID].fetch_add(1, std::memory_order_relaxed);
+                */
             }
 //            m_reassignSsdCost += sw.getElapsedMs() - selectionEndTime;
         }
@@ -1210,15 +1235,16 @@ namespace SPTAG
             }
         checkDeleted:
             if (!m_index->ContainSample(headID)) {
-                m_headMiss++;
-
-                std::vector<SizeType> newHeads;
                 for (int i = 0; i < appendNum; i++)
                 {
 //                  m_currerntReassignTaskNum++;
                     uint32_t idx = i * vectorInfoSize;
+                    uint8_t version = *(uint8_t*)(&appendPosting[idx + sizeof(int)]);
                     auto vectorContain = std::make_shared<std::string>(appendPosting.substr(idx + sizeof(int) + sizeof(uint8_t), m_options.m_dim * sizeof(ValueType)));
-                    ReassignAsync(vectorContain, *(int*)(&appendPosting[idx]), newHeads);
+                    if (CheckVersionValid(*(int*)(&appendPosting[idx]), version)) {
+                        m_headMiss++;
+                        ReassignAsync(vectorContain, *(int*)(&appendPosting[idx]));
+                    }
                 }
                 return ErrorCode::Success;
             }
@@ -1239,8 +1265,8 @@ namespace SPTAG
                     if (m_extraSearcher->AppendPosting(headID, appendPosting) != ErrorCode::Success) {
                         LOG(Helper::LogLevel::LL_Error, "Merge failed!\n");
                     }
+                    m_postingSizes[headID].fetch_add(appendNum, std::memory_order_relaxed);
                 }
-                m_postingSizes[headID].fetch_add(appendNum, std::memory_order_relaxed);
                 // m_appendSsdCost += sw.getElapsedMs() - appendSsdStartTime;
             }
 
@@ -1249,23 +1275,21 @@ namespace SPTAG
         }
 
         template <typename T>
-        void SPTAG::SPANN::Index<T>::ProcessAsyncReassign(std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, std::function<void()> p_callback)
+        void SPTAG::SPANN::Index<T>::ProcessAsyncReassign(std::shared_ptr<std::string> vectorContain, SizeType VID, uint8_t version, std::function<void()> p_callback)
         {
             //LOG(Helper::LogLevel::LL_Info, "ReassignID: %d, newID: %d\n", oldVID, VID);
 
-            tbb::concurrent_hash_map<SizeType, SizeType>::const_accessor VIDAccessor;
-
-            if (m_versionMap.Contains(VID) || m_reassignMap.find(VIDAccessor, VID)) {
+            if (m_versionMap.Contains(VID)) {
                 return;
             }
 
             //m_reassignedID.Insert(oldVID);
-            tbb::concurrent_hash_map<SizeType, SizeType>::value_type workPair(VID, VID);
-            m_reassignMap.insert(workPair);
+            //tbb::concurrent_hash_map<SizeType, SizeType>::value_type workPair(VID, version);
+            //m_reassignMap.insert(workPair);
 
-            ReAssignUpdate(vectorContain, VID, newHeads);
+            ReAssignUpdate(vectorContain, VID, version);
 
-            m_reassignMap.erase(VID);
+            //m_reassignMap.erase(VID);
 
             if (p_callback != nullptr) {
                 p_callback();

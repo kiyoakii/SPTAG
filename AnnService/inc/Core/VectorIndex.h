@@ -148,7 +148,7 @@ public:
 
     virtual ErrorCode Append(SizeType headID, int appendNum, std::string& appendPosting) = 0;
 
-    virtual void ProcessAsyncReassign(std::shared_ptr<std::string> vectorContain, SizeType VID, std::vector<SizeType>& newHeads, std::function<void()> p_callback) = 0;
+    virtual void ProcessAsyncReassign(std::shared_ptr<std::string> vectorContain, SizeType VID, uint8_t version, std::function<void()> p_callback) = 0;
 
 private:
     ErrorCode LoadIndexConfig(Helper::IniReader& p_reader);
