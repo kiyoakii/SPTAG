@@ -842,6 +842,7 @@ namespace SPTAG
                     assignment += Helper::Convert::Serialize<int>(&selections[i].headID, 1);
                     assignment += Helper::Convert::Serialize<int>(&VID, 1);
                     assignment += Helper::Convert::Serialize<uint8_t>(&version, 1);
+                    assignment += Helper::Convert::Serialize<float>(&selections[i].distance, 1);
                     assignment += Helper::Convert::Serialize<T>(p_queryResults[k].GetTarget(), m_options.m_dim);
                     m_persistentBuffer->PutAssignment(assignment);
                 }
@@ -868,7 +869,7 @@ namespace SPTAG
         template <typename T>
         void SPTAG::SPANN::Index<T>::Dispatcher::dispatch()
         {
-            int32_t vectorInfoSize = m_index->GetValueSize() + sizeof(int) + sizeof(uint8_t);
+            int32_t vectorInfoSize = m_index->GetValueSize() + sizeof(int) + sizeof(uint8_t) + sizeof(float);
             while (running) {
                 bool noAssignment = true;
                 int currentAssignmentID = m_persistentBuffer->GetCurrentAssignmentID();
@@ -952,12 +953,13 @@ namespace SPTAG
 
             // reinterpret postingList to vectors and IDs
             auto* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
-            size_t vectorInfoSize = m_options.m_dim * sizeof(ValueType) + sizeof(int) + sizeof(uint8_t);
+            size_t vectorInfoSize = m_options.m_dim * sizeof(ValueType) + m_metaDataSize;
             size_t postVectorNum = postingList.size() / vectorInfoSize;
             COMMON::Dataset<ValueType> smallSample;  // smallSample[i] -> VID
             std::shared_ptr<uint8_t> vectorBuffer(new uint8_t[m_options.m_dim * sizeof(ValueType) * postVectorNum], std::default_delete<uint8_t[]>());
             std::vector<int> localIndicesInsert(postVectorNum);  // smallSample[i] = j <-> localindices[j] = i
             std::vector<uint8_t> localIndicesInsertVersion(postVectorNum);
+            std::vector<float> localIndicesInsertFloat(postVectorNum);
             std::vector<int> localIndices(postVectorNum);
             auto vectorBuf = vectorBuffer.get();
             size_t realVectorNum = postVectorNum;
@@ -973,9 +975,10 @@ namespace SPTAG
                 } else {
                     localIndicesInsert[index] = *(reinterpret_cast<int*>(vectorId));
                     localIndicesInsertVersion[index] = *(reinterpret_cast<uint8_t*>(vectorId + sizeof(int)));
+                    localIndicesInsertFloat[index] = *(reinterpret_cast<float*>(vectorId + sizeof(int) + sizeof(uint8_t)));
                     localIndices[index] = index;
                     index++;
-                    memcpy(vectorBuf, vectorId + sizeof(int) + sizeof(uint8_t), m_options.m_dim * sizeof(ValueType));
+                    memcpy(vectorBuf, vectorId + m_metaDataSize, m_options.m_dim * sizeof(ValueType));
                     vectorBuf += m_options.m_dim * sizeof(ValueType);
                 }
             }
@@ -988,6 +991,7 @@ namespace SPTAG
                 {
                     postingList += Helper::Convert::Serialize<int>(&localIndicesInsert[j], 1);
                     postingList += Helper::Convert::Serialize<uint8_t>(&localIndicesInsertVersion[j], 1);
+                    postingList += Helper::Convert::Serialize<float>(&localIndicesInsertFloat[j], 1);
                     postingList += Helper::Convert::Serialize<ValueType>(vectorBuffer.get() + j * m_options.m_dim * sizeof(ValueType), m_options.m_dim);
                 }
                 m_postingSizes[headID].store(realVectorNum);
@@ -1013,6 +1017,7 @@ namespace SPTAG
                 {
                     postingList += Helper::Convert::Serialize<int>(&localIndicesInsert[j], 1);
                     postingList += Helper::Convert::Serialize<uint8_t>(&localIndicesInsertVersion[j], 1);
+                    postingList += Helper::Convert::Serialize<float>(&localIndicesInsertFloat[j], 1);
                     postingList += Helper::Convert::Serialize<ValueType>(vectorBuffer.get() + j * m_options.m_dim * sizeof(ValueType), m_options.m_dim);
                 }
                 m_postingSizes[headID].store(realVectorNum);
@@ -1024,7 +1029,7 @@ namespace SPTAG
 
             long long newHeadVID = -1;
             int first = 0;
-            std::vector<SizeType> newHeadsID(2);
+            std::vector<SizeType> newHeadsID;
             std::vector<std::string> newPostingLists;
             bool theSameHead = false;
             for (int k = 0; k < 2; k++) {
@@ -1038,9 +1043,10 @@ namespace SPTAG
                     {
                         postingList += Helper::Convert::Serialize<SizeType>(&localIndicesInsert[localIndices[first + j]], 1);
                         postingList += Helper::Convert::Serialize<uint8_t>(&localIndicesInsertVersion[localIndices[first + j]], 1);
+                        postingList += Helper::Convert::Serialize<float>(&localIndicesInsertFloat[localIndices[first + j]], 1);
                         postingList += Helper::Convert::Serialize<ValueType>(smallSample[localIndices[first + j]], m_options.m_dim);
                     }
-                    m_extraSearcher->AddIndex(newHeadVID, postingList);
+                    m_extraSearcher->OverrideIndex(newHeadVID, postingList);
                     m_theSameHeadNum++;
                 }
                 else {
@@ -1050,8 +1056,10 @@ namespace SPTAG
                     newHeadsID.push_back(begin);
                     for (int j = 0; j < args.counts[k]; j++)
                     {
+                        float dist = m_index->ComputeDistance(smallSample[args.clusterIdx[k]], smallSample[localIndices[first + j]]);
                         postingList += Helper::Convert::Serialize<SizeType>(&localIndicesInsert[localIndices[first + j]], 1);
                         postingList += Helper::Convert::Serialize<uint8_t>(&localIndicesInsertVersion[localIndices[first + j]], 1);
+                        postingList += Helper::Convert::Serialize<float>(&dist, 1);
                         postingList += Helper::Convert::Serialize<ValueType>(smallSample[localIndices[first + j]], m_options.m_dim);
                     }
                     m_extraSearcher->AddIndex(newHeadVID, postingList);
@@ -1071,7 +1079,10 @@ namespace SPTAG
             lock.unlock();
             ++m_splitNum;
             // m_splitUpdateIndexCost += sw.getElapsedMs() - clusterEndTime;
-            //QuantifySplit(headID, newPostingLists, newHeadsID, split_order);
+            // if (theSameHead) LOG(Helper::LogLevel::LL_Info, "The Same Head\n");
+            // LOG(Helper::LogLevel::LL_Info, "head1:%d, head2:%d\n", newHeadsID[0], newHeadsID[1]);
+            // QuantifySplit(headID, newPostingLists, newHeadsID, 0);
+            // exit(1);
 
             if (!m_options.m_disableReassign) ReAssign(headID, newPostingLists, newHeadsID);
 
@@ -1091,20 +1102,21 @@ namespace SPTAG
                 nearbyHeads.Reset();
                 m_index->SearchIndex(nearbyHeads);
                 BasicResult* queryResults = nearbyHeads.GetResults();
-                postingLists.resize(nearbyHeads.GetResultNum() + postingLists.size());
                 for (int i = 0; i < nearbyHeads.GetResultNum(); i++) {
+                    std::string tempPostingList;
                     auto vid = queryResults[i].VID;
                     if (vid == -1) {
                         break;
                     }
                     if (find(newHeadsID.begin(), newHeadsID.end(), vid) == newHeadsID.end()) {
-                        m_extraSearcher->SearchIndex(vid, postingLists[i + 2]);
+                        m_extraSearcher->SearchIndex(vid, tempPostingList);
+                        postingLists.push_back(tempPostingList);
                     }
                 }
 //                m_reassignSearchHeadCost += sw.getElapsedMs();
             }
 
-            int vectorInfoSize = m_options.m_dim * sizeof(ValueType) + sizeof(int) + sizeof(uint8_t);
+            int vectorInfoSize = m_options.m_dim * sizeof(ValueType) + m_metaDataSize;
             std::map<SizeType, ValueType*> reAssignVectorsTop0;
             std::map<SizeType, ValueType*> reAssignVectorsTopK;
             for (int i = 0; i < postingLists.size(); i++) {
@@ -1115,15 +1127,17 @@ namespace SPTAG
                     uint8_t* vectorId = postingP + j * vectorInfoSize;
                     SizeType vid = *(reinterpret_cast<SizeType*>(vectorId));
                     uint8_t version = *(reinterpret_cast<uint8_t*>(vectorId + sizeof(int)));
+                    float dist = *(reinterpret_cast<float*>(vectorId + sizeof(int) + sizeof(uint8_t)));
+                    if (dist < Epsilon) continue;
                     if (i <= 1) {
                         if (reAssignVectorsTop0.find(vid) == reAssignVectorsTop0.end() && !CheckIdDeleted(vid) && CheckVersionValid(vid, version))
-                            reAssignVectorsTop0[vid] = reinterpret_cast<ValueType*>(vectorId + sizeof(int) + sizeof(uint8_t));
+                            reAssignVectorsTop0[vid] = reinterpret_cast<ValueType*>(vectorId + m_metaDataSize);
                         //PrintFirstFiveDimInt8(vectorId + sizeof(int), vid);
                     } else {
                         if (reAssignVectorsTop0.find(vid) == reAssignVectorsTop0.end())
                         {
                             if (reAssignVectorsTopK.find(vid) == reAssignVectorsTopK.end() && !CheckIdDeleted(vid) && CheckVersionValid(vid, version))
-                                reAssignVectorsTopK[vid] = reinterpret_cast<ValueType*>(vectorId + sizeof(int) + sizeof(uint8_t));
+                                reAssignVectorsTopK[vid] = reinterpret_cast<ValueType*>(vectorId + m_metaDataSize);
                         }
                     }
                 }
@@ -1206,6 +1220,7 @@ namespace SPTAG
                 std::string newPart;
                 newPart += Helper::Convert::Serialize<int>(&VID, 1);
                 newPart += Helper::Convert::Serialize<uint8_t>(&version, 1);
+                newPart += Helper::Convert::Serialize<float>(&selections[i].distance, 1);
                 newPart += Helper::Convert::Serialize<ValueType>(p_queryResults.GetTarget(), m_options.m_dim);
                 auto headID = selections[i].headID;
                 //LOG(Helper::LogLevel::LL_Info, "Reassign: headID :%d, oldVID:%d, newVID:%d, posting length: %d, dist: %f, string size: %d\n", headID, oldVID, VID, m_postingSizes[headID].load(), selections[i].distance, newPart.size());
@@ -1226,7 +1241,7 @@ namespace SPTAG
             if (appendPosting.empty()) {
                 LOG(Helper::LogLevel::LL_Error, "Error! empty append posting!\n");
             }
-            int vectorInfoSize = m_options.m_dim * sizeof(ValueType) + sizeof(int) + sizeof(uint8_t);
+            int vectorInfoSize = m_options.m_dim * sizeof(ValueType) + m_metaDataSize;
 //            TimeUtils::StopW sw;
             m_appendTaskNum++;
 
@@ -1240,7 +1255,7 @@ namespace SPTAG
 //                  m_currerntReassignTaskNum++;
                     uint32_t idx = i * vectorInfoSize;
                     uint8_t version = *(uint8_t*)(&appendPosting[idx + sizeof(int)]);
-                    auto vectorContain = std::make_shared<std::string>(appendPosting.substr(idx + sizeof(int) + sizeof(uint8_t), m_options.m_dim * sizeof(ValueType)));
+                    auto vectorContain = std::make_shared<std::string>(appendPosting.substr(idx + m_metaDataSize, m_options.m_dim * sizeof(ValueType)));
                     if (CheckVersionValid(*(int*)(&appendPosting[idx]), version)) {
                         m_headMiss++;
                         ReassignAsync(vectorContain, *(int*)(&appendPosting[idx]));

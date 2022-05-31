@@ -42,8 +42,10 @@ namespace SPTAG::SPANN
             dbOptions.IncreaseParallelism();
             dbOptions.OptimizeLevelStyleCompaction();
             dbOptions.merge_operator.reset(new AnnMergeOperator);
+            /*
             dbOptions.use_direct_io_for_flush_and_compaction = true;
             dbOptions.use_direct_reads = true;
+            */
             rocksdb::BlockBasedTableOptions table_options;
             table_options.no_block_cache = true;
             dbOptions.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
@@ -153,7 +155,12 @@ namespace SPTAG::SPANN
         RocksDBIO db;
         std::atomic_uint64_t m_postingNum{};
     public:
-        ExtraRocksDBController(const char* dbPath, int dim, int vectorlimit) { db.Initialize(dbPath); m_vectorInfoSize = dim * sizeof(ValueType) + sizeof(int) + sizeof(uint8_t); m_postingSizeLimit = vectorlimit;LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", m_postingSizeLimit);}
+        ExtraRocksDBController(const char* dbPath, int dim, int vectorlimit) { 
+            db.Initialize(dbPath); 
+            m_metaDataSize = sizeof(int) + sizeof(uint8_t) + sizeof(float);
+            m_vectorInfoSize = dim * sizeof(ValueType) + m_metaDataSize;
+            m_postingSizeLimit = vectorlimit;LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", m_postingSizeLimit);
+        }
 
         ~ExtraRocksDBController() override = default;
 
@@ -232,7 +239,7 @@ namespace SPTAG::SPANN
                         listElements--;
                         continue;
                     }
-                    auto distance2leaf = p_index->ComputeDistance(queryResults.GetQuantizedTarget(), vectorInfo + sizeof(int) + sizeof(uint8_t));
+                    auto distance2leaf = p_index->ComputeDistance(queryResults.GetQuantizedTarget(), vectorInfo + m_metaDataSize);
                     queryResults.AddPoint(vectorID, distance2leaf);
                 }
                 auto compEnd = std::chrono::high_resolution_clock::now();
@@ -299,6 +306,8 @@ namespace SPTAG::SPANN
                 vectorInfoSize = fullVectors->PerVectorDataSize() + sizeof(int);
                 //vectorInfoSize = fullVectors->PerVectorDataSize() + sizeof(int) + sizeof(uint8_t);
             }
+
+            m_metaDataSize = sizeof(int) + sizeof(uint8_t) + sizeof(float);
 
             Selection selections(static_cast<size_t>(fullCount) * p_opt.m_replicaCount, p_opt.m_tmpdir);
             LOG(Helper::LogLevel::LL_Info, "Full vector count:%d Edge bytes:%llu selection size:%zu, capacity size:%zu\n", fullCount, sizeof(Edge), selections.m_selections.size(), selections.m_selections.capacity());
@@ -453,6 +462,7 @@ namespace SPTAG::SPANN
                         LOG(Helper::LogLevel::LL_Error, "Selection ID NOT MATCH\n");
                         exit(1);
                     }
+                    float distance = selections[selectIdx].distance;
                     int fullID = selections[selectIdx++].tonode;
                     uint8_t version = 0;
                     m_versionMap.UpdateVersion(fullID, 0);
@@ -460,6 +470,7 @@ namespace SPTAG::SPANN
                     // First Vector ID, then Vector
                     postinglist += Helper::Convert::Serialize<int>(&fullID, 1);
                     postinglist += Helper::Convert::Serialize<uint8_t>(&version, 1);
+                    postinglist += Helper::Convert::Serialize<float>(&distance, 1);
                     postinglist += Helper::Convert::Serialize<ValueType>(fullVectors->GetVector(fullID), dim);
                 }
 
@@ -518,6 +529,7 @@ namespace SPTAG::SPANN
         inline ErrorCode OverrideIndex(SizeType headID, const std::string& posting) override { return db.Put(headID, posting); }
         inline SizeType  GetIndexSize() override { return m_postingNum; }
         inline SizeType  GetPostingSizeLimit() override { return m_postingSizeLimit; /*return INT_MAX*/; }
+        inline SizeType  GetMetaDataSize() override { return m_metaDataSize;}
     private:
         struct ListInfo
         {
@@ -654,6 +666,8 @@ namespace SPTAG::SPANN
 //        int m_listPerFile = 0;
 
         int m_postingSizeLimit = INT_MAX;
+
+        int m_metaDataSize = 0;
     };
 } // namespace SPTAG
 

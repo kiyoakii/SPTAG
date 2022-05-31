@@ -195,6 +195,7 @@ namespace SPTAG {
             virtual ErrorCode OverrideIndex(SizeType headID, const std::string& posting) = 0;
             virtual SizeType  GetIndexSize() = 0;
             virtual SizeType  GetPostingSizeLimit() = 0;
+            virtual SizeType  GetMetaDataSize() = 0;
         };
     } // SPANN
 } // SPTAG

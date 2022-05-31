@@ -498,6 +498,7 @@ namespace SPTAG
             virtual ErrorCode OverrideIndex(SizeType headID, const std::string& posting)        { return ErrorCode::Undefined; }
             virtual SizeType  GetIndexSize() { return -1; }
             virtual SizeType  GetPostingSizeLimit() { return -1; }
+            virtual SizeType  GetMetaDataSize() { return -1;}
         private:
             struct ListInfo
             {
