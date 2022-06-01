@@ -1081,7 +1081,9 @@ namespace SPTAG
             // m_splitUpdateIndexCost += sw.getElapsedMs() - clusterEndTime;
             // if (theSameHead) LOG(Helper::LogLevel::LL_Info, "The Same Head\n");
             // LOG(Helper::LogLevel::LL_Info, "head1:%d, head2:%d\n", newHeadsID[0], newHeadsID[1]);
+
             // QuantifySplit(headID, newPostingLists, newHeadsID, 0);
+            // QuantifyAssumptionBrokenTotally();
             // exit(1);
 
             if (!m_options.m_disableReassign) ReAssign(headID, newPostingLists, newHeadsID);
@@ -1238,6 +1240,7 @@ namespace SPTAG
         template <typename ValueType>
         ErrorCode SPTAG::SPANN::Index<ValueType>::Append(SizeType headID, int appendNum, std::string& appendPosting)
         {
+            int reassignExtraLimit = 0;
             if (appendPosting.empty()) {
                 LOG(Helper::LogLevel::LL_Error, "Error! empty append posting!\n");
             }
@@ -1248,6 +1251,12 @@ namespace SPTAG
             if (appendNum == 0) {
                 LOG(Helper::LogLevel::LL_Info, "Error!, headID :%d, appendNum:%d\n", headID, appendNum);
             }
+
+            if (appendNum == -1) {
+                appendNum = 1;
+                reassignExtraLimit = 3;
+            }
+
         checkDeleted:
             if (!m_index->ContainSample(headID)) {
                 for (int i = 0; i < appendNum; i++)
@@ -1263,7 +1272,7 @@ namespace SPTAG
                 }
                 return ErrorCode::Success;
             }
-            if (m_postingSizes[headID].load() + appendNum > m_extraSearcher->GetPostingSizeLimit()) {
+            if (m_postingSizes[headID].load() + appendNum > (m_extraSearcher->GetPostingSizeLimit() + reassignExtraLimit) ) {
                 // double splitStartTime = sw.getElapsedMs();
                 if (Split(headID, appendNum, appendPosting) == ErrorCode::FailSplit) {
                     goto checkDeleted;

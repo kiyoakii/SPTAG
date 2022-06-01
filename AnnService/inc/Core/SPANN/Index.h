@@ -553,15 +553,17 @@ namespace SPTAG
             void QuantifyAssumptionBrokenTotally()
             {
                 std::atomic_int assumptionBrokenNum = 0;
+                std::atomic_int assumption64BrokenNum = 0;
                 std::atomic_int deleted = 0;
-                std::vector<std::set<SizeType>> vectorHeadMap(m_vectorNum.load());
-                std::vector<bool> vectorFoundMap(m_vectorNum.load());
-                std::vector<std::string> vectorIdValueMap(m_vectorNum.load());
+                int vectorNum = m_vectorNum.load();
+                std::vector<std::set<SizeType>> vectorHeadMap(vectorNum);
+                std::vector<bool> vectorFoundMap(vectorNum);
+                std::vector<std::string> vectorIdValueMap(vectorNum);
                 for (int i = 0; i < m_index->GetNumSamples(); i++) {
                     std::string postingList;
                     if (!m_index->ContainSample(i)) continue;
                     m_extraSearcher->SearchIndex(i, postingList);
-                    int postVectorNum = postingList.size() / (m_options.m_dim * sizeof(T)+ sizeof(int));
+                    int postVectorNum = postingList.size() / (m_options.m_dim * sizeof(T) + m_metaDataSize);
                     uint8_t* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
                     for (int j = 0; j < postVectorNum; j++) {
                         uint8_t* vectorId = postingP + j * (m_options.m_dim * sizeof(T) + m_metaDataSize);
@@ -570,11 +572,12 @@ namespace SPTAG
                         vectorHeadMap[vid].insert(i);
                         if (vectorFoundMap[vid]) continue;
                         vectorFoundMap[vid] = true;
-                        vectorIdValueMap[vid] = Helper::Convert::Serialize<uint8_t>(vectorId + sizeof(int), m_options.m_dim * sizeof(T));
+                        vectorIdValueMap[vid] = Helper::Convert::Serialize<uint8_t>(vectorId + m_metaDataSize, m_options.m_dim * sizeof(T));
                     }
                 }
+                LOG(Helper::LogLevel::LL_Info, "Begin Searching\n");
                 #pragma omp parallel for num_threads(32)
-                for (int vid = 0; vid < m_vectorNum.load(); vid++) {
+                for (int vid = 0; vid < vectorNum; vid++) {
                     if (m_versionMap.Contains(vid)) {
                         deleted++;
                         continue;
@@ -586,10 +589,12 @@ namespace SPTAG
                     int replicaCount = 0;
                     BasicResult* queryResults = headCandidates.GetResults();
                     std::vector<EdgeInsert> selections(static_cast<size_t>(m_options.m_replicaCount));
+                    std::set<SizeType>HeadMap;
                     for (int i = 0; i < headCandidates.GetResultNum() && replicaCount < m_options.m_replicaCount; ++i) {
                         if (queryResults[i].VID == -1) {
                             break;
                         }
+                        HeadMap.insert(queryResults[i].VID);
                         // RNG Check.
                         bool rngAccpeted = true;
                         for (int j = 0; j < replicaCount; ++j) {
@@ -613,8 +618,14 @@ namespace SPTAG
                             break;
                         }
                     }
+                    for (auto vectorHead : vectorHeadMap[vid]) {
+                        if (!HeadMap.count(vectorHead)) {
+                            assumption64BrokenNum++;
+                            break;
+                        }
+                    }
                 }
-                LOG(Helper::LogLevel::LL_Info, "After Split %d times, %d total vectors, %d assumption broken vectors\n", m_splitNum, m_vectorNum.load() - deleted.load(), assumptionBrokenNum.load());
+                LOG(Helper::LogLevel::LL_Info, "After Split %d times, %d total vectors, %d assumption broken vectors, %d vectors are not in 64 nearest postings\n", m_splitNum, vectorNum - deleted.load(), assumptionBrokenNum.load(), assumption64BrokenNum.load());
             }
 
             //headCandidates: search data structrue for "vid" vector

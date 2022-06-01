@@ -42,10 +42,10 @@ namespace SPTAG::SPANN
             dbOptions.IncreaseParallelism();
             dbOptions.OptimizeLevelStyleCompaction();
             dbOptions.merge_operator.reset(new AnnMergeOperator);
-            /*
+            
             dbOptions.use_direct_io_for_flush_and_compaction = true;
             dbOptions.use_direct_reads = true;
-            */
+            
             rocksdb::BlockBasedTableOptions table_options;
             table_options.no_block_cache = true;
             dbOptions.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
