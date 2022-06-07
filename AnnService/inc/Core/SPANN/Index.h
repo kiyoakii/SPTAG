@@ -72,18 +72,19 @@ namespace SPTAG
                 VectorIndex* m_index;
                 std::shared_ptr<std::string> vectorContain;
                 SizeType VID;
+                SizeType HeadPrev;
                 uint8_t version;
                 std::function<void()> m_callback;
             public:
                 ReassignAsyncJob(VectorIndex* m_index,
-                                 std::shared_ptr<std::string> vectorContain, SizeType VID, uint8_t version, std::function<void()> p_callback)
+                                 std::shared_ptr<std::string> vectorContain, SizeType VID, SizeType HeadPrev, uint8_t version, std::function<void()> p_callback)
                         : m_index(m_index),
-                          vectorContain(std::move(vectorContain)), VID(VID), version(version), m_callback(std::move(p_callback)) {}
+                          vectorContain(std::move(vectorContain)), VID(VID), HeadPrev(HeadPrev), version(version), m_callback(std::move(p_callback)) {}
 
                 ~ReassignAsyncJob() {}
 
                 void exec(IAbortOperation* p_abort) override {
-                    m_index->ProcessAsyncReassign(vectorContain, VID, version, std::move(m_callback));
+                    m_index->ProcessAsyncReassign(vectorContain, VID, HeadPrev, version, std::move(m_callback));
                 }
             };
 
@@ -244,6 +245,7 @@ namespace SPTAG
             uint32_t m_splitTaskNum{0};
             uint32_t m_splitNum{0};
             uint32_t m_theSameHeadNum{0};
+            uint32_t m_reAssignNum{0};
             std::mutex m_dataAddLock;
 
         public:
@@ -346,8 +348,8 @@ namespace SPTAG
             ErrorCode Append(SizeType headID, int appendNum, std::string& appendPosting);
             ErrorCode Split(const SizeType headID, int appendNum, std::string& appendPosting);
             ErrorCode ReAssign(SizeType headID, std::vector<std::string>& postingLists, std::vector<SizeType>& newHeadsID);
-            void ReAssignVectors(std::map<SizeType, T*>& reAssignVectors, std::vector<SizeType>& newHeadsID);
-            void ReAssignUpdate(const std::shared_ptr<std::string>&, SizeType VID, uint8_t version);
+            void ReAssignVectors(std::map<SizeType, T*>& reAssignVectors, std::map<SizeType, SizeType>& HeadPrevs, std::map<SizeType, uint8_t>& versions);
+            void ReAssignUpdate(const std::shared_ptr<std::string>&, SizeType VID, SizeType HeadPrev, uint8_t version);
 
         public:
             inline void AppendAsync(SizeType headID, int appendNum, std::shared_ptr<std::string> appendPosting, std::function<void()> p_callback=nullptr)
@@ -356,15 +358,13 @@ namespace SPTAG
                 m_appendThreadPool->add(curJob);
             }
 
-            inline void ReassignAsync(std::shared_ptr<std::string> vectorContain, SizeType VID, std::function<void()> p_callback=nullptr)
-            {
-                uint8_t newVersion;
-                m_versionMap.IncVersion(VID, &newVersion);
-                auto* curJob = new ReassignAsyncJob(this, std::move(vectorContain), VID, newVersion, p_callback);
+            inline void ReassignAsync(std::shared_ptr<std::string> vectorContain, SizeType VID, SizeType HeadPrev, uint8_t version, std::function<void()> p_callback=nullptr)
+            {   
+                auto* curJob = new ReassignAsyncJob(this, std::move(vectorContain), VID, HeadPrev, version, p_callback);
                 m_reassignThreadPool->add(curJob);
             }
 
-            void ProcessAsyncReassign(std::shared_ptr<std::string> vectorContain, SizeType VID, uint8_t version, std::function<void()> p_callback);
+            void ProcessAsyncReassign(std::shared_ptr<std::string> vectorContain, SizeType VID, SizeType HeadPrev, uint8_t version, std::function<void()> p_callback);
 
             bool AllFinished() {return m_dispatcher->allFinished();}
 
@@ -377,6 +377,8 @@ namespace SPTAG
             int getHeadMiss() {return m_headMiss.load();}
 
             int getSameHead() {return m_theSameHeadNum;}
+
+            int getReassignNum() {return m_reAssignNum;}
 
             void UpdateStop()
             {
@@ -663,7 +665,7 @@ namespace SPTAG
             }
 
             //Measure that in "headID" posting list, how many vectors break their assumption
-            int QuantifyAssumptionBroken(SizeType headID, std::string& postingList)
+            int QuantifyAssumptionBroken(SizeType headID, std::string& postingList, SizeType SplitHead, std::vector<SizeType>& newHeads)
             {
                 int assumptionBrokenNum = 0;
                 int m_vectorInfoSize = sizeof(T) * m_options.m_dim + m_metaDataSize;
@@ -687,7 +689,19 @@ namespace SPTAG
                     headCandidates.SetTarget(reinterpret_cast<T*>(vectorId + m_metaDataSize));
                     headCandidates.Reset();
                     if (IsAssumptionBroken(headID, headCandidates, vid)) {
-                        LOG(Helper::LogLevel::LL_Info, "broken vid distance: %f\n", dist);
+                        float_t headDist = m_index->ComputeDistance(headCandidates.GetTarget(), m_index->GetSample(SplitHead));
+                        float_t newHeadDist_1 = m_index->ComputeDistance(headCandidates.GetTarget(), m_index->GetSample(newHeads[0]));
+                        float_t newHeadDist_2 = m_index->ComputeDistance(headCandidates.GetTarget(), m_index->GetSample(newHeads[1]));
+
+                        float_t splitDist = m_index->ComputeDistance(m_index->GetSample(SplitHead), m_index->GetSample(headID));
+
+                        float_t headToNewHeadDist_1 = m_index->ComputeDistance(m_index->GetSample(headID), m_index->GetSample(newHeads[0]));
+                        float_t headToNewHeadDist_2 = m_index->ComputeDistance(m_index->GetSample(headID), m_index->GetSample(newHeads[1]));
+
+                        LOG(Helper::LogLevel::LL_Info, "broken vid to head distance: %f, to split head distance: %f\n", dist, headDist);
+                        LOG(Helper::LogLevel::LL_Info, "broken vid to new head 1 distance: %f, to new head 2 distance: %f\n", newHeadDist_1, newHeadDist_2);
+                        LOG(Helper::LogLevel::LL_Info, "head to spilit head distance: %f\n", splitDist);
+                        LOG(Helper::LogLevel::LL_Info, "head to new head 1 distance: %f, to new head 2 distance: %f\n", headToNewHeadDist_1, headToNewHeadDist_2);
                         assumptionBrokenNum++;
                     }
                 }
@@ -700,18 +714,18 @@ namespace SPTAG
                 return assumptionBrokenNum;
             }
 
-            void QuantifySplitCaseA(std::vector<SizeType>& newHeads, std::vector<std::string>& postingLists)
+            void QuantifySplitCaseA(std::vector<SizeType>& newHeads, std::vector<std::string>& postingLists, SizeType SplitHead)
             {
                 int assumptionBrokenNum = 0;
-                assumptionBrokenNum += QuantifyAssumptionBroken(newHeads[0], postingLists[0]);
-                assumptionBrokenNum += QuantifyAssumptionBroken(newHeads[1], postingLists[1]);
+                assumptionBrokenNum += QuantifyAssumptionBroken(newHeads[0], postingLists[0], SplitHead, newHeads);
+                assumptionBrokenNum += QuantifyAssumptionBroken(newHeads[1], postingLists[1], SplitHead, newHeads);
                 int vectorNum = (postingLists[0].size() + postingLists[1].size()) / (sizeof(T) * m_options.m_dim + m_metaDataSize);
                 LOG(Helper::LogLevel::LL_Info, "After Split, Top0 nearby posting lists, caseA : %d/%d\n", assumptionBrokenNum, vectorNum);
             }
 
             //Measure that around "headID", how many vectors break their assumption
             //"headID" is the head vector before split
-            void QuantifySplitCaseB(SizeType headID, std::vector<SizeType>& newHeads)
+            void QuantifySplitCaseB(SizeType headID, std::vector<SizeType>& newHeads, SizeType SplitHead)
             {
                 auto headVector = reinterpret_cast<const T*>(m_index->GetSample(headID));
                 COMMON::QueryResultSet<T> nearbyHeads(NULL, 64);
@@ -736,18 +750,40 @@ namespace SPTAG
                     if (queryResults[i].VID == newHeads[0] || queryResults[i].VID == newHeads[1]) continue;
                     m_extraSearcher->SearchIndex(queryResults[i].VID, postingList);
                     vectorNum += postingList.size() / (sizeof(T) * m_options.m_dim + m_metaDataSize);
-                    assumptionBrokenNum += QuantifyAssumptionBroken(queryResults[i].VID, postingList);
+                    assumptionBrokenNum += QuantifyAssumptionBroken(queryResults[i].VID, postingList, SplitHead, newHeads);
                 }
                 LOG(Helper::LogLevel::LL_Info, "After Split, Top%d nearby posting lists, caseB : %d/%d\n", i, assumptionBrokenNum, vectorNum);
             }
 
-            void QuantifySplit(SizeType headID, std::vector<std::string>& postingLists, std::vector<SizeType>& newHeads, int split_order)
+            void QuantifySplit(SizeType headID, std::vector<std::string>& postingLists, std::vector<SizeType>& newHeads, SizeType SplitHead, int split_order)
             {
                 // LOG(Helper::LogLevel::LL_Info, "Split Quantify: %d, head1:%d, head2:%d\n", split_order, newHeads[0], newHeads[1]);
-                QuantifySplitCaseA(newHeads, postingLists);
-                QuantifySplitCaseB(headID, newHeads);
+                QuantifySplitCaseA(newHeads, postingLists, SplitHead);
+                QuantifySplitCaseB(headID, newHeads, SplitHead);
             }
 
+            bool CheckIsNeedReassign(std::vector<SizeType>& newHeads, T* data, SizeType splitHead, float_t headToSplitHeadDist, float_t currentHeadDist)
+            {
+                float_t headDist = m_index->ComputeDistance(data, m_index->GetSample(splitHead));
+
+                /*
+                if (headToSplitHeadDist != -1 ) {
+
+                    float_t headToNewHeadDist_1 = m_index->ComputeDistance(m_index->GetSample(currentHead), m_index->GetSample(newHeads[0]));
+                    float_t headToNewHeadDist_2 = m_index->ComputeDistance(m_index->GetSample(currentHead), m_index->GetSample(newHeads[1]));
+
+                    if (headDist > headToSplitHeadDist && headDist > headToNewHeadDist_1 && headDist > headToNewHeadDist_2) return false;
+                }
+                */
+
+                // if (headDist >= (currentHeadDist + headToSplitHeadDist) ) return false;
+
+                float_t newHeadDist_1 = m_index->ComputeDistance(data, m_index->GetSample(newHeads[0]));
+                float_t newHeadDist_2 = m_index->ComputeDistance(data, m_index->GetSample(newHeads[1]));
+
+                if (headDist <= newHeadDist_1 && headDist <= newHeadDist_2) return false;
+                return true;
+            }
         };
     } // namespace SPANN
 } // namespace SPTAG

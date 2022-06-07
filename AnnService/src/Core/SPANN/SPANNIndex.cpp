@@ -212,6 +212,8 @@ namespace SPTAG
         ErrorCode Index<T>::DebugSearchDiskIndex(QueryResult& p_query, int p_subInternalResultNum, int p_internalResultNum,
                                                  SearchStats* p_stats, std::set<int>* truth, std::map<int, std::set<int>>* found)
         {
+            auto exStart = std::chrono::high_resolution_clock::now();
+
             if (nullptr == m_extraSearcher) return ErrorCode::EmptyIndex;
 
             COMMON::QueryResultSet<T> newResults(*((COMMON::QueryResultSet<T>*)&p_query));
@@ -242,6 +244,10 @@ namespace SPTAG
                     if (res->VID == -1 || (limitDist > 0.1 && res->Dist > limitDist)) break;
                     auto_ws->m_postingIDs.emplace_back(res->VID);
                 }
+
+                auto exEnd = std::chrono::high_resolution_clock::now();
+
+                p_stats->m_totalLatency += ((double)std::chrono::duration_cast<std::chrono::milliseconds>(exEnd - exStart).count());
 
                 m_extraSearcher->SearchIndex(auto_ws.get(), newResults, m_index, p_stats, m_versionMap, truth, found);
             }
@@ -1082,7 +1088,7 @@ namespace SPTAG
             // if (theSameHead) LOG(Helper::LogLevel::LL_Info, "The Same Head\n");
             // LOG(Helper::LogLevel::LL_Info, "head1:%d, head2:%d\n", newHeadsID[0], newHeadsID[1]);
 
-            // QuantifySplit(headID, newPostingLists, newHeadsID, 0);
+            // QuantifySplit(headID, newPostingLists, newHeadsID, headID, 0);
             // QuantifyAssumptionBrokenTotally();
             // exit(1);
 
@@ -1098,6 +1104,8 @@ namespace SPTAG
         ErrorCode SPTAG::SPANN::Index<ValueType>::ReAssign(SizeType headID, std::vector<std::string>& postingLists, std::vector<SizeType>& newHeadsID) {
 //            TimeUtils::StopW sw;
             auto headVector = reinterpret_cast<const ValueType*>(m_index->GetSample(headID));
+            std::vector<SizeType> HeadPrevTopK;
+            std::vector<float> HeadPrevToSplitHeadDist;
             if (m_options.m_reassignK > 0) {
                 COMMON::QueryResultSet<ValueType> nearbyHeads(NULL, m_options.m_reassignK);
                 nearbyHeads.SetTarget(headVector);
@@ -1113,6 +1121,8 @@ namespace SPTAG
                     if (find(newHeadsID.begin(), newHeadsID.end(), vid) == newHeadsID.end()) {
                         m_extraSearcher->SearchIndex(vid, tempPostingList);
                         postingLists.push_back(tempPostingList);
+                        HeadPrevTopK.push_back(vid);
+                        HeadPrevToSplitHeadDist.push_back(queryResults[i].Dist);
                     }
                 }
 //                m_reassignSearchHeadCost += sw.getElapsedMs();
@@ -1120,7 +1130,17 @@ namespace SPTAG
 
             int vectorInfoSize = m_options.m_dim * sizeof(ValueType) + m_metaDataSize;
             std::map<SizeType, ValueType*> reAssignVectorsTop0;
+            std::map<SizeType, SizeType> reAssignVectorsHeadPrevTop0;
+            std::map<SizeType, uint8_t> versionsTop0;
             std::map<SizeType, ValueType*> reAssignVectorsTopK;
+            std::map<SizeType, SizeType> reAssignVectorsHeadPrevTopK;
+            std::map<SizeType, uint8_t> versionsTopK;
+
+            std::vector<float_t> newHeadDist;
+
+            newHeadDist.push_back(m_index->ComputeDistance(m_index->GetSample(headID), m_index->GetSample(newHeadsID[0])));
+            newHeadDist.push_back(m_index->ComputeDistance(m_index->GetSample(headID), m_index->GetSample(newHeadsID[1])));
+
             for (int i = 0; i < postingLists.size(); i++) {
                 auto& postingList = postingLists[i];
                 size_t postVectorNum = postingList.size() / vectorInfoSize;
@@ -1132,34 +1152,46 @@ namespace SPTAG
                     float dist = *(reinterpret_cast<float*>(vectorId + sizeof(int) + sizeof(uint8_t)));
                     if (dist < Epsilon) continue;
                     if (i <= 1) {
-                        if (reAssignVectorsTop0.find(vid) == reAssignVectorsTop0.end() && !CheckIdDeleted(vid) && CheckVersionValid(vid, version))
-                            reAssignVectorsTop0[vid] = reinterpret_cast<ValueType*>(vectorId + m_metaDataSize);
-                        //PrintFirstFiveDimInt8(vectorId + sizeof(int), vid);
+                        if (!CheckIdDeleted(vid) && CheckVersionValid(vid, version)) {
+                            if (CheckIsNeedReassign(newHeadsID, reinterpret_cast<ValueType*>(vectorId + m_metaDataSize), headID, newHeadDist[i], dist)) {
+                                reAssignVectorsTop0[vid] = reinterpret_cast<ValueType*>(vectorId + m_metaDataSize);
+                                reAssignVectorsHeadPrevTop0[vid] = newHeadsID[i];
+                                versionsTop0[vid] = version;
+                            }
+                        }
                     } else {
-                        if (reAssignVectorsTop0.find(vid) == reAssignVectorsTop0.end())
+                        if ((reAssignVectorsTop0.find(vid) == reAssignVectorsTop0.end()))
                         {
-                            if (reAssignVectorsTopK.find(vid) == reAssignVectorsTopK.end() && !CheckIdDeleted(vid) && CheckVersionValid(vid, version))
-                                reAssignVectorsTopK[vid] = reinterpret_cast<ValueType*>(vectorId + m_metaDataSize);
+                            if (reAssignVectorsTopK.find(vid) == reAssignVectorsTopK.end() && !CheckIdDeleted(vid) && CheckVersionValid(vid, version)) {
+                                if (CheckIsNeedReassign(newHeadsID, reinterpret_cast<ValueType*>(vectorId + m_metaDataSize), headID, HeadPrevToSplitHeadDist[i-2], dist)) {
+                                    reAssignVectorsTopK[vid] = reinterpret_cast<ValueType*>(vectorId + m_metaDataSize);
+                                    reAssignVectorsHeadPrevTopK[vid] = HeadPrevTopK[i-2];
+                                    versionsTopK[vid] = version;
+                                }
+                            }
                         }
                     }
                 }
             }
 
-            ReAssignVectors(reAssignVectorsTop0, newHeadsID);
-            ReAssignVectors(reAssignVectorsTopK, newHeadsID);
+            // LOG(Helper::LogLevel::LL_Info, "Top0: %d\n", reAssignVectorsHeadPrevTop0.size());
+            // LOG(Helper::LogLevel::LL_Info, "Top8: %d\n", reAssignVectorsHeadPrevTopK.size());
+
+            ReAssignVectors(reAssignVectorsTop0, reAssignVectorsHeadPrevTop0, versionsTop0);
+            ReAssignVectors(reAssignVectorsTopK, reAssignVectorsHeadPrevTopK, versionsTopK);
 //            m_reassignTotalCost += sw.getElapsedMs();
             return ErrorCode::Success;
         }
 
         template <typename ValueType>
         void SPTAG::SPANN::Index<ValueType>::ReAssignVectors(std::map<SizeType, ValueType*>& reAssignVectors,
-                             std::vector<SizeType>& newHeadsID)
+                             std::map<SizeType, SizeType>& HeadPrevs, std::map<SizeType, uint8_t>& versions)
         {
             for (auto it = reAssignVectors.begin(); it != reAssignVectors.end(); ++it) {
                 //PrintFirstFiveDimInt8(reinterpret_cast<uint8_t*>(it->second), it->first);
                 auto vectorContain = std::make_shared<std::string>(Helper::Convert::Serialize<uint8_t>(it->second, m_options.m_dim));
                 //PrintFirstFiveDimInt8(reinterpret_cast<uint8_t*>(&vectorContain->front()), it->first);
-                ReassignAsync(vectorContain, it->first);
+                ReassignAsync(vectorContain, it->first, HeadPrevs[it->first], versions[it->first]);
             }
             /*
             while (!m_dispatcher->reassignFinished()) {
@@ -1170,18 +1202,23 @@ namespace SPTAG
 
         template <typename ValueType>
         void SPTAG::SPANN::Index<ValueType>::ReAssignUpdate
-                (const std::shared_ptr<std::string>& vectorContain, SizeType VID, uint8_t version)
+                (const std::shared_ptr<std::string>& vectorContain, SizeType VID, SizeType HeadPrev, uint8_t version)
         {
-//            TimeUtils::StopW sw;
+            m_reAssignNum++;
+
+            bool isNeedReassign = true;
+            /*
+            uint8_t version;
+            if (isNeedReassign) {
+                m_versionMap.IncVersion(VID, &version);
+            */
+
 
             COMMON::QueryResultSet<ValueType> p_queryResults(NULL, m_options.m_internalResultNum);
             //PrintFirstFiveDimInt8(reinterpret_cast<uint8_t*>(&vectorContain->front()), oldVID);
             p_queryResults.SetTarget(reinterpret_cast<ValueType*>(&vectorContain->front()));
             p_queryResults.Reset();
             m_index->SearchIndex(p_queryResults);
-
-//            double indexSearchEndTime = sw.getElapsedMs();
-//            m_reassignSearchVecotrCost += indexSearchEndTime;
 
             int replicaCount = 0;
             BasicResult* queryResults = p_queryResults.GetResults();
@@ -1207,18 +1244,27 @@ namespace SPTAG
                     continue;
 
                 selections[replicaCount].headID = queryResults[i].VID;
+
+                /*
+                if (queryResults[i].VID == HeadPrev) {
+                    isNeedReassign = false;
+                    break;
+                }
+                */
+
                 selections[replicaCount].fullID = VID;
                 selections[replicaCount].distance = queryResults[i].Dist;
                 selections[replicaCount].order = (char)replicaCount;
                 ++replicaCount;
             }
 
-//            double selectionEndTime = sw.getElapsedMs();
-//            m_reassignSelectionCost += selectionEndTime - indexSearchEndTime;
+            if (isNeedReassign && CheckVersionValid(VID, version)) {
+                m_versionMap.IncVersion(VID, &version);
+            }
 
             //LOG(Helper::LogLevel::LL_Info, "Reassign: oldVID:%d, replicaCount:%d, candidateNum:%d, dist0:%f\n", oldVID, replicaCount, i, selections[0].distance);
 
-            for (i = 0; i < replicaCount && CheckVersionValid(VID, version); i++) {
+            for (i = 0; isNeedReassign && i < replicaCount && CheckVersionValid(VID, version); i++) {
                 std::string newPart;
                 newPart += Helper::Convert::Serialize<int>(&VID, 1);
                 newPart += Helper::Convert::Serialize<uint8_t>(&version, 1);
@@ -1227,14 +1273,7 @@ namespace SPTAG
                 auto headID = selections[i].headID;
                 //LOG(Helper::LogLevel::LL_Info, "Reassign: headID :%d, oldVID:%d, newVID:%d, posting length: %d, dist: %f, string size: %d\n", headID, oldVID, VID, m_postingSizes[headID].load(), selections[i].distance, newPart.size());
                 Append(headID, 1, newPart);
-                /*
-                if (m_extraSearcher->AppendPosting(headID, newPart) != ErrorCode::Success) {
-                    LOG(Helper::LogLevel::LL_Error, "Merge failed!\n");
-                }
-                m_postingSizes[headID].fetch_add(1, std::memory_order_relaxed);
-                */
             }
-//            m_reassignSsdCost += sw.getElapsedMs() - selectionEndTime;
         }
 
         template <typename ValueType>
@@ -1267,7 +1306,7 @@ namespace SPTAG
                     auto vectorContain = std::make_shared<std::string>(appendPosting.substr(idx + m_metaDataSize, m_options.m_dim * sizeof(ValueType)));
                     if (CheckVersionValid(*(int*)(&appendPosting[idx]), version)) {
                         m_headMiss++;
-                        ReassignAsync(vectorContain, *(int*)(&appendPosting[idx]));
+                        ReassignAsync(vectorContain, *(int*)(&appendPosting[idx]), headID, version);
                     }
                 }
                 return ErrorCode::Success;
@@ -1299,21 +1338,26 @@ namespace SPTAG
         }
 
         template <typename T>
-        void SPTAG::SPANN::Index<T>::ProcessAsyncReassign(std::shared_ptr<std::string> vectorContain, SizeType VID, uint8_t version, std::function<void()> p_callback)
+        void SPTAG::SPANN::Index<T>::ProcessAsyncReassign(std::shared_ptr<std::string> vectorContain, SizeType VID, SizeType HeadPrev, uint8_t version, std::function<void()> p_callback)
         {
             //LOG(Helper::LogLevel::LL_Info, "ReassignID: %d, newID: %d\n", oldVID, VID);
 
-            if (m_versionMap.Contains(VID)) {
+            if (m_versionMap.Contains(VID) || !CheckVersionValid(VID, version)) {
                 return;
             }
 
-            //m_reassignedID.Insert(oldVID);
-            //tbb::concurrent_hash_map<SizeType, SizeType>::value_type workPair(VID, version);
-            //m_reassignMap.insert(workPair);
+            /*
+            tbb::concurrent_hash_map<SizeType, SizeType>::const_accessor VIDAccessor;
+            if (m_reassignMap.find(VIDAccessor, VID) && VIDAccessor->second < version) {
+                return;
+            }
+            tbb::concurrent_hash_map<SizeType, SizeType>::value_type workPair(VID, version);
+            m_reassignMap.insert(workPair);
+            */
 
-            ReAssignUpdate(vectorContain, VID, version);
+            ReAssignUpdate(vectorContain, VID, HeadPrev, version);
 
-            //m_reassignMap.erase(VID);
+            // m_reassignMap.erase(VID);
 
             if (p_callback != nullptr) {
                 p_callback();

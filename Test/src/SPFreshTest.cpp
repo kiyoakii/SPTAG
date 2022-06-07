@@ -313,6 +313,9 @@ namespace SPTAG {
                             double startTime = threadws.getElapsedMs();
                             p_index->GetMemoryIndex()->SearchIndex(p_results[index]);
                             double endTime = threadws.getElapsedMs();
+
+                            p_stats[index].m_totalLatency = endTime - startTime;
+
                             p_index->DebugSearchDiskIndex(p_results[index], p_internalResultNum, p_internalResultNum, &(p_stats[index]));
                             double exEndTime = threadws.getElapsedMs();
 
@@ -862,6 +865,7 @@ namespace SPTAG {
                 {
                     std::shared_ptr<VectorSet> insertSet;
 
+                    //std::string extraInsertPath = "/home/yuming/ann_search/data/spacev_clustering_reverse/spacev_clustering_reverse_extra" + std::to_string(i);
                     std::string extraInsertPath = "/home/yuming/ann_search/data/spacev_clustering/spacev_clustering_extra" + std::to_string(i);
                     LOG(Helper::LogLevel::LL_Info, "Start loading Insert File: %s\n", extraInsertPath.c_str());
 
@@ -993,7 +997,7 @@ namespace SPTAG {
                     LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", K, truthK, recall);
 
                     LOG(Helper::LogLevel::LL_Info, "\n");
-                    LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times, head missing %d times, same head %d times\n", finishedInsert, p_index->getSplitTimes(), p_index->getHeadMiss(), p_index->getSameHead());
+                    LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times, head missing %d times, same head %d times, reassign %d times\n", finishedInsert, p_index->getSplitTimes(), p_index->getHeadMiss(), p_index->getSameHead(), p_index->getReassignNum());
                     //p_index->QuantifyAssumptionBrokenTotally();
                 }
             }

@@ -42,10 +42,10 @@ namespace SPTAG::SPANN
             dbOptions.IncreaseParallelism();
             dbOptions.OptimizeLevelStyleCompaction();
             dbOptions.merge_operator.reset(new AnnMergeOperator);
-            
+            /*
             dbOptions.use_direct_io_for_flush_and_compaction = true;
             dbOptions.use_direct_reads = true;
-            
+            */
             rocksdb::BlockBasedTableOptions table_options;
             table_options.no_block_cache = true;
             dbOptions.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
@@ -196,11 +196,13 @@ namespace SPTAG::SPANN
             return true;
         }
 
-            virtual void SearchIndex(ExtraWorkSpace* p_exWorkSpace,
+        virtual void SearchIndex(ExtraWorkSpace* p_exWorkSpace,
                 QueryResult& p_queryResults,
                 std::shared_ptr<VectorIndex> p_index,
                 SearchStats* p_stats, const COMMON::VersionLabel& m_versionMap, std::set<int>* truth, std::map<int, std::set<int>>* found) override
             {
+                auto exStart = std::chrono::high_resolution_clock::now();
+
                 const auto postingListCount = static_cast<uint32_t>(p_exWorkSpace->m_postingIDs.size());
 
             p_exWorkSpace->m_deduper.clear();
@@ -245,6 +247,12 @@ namespace SPTAG::SPANN
                 auto compEnd = std::chrono::high_resolution_clock::now();
 
                 compLatency += ((double)std::chrono::duration_cast<std::chrono::microseconds>(compEnd - compStart).count());
+
+                auto exEnd = std::chrono::high_resolution_clock::now();
+
+                if ((((double)std::chrono::duration_cast<std::chrono::milliseconds>(exEnd - exStart).count()) + p_stats->m_totalLatency) >= m_hardLatencyLimit) {
+                    break;
+                }
 
                 if (truth) {
                     for (int i = 0; i < vectorNum; ++i) {
@@ -528,7 +536,7 @@ namespace SPTAG::SPANN
         inline ErrorCode DeleteIndex(SizeType headID) override { m_postingNum--; return db.Delete(headID); }
         inline ErrorCode OverrideIndex(SizeType headID, const std::string& posting) override { return db.Put(headID, posting); }
         inline SizeType  GetIndexSize() override { return m_postingNum; }
-        inline SizeType  GetPostingSizeLimit() override { return m_postingSizeLimit; /*return INT_MAX*/; }
+        inline SizeType  GetPostingSizeLimit() override { return m_postingSizeLimit;  /*return INT_MAX;*/ }
         inline SizeType  GetMetaDataSize() override { return m_metaDataSize;}
     private:
         struct ListInfo
@@ -668,6 +676,8 @@ namespace SPTAG::SPANN
         int m_postingSizeLimit = INT_MAX;
 
         int m_metaDataSize = 0;
+
+        float m_hardLatencyLimit = 30;
     };
 } // namespace SPTAG
 
