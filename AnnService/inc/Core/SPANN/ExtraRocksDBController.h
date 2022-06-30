@@ -42,10 +42,10 @@ namespace SPTAG::SPANN
             dbOptions.IncreaseParallelism();
             dbOptions.OptimizeLevelStyleCompaction();
             dbOptions.merge_operator.reset(new AnnMergeOperator);
-            /*
+            
             dbOptions.use_direct_io_for_flush_and_compaction = true;
             dbOptions.use_direct_reads = true;
-            */
+            
             rocksdb::BlockBasedTableOptions table_options;
             table_options.no_block_cache = true;
             dbOptions.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
@@ -536,7 +536,7 @@ namespace SPTAG::SPANN
         inline ErrorCode DeleteIndex(SizeType headID) override { m_postingNum--; return db.Delete(headID); }
         inline ErrorCode OverrideIndex(SizeType headID, const std::string& posting) override { return db.Put(headID, posting); }
         inline SizeType  GetIndexSize() override { return m_postingNum; }
-        inline SizeType  GetPostingSizeLimit() override { return m_postingSizeLimit;  /*return INT_MAX;*/ }
+        inline SizeType  GetPostingSizeLimit() override { return m_postingSizeLimit; /*return INT_MAX;*/ }
         inline SizeType  GetMetaDataSize() override { return m_metaDataSize;}
     private:
         struct ListInfo

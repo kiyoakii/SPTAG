@@ -665,7 +665,7 @@ namespace SPTAG
             }
 
             //Measure that in "headID" posting list, how many vectors break their assumption
-            int QuantifyAssumptionBroken(SizeType headID, std::string& postingList, SizeType SplitHead, std::vector<SizeType>& newHeads)
+            int QuantifyAssumptionBroken(SizeType headID, std::string& postingList, SizeType SplitHead, std::vector<SizeType>& newHeads, int topK = 0, float ratio = 1.0)
             {
                 int assumptionBrokenNum = 0;
                 int m_vectorInfoSize = sizeof(T) * m_options.m_dim + m_metaDataSize;
@@ -689,6 +689,7 @@ namespace SPTAG
                     headCandidates.SetTarget(reinterpret_cast<T*>(vectorId + m_metaDataSize));
                     headCandidates.Reset();
                     if (IsAssumptionBroken(headID, headCandidates, vid)) {
+                        /*
                         float_t headDist = m_index->ComputeDistance(headCandidates.GetTarget(), m_index->GetSample(SplitHead));
                         float_t newHeadDist_1 = m_index->ComputeDistance(headCandidates.GetTarget(), m_index->GetSample(newHeads[0]));
                         float_t newHeadDist_2 = m_index->ComputeDistance(headCandidates.GetTarget(), m_index->GetSample(newHeads[1]));
@@ -702,6 +703,7 @@ namespace SPTAG
                         LOG(Helper::LogLevel::LL_Info, "broken vid to new head 1 distance: %f, to new head 2 distance: %f\n", newHeadDist_1, newHeadDist_2);
                         LOG(Helper::LogLevel::LL_Info, "head to spilit head distance: %f\n", splitDist);
                         LOG(Helper::LogLevel::LL_Info, "head to new head 1 distance: %f, to new head 2 distance: %f\n", headToNewHeadDist_1, headToNewHeadDist_2);
+                        */
                         assumptionBrokenNum++;
                     }
                 }
@@ -709,7 +711,15 @@ namespace SPTAG
                     std::sort(distanceSet.begin(), distanceSet.end());
                     minDist = distanceSet[1];
                     maxDist = distanceSet[distanceSet.size() - 1];
-                    LOG(Helper::LogLevel::LL_Info, "distance: min: %f, max: %f, avg: %f, 50th: %f\n", minDist, maxDist, avgDist/postVectorNum, distanceSet[distanceSet.size() * 0.5]);
+                    // LOG(Helper::LogLevel::LL_Info, "distance: min: %f, max: %f, avg: %f, 50th: %f\n", minDist, maxDist, avgDist/postVectorNum, distanceSet[distanceSet.size() * 0.5]);
+                    LOG(Helper::LogLevel::LL_Info, "assumption broken num: %d\n", assumptionBrokenNum);
+                    float_t splitDist = m_index->ComputeDistance(m_index->GetSample(SplitHead), m_index->GetSample(headID));
+
+                    float_t headToNewHeadDist_1 = m_index->ComputeDistance(m_index->GetSample(headID), m_index->GetSample(newHeads[0]));
+                    float_t headToNewHeadDist_2 = m_index->ComputeDistance(m_index->GetSample(headID), m_index->GetSample(newHeads[1]));
+
+                    LOG(Helper::LogLevel::LL_Info, "head to spilit head distance: %f/%d/%.2f\n", splitDist, topK, ratio);
+                    LOG(Helper::LogLevel::LL_Info, "head to new head 1 distance: %f, to new head 2 distance: %f\n", headToNewHeadDist_1, headToNewHeadDist_2);
                 }
                 return assumptionBrokenNum;
             }
@@ -728,7 +738,7 @@ namespace SPTAG
             void QuantifySplitCaseB(SizeType headID, std::vector<SizeType>& newHeads, SizeType SplitHead)
             {
                 auto headVector = reinterpret_cast<const T*>(m_index->GetSample(headID));
-                COMMON::QueryResultSet<T> nearbyHeads(NULL, 64);
+                COMMON::QueryResultSet<T> nearbyHeads(NULL, 128);
                 nearbyHeads.SetTarget(headVector);
                 nearbyHeads.Reset();
                 std::vector<std::string> postingLists;
@@ -739,20 +749,24 @@ namespace SPTAG
                 int assumptionBrokenNum = 0;
                 int i;
                 int vectorNum = 0;
+                float furthestDist = 0;
                 for (i = 0; i < nearbyHeads.GetResultNum(); i++) {
                     if (queryResults[i].VID == -1) {
                         break;
                     }
+                    furthestDist = queryResults[i].Dist;
                     if (i == topk) {
-                        LOG(Helper::LogLevel::LL_Info, "After Split, Top%d nearby posting lists, caseB : %d/%d\n", topk, assumptionBrokenNum, vectorNum);
+                        LOG(Helper::LogLevel::LL_Info, "After Split, Top%d nearby posting lists, caseB : %d/%d\n", i, assumptionBrokenNum, vectorNum);
+                        LOG(Helper::LogLevel::LL_Info, "Top%d Dist: %f\n", i, furthestDist);
                         topk *= 2;
                     }
                     if (queryResults[i].VID == newHeads[0] || queryResults[i].VID == newHeads[1]) continue;
                     m_extraSearcher->SearchIndex(queryResults[i].VID, postingList);
                     vectorNum += postingList.size() / (sizeof(T) * m_options.m_dim + m_metaDataSize);
-                    assumptionBrokenNum += QuantifyAssumptionBroken(queryResults[i].VID, postingList, SplitHead, newHeads);
+                    assumptionBrokenNum += QuantifyAssumptionBroken(queryResults[i].VID, postingList, SplitHead, newHeads, i, queryResults[i].Dist/queryResults[1].Dist);
                 }
                 LOG(Helper::LogLevel::LL_Info, "After Split, Top%d nearby posting lists, caseB : %d/%d\n", i, assumptionBrokenNum, vectorNum);
+                LOG(Helper::LogLevel::LL_Info, "Top%d Dist: %f\n", i, furthestDist);
             }
 
             void QuantifySplit(SizeType headID, std::vector<std::string>& postingLists, std::vector<SizeType>& newHeads, SizeType SplitHead, int split_order)
@@ -776,7 +790,7 @@ namespace SPTAG
                 }
                 */
 
-                // if (headDist >= (currentHeadDist + headToSplitHeadDist) ) return false;
+                if (headDist * headDist >= (currentHeadDist * currentHeadDist + headToSplitHeadDist * headToSplitHeadDist) ) return false;
 
                 float_t newHeadDist_1 = m_index->ComputeDistance(data, m_index->GetSample(newHeads[0]));
                 float_t newHeadDist_2 = m_index->ComputeDistance(data, m_index->GetSample(newHeads[1]));
