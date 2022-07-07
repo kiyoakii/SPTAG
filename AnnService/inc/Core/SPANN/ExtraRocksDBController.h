@@ -30,6 +30,11 @@ namespace SPTAG::SPANN
         RocksDBIO() = default;
 
         ~RocksDBIO() override {
+            /*
+            std::string stats;
+            db->GetProperty("rocksdb.stats", &stats);
+            LOG(Helper::LogLevel::LL_Info, "RocksDB Status: %s\n%s", dbPath.c_str(),stats.c_str());
+            */
             db->Close();
             //DestroyDB(dbPath, dbOptions);
             delete db;
@@ -38,14 +43,15 @@ namespace SPTAG::SPANN
         bool Initialize(const char* filePath) override
         {
             dbPath = std::string(filePath);
+            //dbOptions.statistics = rocksdb::CreateDBStatistics();
             dbOptions.create_if_missing = true;
             dbOptions.IncreaseParallelism();
             dbOptions.OptimizeLevelStyleCompaction();
             dbOptions.merge_operator.reset(new AnnMergeOperator);
-            
+            /*
             dbOptions.use_direct_io_for_flush_and_compaction = true;
             dbOptions.use_direct_reads = true;
-            
+            */
             rocksdb::BlockBasedTableOptions table_options;
             table_options.no_block_cache = true;
             dbOptions.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
@@ -138,9 +144,18 @@ namespace SPTAG::SPANN
         }
 
         void ForceCompaction() {
+            /*
+            std::string stats;
+            db->GetProperty("rocksdb.stats", &stats);
+            LOG(Helper::LogLevel::LL_Info, "RocksDB Status:\n%s", stats.c_str());
+            */
             LOG(Helper::LogLevel::LL_Info, "Start Compaction\n");
             db->CompactRange(rocksdb::CompactRangeOptions(), nullptr, nullptr);
             LOG(Helper::LogLevel::LL_Info, "Finish Compaction\n");
+            /*
+            db->GetProperty("rocksdb.stats", &stats);
+            LOG(Helper::LogLevel::LL_Info, "RocksDB Status:\n%s", stats.c_str());
+            */
         }
     private:
         std::string dbPath;
@@ -677,7 +692,7 @@ namespace SPTAG::SPANN
 
         int m_metaDataSize = 0;
 
-        float m_hardLatencyLimit = 30;
+        float m_hardLatencyLimit = 2;
     };
 } // namespace SPTAG
 

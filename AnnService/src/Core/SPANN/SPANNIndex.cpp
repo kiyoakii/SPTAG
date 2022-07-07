@@ -1083,20 +1083,29 @@ namespace SPTAG
                 m_postingSizes[headID] = 0;
             }
             lock.unlock();
-            ++m_splitNum;
+            int split_order = ++m_splitNum;
             // m_splitUpdateIndexCost += sw.getElapsedMs() - clusterEndTime;
             // if (theSameHead) LOG(Helper::LogLevel::LL_Info, "The Same Head\n");
             // LOG(Helper::LogLevel::LL_Info, "head1:%d, head2:%d\n", newHeadsID[0], newHeadsID[1]);
 
-            // QuantifySplit(headID, newPostingLists, newHeadsID, headID, 0);
+            // QuantifySplit(headID, newPostingLists, newHeadsID, headID, split_order);
             // QuantifyAssumptionBrokenTotally();
             // exit(1);
 
             if (!m_options.m_disableReassign) ReAssign(headID, newPostingLists, newHeadsID);
 
+            /*
+            while (!ReassignFinished())
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+            */
+            
+            
             //LOG(Helper::LogLevel::LL_Info, "After ReAssign\n");
 
-            //QuantifySplit(headID, newPostingLists, newHeadsID, split_order);
+            // QuantifySplit(headID, newPostingLists, newHeadsID, headID, split_order);
+            // exit(1);
             return ErrorCode::Success;
         }
 
@@ -1112,12 +1121,17 @@ namespace SPTAG
                 nearbyHeads.Reset();
                 m_index->SearchIndex(nearbyHeads);
                 BasicResult* queryResults = nearbyHeads.GetResults();
+                float baseDist = queryResults[0].Dist;
+                if (baseDist == 0) baseDist = queryResults[1].Dist;
                 for (int i = 0; i < nearbyHeads.GetResultNum(); i++) {
                     std::string tempPostingList;
                     auto vid = queryResults[i].VID;
                     if (vid == -1) {
                         break;
                     }
+                        
+                    if (queryResults[i].Dist/baseDist > 1.7) break;
+
                     if (find(newHeadsID.begin(), newHeadsID.end(), vid) == newHeadsID.end()) {
                         m_extraSearcher->SearchIndex(vid, tempPostingList);
                         postingLists.push_back(tempPostingList);
@@ -1273,6 +1287,12 @@ namespace SPTAG
                 auto headID = selections[i].headID;
                 //LOG(Helper::LogLevel::LL_Info, "Reassign: headID :%d, oldVID:%d, newVID:%d, posting length: %d, dist: %f, string size: %d\n", headID, oldVID, VID, m_postingSizes[headID].load(), selections[i].distance, newPart.size());
                 Append(headID, 1, newPart);
+                /*
+                if (m_extraSearcher->AppendPosting(headID, newPart) != ErrorCode::Success) {
+                    LOG(Helper::LogLevel::LL_Error, "Merge failed!\n");
+                }
+                m_postingSizes[headID].fetch_add(1, std::memory_order_relaxed);
+                */
             }
         }
 
