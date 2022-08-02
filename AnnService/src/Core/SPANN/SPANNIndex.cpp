@@ -598,7 +598,7 @@ namespace SPTAG
 
                 if (m_options.m_useKV)
                 {
-                    m_extraSearcher.reset(new ExtraRocksDBController<T>(m_options.m_KVPath.c_str(), m_options.m_dim, m_options.m_postingPageLimit * PageSize / (sizeof(T)*m_options.m_dim + sizeof(int) )));
+                    m_extraSearcher.reset(new ExtraRocksDBController<T>(m_options.m_KVPath.c_str(), m_options.m_dim, m_options.m_postingPageLimit * PageSize / (sizeof(T)*m_options.m_dim + sizeof(int) ), m_options.m_useDirectIO, m_options.m_latencyLimit));
                 } else {
                     m_extraSearcher.reset(new ExtraFullGraphSearcher<T>());
                 }
@@ -653,31 +653,23 @@ namespace SPTAG
                     //ForceCompaction();
                 }
             }
-            /*
-            if (m_options.m_update) {
-                */
-                //m_rwLocks = std::make_unique<std::shared_timed_mutex[]>(500000000);
-                //m_reassignedID.Initialize(m_vectorNum.load(), m_options.m_datasetRowsInBlock, m_options.m_datasetCapacity);
-                LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize persistent buffer\n");
-                std::shared_ptr<Helper::KeyValueIO> db;
-                db.reset(new SPANN::RocksDBIO());
-                m_persistentBuffer = std::make_shared<PersistentBuffer>(m_options.m_persistentBufferPath, db);
-                LOG(Helper::LogLevel::LL_Info, "SPFresh: finish initialization\n");
-                LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize thread pools, append: %d, reassign %d\n", m_options.m_appendThreadNum, m_options.m_reassignThreadNum);
-                m_appendThreadPool = std::make_shared<ThreadPool>();
-                m_appendThreadPool->init(m_options.m_appendThreadNum);
-                m_reassignThreadPool = std::make_shared<ThreadPool>();
-                m_reassignThreadPool->init(m_options.m_reassignThreadNum);
-                LOG(Helper::LogLevel::LL_Info, "SPFresh: finish initialization\n");
+            LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize persistent buffer\n");
+            std::shared_ptr<Helper::KeyValueIO> db;
+            db.reset(new SPANN::RocksDBIO());
+            m_persistentBuffer = std::make_shared<PersistentBuffer>(m_options.m_persistentBufferPath, db);
+            LOG(Helper::LogLevel::LL_Info, "SPFresh: finish initialization\n");
+            LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize thread pools, append: %d, reassign %d\n", m_options.m_appendThreadNum, m_options.m_reassignThreadNum);
+            m_appendThreadPool = std::make_shared<ThreadPool>();
+            m_appendThreadPool->init(m_options.m_appendThreadNum);
+            m_reassignThreadPool = std::make_shared<ThreadPool>();
+            m_reassignThreadPool->init(m_options.m_reassignThreadNum);
+            LOG(Helper::LogLevel::LL_Info, "SPFresh: finish initialization\n");
 
-                LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize dispatcher\n");
-                m_dispatcher = std::make_shared<Dispatcher>(m_persistentBuffer, m_options.m_batch, m_appendThreadPool, m_reassignThreadPool, this);
+            LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize dispatcher\n");
+            m_dispatcher = std::make_shared<Dispatcher>(m_persistentBuffer, m_options.m_batch, m_appendThreadPool, m_reassignThreadPool, this);
 
-                m_dispatcher->run();
-                LOG(Helper::LogLevel::LL_Info, "SPFresh: finish initialization\n");
-            /*
-            }
-            */
+            m_dispatcher->run();
+            LOG(Helper::LogLevel::LL_Info, "SPFresh: finish initialization\n");
             auto t4 = std::chrono::high_resolution_clock::now();
             double buildSSDTime = std::chrono::duration_cast<std::chrono::seconds>(t4 - t3).count();
             LOG(Helper::LogLevel::LL_Info, "select head time: %.2lfs build head time: %.2lfs build ssd time: %.2lfs\n", selectHeadTime, buildHeadTime, buildSSDTime);

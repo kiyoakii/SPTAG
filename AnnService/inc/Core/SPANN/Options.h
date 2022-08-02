@@ -93,6 +93,7 @@ namespace SPTAG {
             bool m_useKV;
             std::string m_KVPath;
             std::string m_ssdInfoFile;
+            bool m_useDirectIO;
 
             // GPU building
             int m_gpuSSDNumTrees;
@@ -134,6 +135,7 @@ namespace SPTAG {
 
             // Updating(SPFresh Update Test)
             bool m_update;
+            float m_latencyLimit;
             int m_step;
             int m_insertThreadNum;
             int m_endVectorNum;

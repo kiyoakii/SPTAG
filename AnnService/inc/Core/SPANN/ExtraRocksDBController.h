@@ -40,7 +40,7 @@ namespace SPTAG::SPANN
             delete db;
         }
 
-        bool Initialize(const char* filePath) override
+        bool Initialize(const char* filePath, bool usdDirectIO) override
         {
             dbPath = std::string(filePath);
             //dbOptions.statistics = rocksdb::CreateDBStatistics();
@@ -48,10 +48,12 @@ namespace SPTAG::SPANN
             dbOptions.IncreaseParallelism();
             dbOptions.OptimizeLevelStyleCompaction();
             dbOptions.merge_operator.reset(new AnnMergeOperator);
-            /*
-            dbOptions.use_direct_io_for_flush_and_compaction = true;
-            dbOptions.use_direct_reads = true;
-            */
+            
+            if (usdDirectIO) {
+                dbOptions.use_direct_io_for_flush_and_compaction = true;
+                dbOptions.use_direct_reads = true;
+            }
+            
             rocksdb::BlockBasedTableOptions table_options;
             table_options.no_block_cache = true;
             dbOptions.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
@@ -170,44 +172,17 @@ namespace SPTAG::SPANN
         RocksDBIO db;
         std::atomic_uint64_t m_postingNum{};
     public:
-        ExtraRocksDBController(const char* dbPath, int dim, int vectorlimit) { 
-            db.Initialize(dbPath); 
+        ExtraRocksDBController(const char* dbPath, int dim, int vectorlimit, bool useDirectIO, float searchLatencyHardLimit) { 
+            db.Initialize(dbPath, useDirectIO); 
             m_metaDataSize = sizeof(int) + sizeof(uint8_t) + sizeof(float);
             m_vectorInfoSize = dim * sizeof(ValueType) + m_metaDataSize;
             m_postingSizeLimit = vectorlimit;LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", m_postingSizeLimit);
+            m_hardLatencyLimit = searchLatencyHardLimit;
         }
 
         ~ExtraRocksDBController() override = default;
 
         bool LoadIndex(Options& p_opt) override {
-            /*
-            m_extraFullGraphFile = p_opt.m_indexDirectory + FolderSep + p_opt.m_ssdIndex;
-            std::string curFile = m_extraFullGraphFile;
-            do {
-                auto curIndexFile = f_createAsyncIO();
-                if (curIndexFile == nullptr || !curIndexFile->Initialize(curFile.c_str(), std::ios::binary | std::ios::in,
-#ifdef BATCH_READ
-                    p_opt.m_searchInternalResultNum, 2, 2, p_opt.m_iSSDNumberOfThreads
-#else
-                    p_opt.m_searchInternalResultNum * p_opt.m_iSSDNumberOfThreads / p_opt.m_ioThreads + 1, 2, 2, p_opt.m_ioThreads
-#endif
-                )) {
-                    LOG(Helper::LogLevel::LL_Error, "Cannot open file:%s!\n", curFile.c_str());
-                    return false;
-                }
-
-                m_indexFiles.emplace_back(curIndexFile);
-                m_listInfos.emplace_back(0);
-                m_totalListCount += LoadingHeadInfo(curFile, p_opt.m_searchPostingPageLimit, m_listInfos.back());
-
-                curFile = m_extraFullGraphFile + "_" + std::to_string(m_indexFiles.size());
-            } while (fileexists(curFile.c_str()));
-            m_listPerFile = static_cast<int>((m_totalListCount + m_indexFiles.size() - 1) / m_indexFiles.size());
-
-#ifndef _MSC_VER
-            Helper::AIOTimeout.tv_nsec = p_opt.m_iotimeout * 1000;
-#endif
-            */
             return true;
         }
 

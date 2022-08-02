@@ -10,7 +10,7 @@ namespace SPTAG {
             PersistentBuffer(std::string& fileName, std::shared_ptr<Helper::KeyValueIO> db) : db(db), _size(0)
             {
                 LOG(Helper::LogLevel::LL_Info, "SPFresh: persistent buffer: %s\n", fileName.c_str());
-                db->Initialize(fileName.c_str());
+                db->Initialize(fileName.c_str(), true);
             }
 
             ~PersistentBuffer() {}

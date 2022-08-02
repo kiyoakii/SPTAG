@@ -91,6 +91,7 @@ DefineSSDParameter(m_fullDeletedIDFile, std::string, std::string("fulldeleted"),
 DefineSSDParameter(m_useKV, bool, false, "UseKV")
 DefineSSDParameter(m_KVPath, std::string, std::string(""), "KVPath")
 DefineSSDParameter(m_ssdInfoFile, std::string, std::string(""), "SsdInfoFile")
+DefineSSDParameter(m_useDirectIO, bool, false, "UseDirectIO")
 
 // GPU Building
 DefineSSDParameter(m_gpuSSDNumTrees, int, 100, "GPUSSDNumTrees")
@@ -131,6 +132,8 @@ DefineSSDParameter(m_searchThreadNum, int, 16, "SearchThreadNum")
 // Updating(SPFresh Update Test)
 // For update mode: current only update
 DefineSSDParameter(m_update, bool, false, "Update")
+// latency limit
+DefineSSDParameter(m_latencyLimit, float, 2.0, "LatencyLimit")
 // Update batch size
 DefineSSDParameter(m_step, int, 0, "Step")
 // Frontend update threadnum

@@ -13,7 +13,7 @@ namespace SPTAG
 
             virtual ~KeyValueIO() {}
 
-            virtual bool Initialize(const char* filePath) = 0;
+            virtual bool Initialize(const char* filePath, bool usdDirectIO) = 0;
 
             virtual void ShutDown() = 0;
 
