@@ -135,6 +135,8 @@ namespace SPTAG {
 
             // Updating(SPFresh Update Test)
             bool m_update;
+            bool m_inPlace;
+            bool m_outOfPlace;
             float m_latencyLimit;
             int m_step;
             int m_insertThreadNum;

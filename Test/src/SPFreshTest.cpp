@@ -361,6 +361,14 @@ namespace SPTAG {
                         return ss.m_totalSearchLatency - ss.m_exLatency;
                     },
                     "%.3lf");
+                
+                LOG(Helper::LogLevel::LL_Info, "\nSetup Latency Distribution:\n");
+                PrintPercentiles<double, SPANN::SearchStats>(stats,
+                    [](const SPANN::SearchStats& ss) -> double
+                    {
+                        return ss.m_exSetUpLatency;
+                    },
+                    "%.3lf");
 
                 LOG(Helper::LogLevel::LL_Info, "\nComp Latency Distribution:\n");
                 PrintPercentiles<double, SPANN::SearchStats>(stats,
@@ -424,6 +432,7 @@ namespace SPTAG {
                     totalStats[i].m_diskIOCount = 0;
                     totalStats[i].m_compLatency = 0;
                     totalStats[i].m_diskReadLatency = 0;
+                    totalStats[i].m_exSetUpLatency = 0;
                 }
             }
 
@@ -438,6 +447,7 @@ namespace SPTAG {
                     totalStats[i].m_diskIOCount += addedStats[i].m_diskIOCount;
                     totalStats[i].m_compLatency += addedStats[i].m_compLatency;
                     totalStats[i].m_diskReadLatency += addedStats[i].m_diskReadLatency;
+                    totalStats[i].m_exSetUpLatency += addedStats[i].m_exSetUpLatency;
                 }
             }
 
@@ -452,6 +462,7 @@ namespace SPTAG {
                     totalStats[i].m_diskIOCount /= avgStatsNum;
                     totalStats[i].m_compLatency /= avgStatsNum;
                     totalStats[i].m_diskReadLatency /= avgStatsNum;
+                    totalStats[i].m_exSetUpLatency /= avgStatsNum;
                 }
             }
 

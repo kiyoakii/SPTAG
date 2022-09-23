@@ -132,6 +132,9 @@ DefineSSDParameter(m_searchThreadNum, int, 16, "SearchThreadNum")
 // Updating(SPFresh Update Test)
 // For update mode: current only update
 DefineSSDParameter(m_update, bool, false, "Update")
+// For Test Mode
+DefineSSDParameter(m_inPlace, bool, false, "InPlace")
+DefineSSDParameter(m_outOfPlace, bool, false, "OutOfPlace")
 // latency limit
 DefineSSDParameter(m_latencyLimit, float, 2.0, "LatencyLimit")
 // Update batch size

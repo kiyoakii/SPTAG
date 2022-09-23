@@ -75,6 +75,8 @@ namespace SPTAG {
 
             double m_diskReadLatency;
 
+            double m_exSetUpLatency;
+
             std::chrono::steady_clock::time_point m_searchRequestTime;
 
             int m_threadID;

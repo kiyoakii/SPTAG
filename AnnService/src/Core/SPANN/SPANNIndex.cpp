@@ -249,6 +249,7 @@ namespace SPTAG
 
                 p_stats->m_totalLatency += ((double)std::chrono::duration_cast<std::chrono::milliseconds>(exEnd - exStart).count());
 
+
                 m_extraSearcher->SearchIndex(auto_ws.get(), newResults, m_index, p_stats, m_versionMap, truth, found);
             }
 
@@ -256,6 +257,7 @@ namespace SPTAG
 
             newResults.SortResult();
             std::copy(newResults.GetResults(), newResults.GetResults() + newResults.GetResultNum(), p_query.GetResults());
+
             return ErrorCode::Success;
         }
 #pragma endregion
@@ -598,7 +600,12 @@ namespace SPTAG
 
                 if (m_options.m_useKV)
                 {
-                    m_extraSearcher.reset(new ExtraRocksDBController<T>(m_options.m_KVPath.c_str(), m_options.m_dim, m_options.m_postingPageLimit * PageSize / (sizeof(T)*m_options.m_dim + sizeof(int) ), m_options.m_useDirectIO, m_options.m_latencyLimit));
+                    if (m_options.m_inPlace) {
+                        m_extraSearcher.reset(new ExtraRocksDBController<T>(m_options.m_KVPath.c_str(), m_options.m_dim, INT_MAX, m_options.m_useDirectIO, m_options.m_latencyLimit));
+                    }
+                    else {
+                        m_extraSearcher.reset(new ExtraRocksDBController<T>(m_options.m_KVPath.c_str(), m_options.m_dim, m_options.m_postingPageLimit * PageSize / (sizeof(T)*m_options.m_dim + sizeof(int) ), m_options.m_useDirectIO, m_options.m_latencyLimit));
+                    }
                 } else {
                     m_extraSearcher.reset(new ExtraFullGraphSearcher<T>());
                 }

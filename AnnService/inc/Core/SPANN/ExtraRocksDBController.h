@@ -36,7 +36,7 @@ namespace SPTAG::SPANN
             LOG(Helper::LogLevel::LL_Info, "RocksDB Status: %s\n%s", dbPath.c_str(),stats.c_str());
             */
             db->Close();
-            //DestroyDB(dbPath, dbOptions);
+            DestroyDB(dbPath, dbOptions);
             delete db;
         }
 
@@ -197,6 +197,10 @@ namespace SPTAG::SPANN
 
             p_exWorkSpace->m_deduper.clear();
 
+            auto exSetUpEnd = std::chrono::high_resolution_clock::now();
+
+            p_stats->m_exSetUpLatency = ((double)std::chrono::duration_cast<std::chrono::microseconds>(exSetUpEnd - exStart).count()) / 1000;
+
             COMMON::QueryResultSet<ValueType>& queryResults = *((COMMON::QueryResultSet<ValueType>*)&p_queryResults);
 
             int diskRead = 0;
@@ -205,6 +209,7 @@ namespace SPTAG::SPANN
 
             double compLatency = 0;
             double readLatency = 0;
+
 
             for (uint32_t pi = 0; pi < postingListCount; ++pi)
             {
@@ -240,7 +245,7 @@ namespace SPTAG::SPANN
 
                 auto exEnd = std::chrono::high_resolution_clock::now();
 
-                if ((((double)std::chrono::duration_cast<std::chrono::milliseconds>(exEnd - exStart).count()) + p_stats->m_totalLatency) >= m_hardLatencyLimit) {
+                if ((((double)std::chrono::duration_cast<std::chrono::microseconds>(exEnd - exStart).count()) / 1000 + p_stats->m_totalLatency) >= m_hardLatencyLimit) {
                     break;
                 }
 
@@ -370,14 +375,15 @@ namespace SPTAG::SPANN
             auto t3 = std::chrono::high_resolution_clock::now();
             LOG(Helper::LogLevel::LL_Info, "Time to sort selections:%.2lf sec.\n", ((double)std::chrono::duration_cast<std::chrono::seconds>(t3 - t2).count()) + ((double)std::chrono::duration_cast<std::chrono::milliseconds>(t3 - t2).count()) / 1000);
 
+            auto postingSizeLimit = m_postingSizeLimit;
+
             if (p_opt.m_postingPageLimit > 0)
             {
-                m_postingSizeLimit = static_cast<int>(p_opt.m_postingPageLimit * PageSize / vectorInfoSize);
+                postingSizeLimit = static_cast<int>(p_opt.m_postingPageLimit * PageSize / vectorInfoSize);
             }
 
-            LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", m_postingSizeLimit);
+            LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", postingSizeLimit);
 
-            auto postingSizeLimit = m_postingSizeLimit;
 
             {
                 std::vector<int> replicaCountDist(p_opt.m_replicaCount + 1, 0);
@@ -430,12 +436,12 @@ namespace SPTAG::SPANN
                         }
                     }
                 }
+            }
 
-                LOG(Helper::LogLevel::LL_Info, "After Posting Cut:\n");
-                for (int i = 0; i < replicaCountDist.size(); ++i)
-                {
-                    LOG(Helper::LogLevel::LL_Info, "Replica Count Dist: %d, %d\n", i, replicaCountDist[i]);
-                }
+            LOG(Helper::LogLevel::LL_Info, "After Posting Cut:\n");
+            for (int i = 0; i < replicaCountDist.size(); ++i)
+            {
+                LOG(Helper::LogLevel::LL_Info, "Replica Count Dist: %d, %d\n", i, replicaCountDist[i]);
             }
 
             auto t4 = std::chrono::high_resolution_clock::now();
@@ -526,7 +532,7 @@ namespace SPTAG::SPANN
         inline ErrorCode DeleteIndex(SizeType headID) override { m_postingNum--; return db.Delete(headID); }
         inline ErrorCode OverrideIndex(SizeType headID, const std::string& posting) override { return db.Put(headID, posting); }
         inline SizeType  GetIndexSize() override { return m_postingNum; }
-        inline SizeType  GetPostingSizeLimit() override { return m_postingSizeLimit; /*return INT_MAX;*/ }
+        inline SizeType  GetPostingSizeLimit() override { return m_postingSizeLimit;}
         inline SizeType  GetMetaDataSize() override { return m_metaDataSize;}
     private:
         struct ListInfo
