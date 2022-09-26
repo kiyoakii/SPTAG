@@ -75,7 +75,7 @@ namespace SPTAG {
                     collects.push_back(tmp);
                 }
                 if (reverse) {
-                    std::sort(collects.begin(), collects.end(), std::greater<int>());
+                    std::sort(collects.begin(), collects.end(), std::greater<T>());
                 }
                 else {
                     std::sort(collects.begin(), collects.end());
@@ -273,6 +273,17 @@ namespace SPTAG {
                     stdrecall += (thisrecall[i] - meanrecall) * (thisrecall[i] - meanrecall);
                 }
                 stdrecall = std::sqrt(stdrecall / NumQuerys);
+
+                LOG(Helper::LogLevel::LL_Info, "stdrecall: %.6lf, maxrecall: %.2lf, minrecall: %.2lf\n", stdrecall, maxrecall, minrecall);
+
+                LOG(Helper::LogLevel::LL_Info, "\nRecall Distribution:\n");
+                PrintPercentiles<float, float>(thisrecall,
+                    [](const float recall) -> float
+                    {
+                        return recall;
+                    },
+                    "%.3lf", true);
+                
                 if (log) (*log) << meanrecall << " " << stdrecall << " " << minrecall << " " << maxrecall << std::endl;
                 return meanrecall;
             }

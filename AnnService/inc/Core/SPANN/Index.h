@@ -789,28 +789,20 @@ namespace SPTAG
                 QuantifySplitCaseB(headID, newHeads, SplitHead, split_order, assumptionBrokenNum, brokenID);
             }
 
-            bool CheckIsNeedReassign(std::vector<SizeType>& newHeads, T* data, SizeType splitHead, float_t headToSplitHeadDist, float_t currentHeadDist)
+            bool CheckIsNeedReassign(std::vector<SizeType>& newHeads, T* data, SizeType splitHead, float_t headToSplitHeadDist, float_t currentHeadDist, bool isInSplitHead)
             {
                 
                 float_t headDist = m_index->ComputeDistance(data, m_index->GetSample(splitHead));
-
-                /*
-                if (headToSplitHeadDist != -1 ) {
-
-                    float_t headToNewHeadDist_1 = m_index->ComputeDistance(m_index->GetSample(currentHead), m_index->GetSample(newHeads[0]));
-                    float_t headToNewHeadDist_2 = m_index->ComputeDistance(m_index->GetSample(currentHead), m_index->GetSample(newHeads[1]));
-
-                    if (headDist > headToSplitHeadDist && headDist > headToNewHeadDist_1 && headDist > headToNewHeadDist_2) return false;
-                }
-                */
                 
+                // if (headDist * headDist >= (currentHeadDist * currentHeadDist + headToSplitHeadDist * headToSplitHeadDist) ) return false;
 
-                if (headDist * headDist >= (currentHeadDist * currentHeadDist + headToSplitHeadDist * headToSplitHeadDist) ) return false;
-
-                float_t newHeadDist_1 = m_index->ComputeDistance(data, m_index->GetSample(newHeads[0]));
-                float_t newHeadDist_2 = m_index->ComputeDistance(data, m_index->GetSample(newHeads[1]));
-                 
-                if (headDist <= newHeadDist_1 && headDist <= newHeadDist_2) return false;
+                if (isInSplitHead) {
+                    if (headDist >= currentHeadDist) return false;
+                } else {
+                    float_t newHeadDist_1 = m_index->ComputeDistance(data, m_index->GetSample(newHeads[0]));
+                    float_t newHeadDist_2 = m_index->ComputeDistance(data, m_index->GetSample(newHeads[1]));
+                    if (headDist <= newHeadDist_1 && headDist <= newHeadDist_2) return false;
+                }
                 
                 return true;
             }

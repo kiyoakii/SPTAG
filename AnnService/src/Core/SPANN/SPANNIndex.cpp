@@ -660,6 +660,7 @@ namespace SPTAG
                     //ForceCompaction();
                 }
             }
+            
             LOG(Helper::LogLevel::LL_Info, "SPFresh: initialize persistent buffer\n");
             std::shared_ptr<Helper::KeyValueIO> db;
             db.reset(new SPANN::RocksDBIO());
@@ -677,6 +678,7 @@ namespace SPTAG
 
             m_dispatcher->run();
             LOG(Helper::LogLevel::LL_Info, "SPFresh: finish initialization\n");
+            
             auto t4 = std::chrono::high_resolution_clock::now();
             double buildSSDTime = std::chrono::duration_cast<std::chrono::seconds>(t4 - t3).count();
             LOG(Helper::LogLevel::LL_Info, "select head time: %.2lfs build head time: %.2lfs build ssd time: %.2lfs\n", selectHeadTime, buildHeadTime, buildSSDTime);
@@ -1166,7 +1168,7 @@ namespace SPTAG
                     if (dist < Epsilon) continue;
                     if (i <= 1) {
                         if (!CheckIdDeleted(vid) && CheckVersionValid(vid, version)) {
-                            if (CheckIsNeedReassign(newHeadsID, reinterpret_cast<ValueType*>(vectorId + m_metaDataSize), headID, newHeadDist[i], dist)) {
+                            if (CheckIsNeedReassign(newHeadsID, reinterpret_cast<ValueType*>(vectorId + m_metaDataSize), headID, newHeadDist[i], dist, true)) {
                                 reAssignVectorsTop0[vid] = reinterpret_cast<ValueType*>(vectorId + m_metaDataSize);
                                 reAssignVectorsHeadPrevTop0[vid] = newHeadsID[i];
                                 versionsTop0[vid] = version;
@@ -1176,7 +1178,7 @@ namespace SPTAG
                         if ((reAssignVectorsTop0.find(vid) == reAssignVectorsTop0.end()))
                         {
                             if (reAssignVectorsTopK.find(vid) == reAssignVectorsTopK.end() && !CheckIdDeleted(vid) && CheckVersionValid(vid, version)) {
-                                if (CheckIsNeedReassign(newHeadsID, reinterpret_cast<ValueType*>(vectorId + m_metaDataSize), headID, HeadPrevToSplitHeadDist[i-2], dist)) {
+                                if (CheckIsNeedReassign(newHeadsID, reinterpret_cast<ValueType*>(vectorId + m_metaDataSize), headID, HeadPrevToSplitHeadDist[i-2], dist, false)) {
                                     reAssignVectorsTopK[vid] = reinterpret_cast<ValueType*>(vectorId + m_metaDataSize);
                                     reAssignVectorsHeadPrevTopK[vid] = HeadPrevTopK[i-2];
                                     versionsTopK[vid] = version;

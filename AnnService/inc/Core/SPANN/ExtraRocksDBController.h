@@ -436,13 +436,13 @@ namespace SPTAG::SPANN
                         }
                     }
                 }
+                LOG(Helper::LogLevel::LL_Info, "After Posting Cut:\n");
+                for (int i = 0; i < replicaCountDist.size(); ++i)
+                {
+                    LOG(Helper::LogLevel::LL_Info, "Replica Count Dist: %d, %d\n", i, replicaCountDist[i]);
+                }
             }
 
-            LOG(Helper::LogLevel::LL_Info, "After Posting Cut:\n");
-            for (int i = 0; i < replicaCountDist.size(); ++i)
-            {
-                LOG(Helper::LogLevel::LL_Info, "Replica Count Dist: %d, %d\n", i, replicaCountDist[i]);
-            }
 
             auto t4 = std::chrono::high_resolution_clock::now();
             LOG(SPTAG::Helper::LogLevel::LL_Info, "Time to perform posting cut:%.2lf sec.\n", ((double)std::chrono::duration_cast<std::chrono::seconds>(t4 - t3).count()) + ((double)std::chrono::duration_cast<std::chrono::milliseconds>(t4 - t3).count()) / 1000);
