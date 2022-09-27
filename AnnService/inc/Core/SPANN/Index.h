@@ -789,6 +789,42 @@ namespace SPTAG
                 QuantifySplitCaseB(headID, newHeads, SplitHead, split_order, assumptionBrokenNum, brokenID);
             }
 
+            bool CheckIsInMiddleOfTwoHead(T* data, std::vector<SizeType>& newHeads, SizeType currentHead, float_t currentHeadDist, SizeType splitHead)
+            {
+                float_t splitHeadDist = m_index->ComputeDistance(data, m_index->GetSample(splitHead));
+
+                float_t newHeadToHeadDist_1 = m_index->ComputeDistance(m_index->GetSample(newHeads[0]), m_index->GetSample(currentHead));
+                float_t newHeadToVectorDist_1 = m_index->ComputeDistance(m_index->GetSample(newHeads[0]), data);
+
+                float_t newHeadToHeadDist_2 = m_index->ComputeDistance(m_index->GetSample(newHeads[1]), m_index->GetSample(currentHead));
+                float_t newHeadToVectorDist_2 = m_index->ComputeDistance(m_index->GetSample(newHeads[1]), data);
+                // if (newHeadToHeadDist_1 >= newHeadToVectorDist_1 || newHeadToHeadDist_2 >= newHeadToVectorDist_2) return true;
+
+                if (newHeadToHeadDist_1 < currentHeadDist || newHeadToHeadDist_2 < currentHeadDist) return true;
+
+                // LOG(Helper::LogLevel::LL_Info, "NewHeadToHeadDist_1: %f, NewHeadToHeadDist_2: %f, newHeadToVectorDist_1: %f, newHeadToVectorDist_2: %f,  currentHeadDist: %f, splitHeadDist: %f\n", 
+                //  newHeadToHeadDist_1, newHeadToHeadDist_2, newHeadToVectorDist_1, newHeadToVectorDist_2, currentHeadDist, splitHeadDist);
+                return false;
+            }
+
+            bool CheckIsReallyNeedReassign(T* data, std::vector<SizeType>& newHeads, SizeType currentHead)
+            {
+                COMMON::QueryResultSet<T> p_queryResults(NULL, m_options.m_internalResultNum);
+                p_queryResults.SetTarget(reinterpret_cast<T*>(data));
+                p_queryResults.Reset();
+                m_index->SearchIndex(p_queryResults);
+                BasicResult* queryResults = p_queryResults.GetResults();
+                for (int i = 0; i < p_queryResults.GetResultNum(); ++i) {
+                    if (queryResults[i].VID == -1 || queryResults[i].VID == currentHead) {
+                        break;
+                    }
+                    for (auto headID : newHeads) {
+                        if (queryResults[i].VID == headID) return true;
+                    }
+                }
+                return false;
+            }
+
             bool CheckIsNeedReassign(std::vector<SizeType>& newHeads, T* data, SizeType splitHead, float_t headToSplitHeadDist, float_t currentHeadDist, bool isInSplitHead)
             {
                 

@@ -12,6 +12,8 @@
 #include "inc/Helper/VectorSetReader.h"
 
 #include <iomanip>
+#include <iostream>
+#include <fstream>
 
 using namespace SPTAG;
 
@@ -563,8 +565,6 @@ namespace SPTAG {
                 int truthK = (p_opts.m_truthResultNum <= 0) ? K : p_opts.m_truthResultNum;
                 int searchTimes = p_opts.m_searchTimes;
 
-                int KList[5] = {1, 5, 10, 20, 50};
-
                 std::shared_ptr<VectorSet> vectorSet;
 
                 LOG(Helper::LogLevel::LL_Info, "Start loading VectorSet...\n");
@@ -1077,6 +1077,20 @@ namespace SPTAG {
                 StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 
                 LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
+
+                int tSize = 0, resident = 0, share = 0;
+                std::ifstream buffer("/proc/self/statm");
+                buffer >> tSize >> resident >> share;
+                buffer.close();
+
+                long page_size_kb = sysconf(_SC_PAGE_SIZE) / 1024; // in case x86-64 is configured to use 2MB pages
+                double rss = resident * page_size_kb;
+                std::cout << "RSS - " << rss << " kB\n";
+
+                double shared_mem = share * page_size_kb;
+                std::cout << "Shared Memory - " << shared_mem << " kB\n";
+
+                std::cout << "Private Memory - " << rss - shared_mem << "kB\n";
 
                 std::shared_ptr<VectorSet> vectorSet;
 
