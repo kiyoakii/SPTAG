@@ -64,6 +64,22 @@ namespace SPTAG {
                 }
             };
 
+            void ShowMemoryStatus()
+            {
+                int tSize = 0, resident = 0, share = 0;
+                std::ifstream buffer("/proc/self/statm");
+                buffer >> tSize >> resident >> share;
+                buffer.close();
+                long page_size_kb = sysconf(_SC_PAGE_SIZE) / 1024; // in case x86-64 is configured to use 2MB pages
+                double rss = resident * page_size_kb;
+
+                LOG(Helper::LogLevel::LL_Info,"RSS : .6lf KB\n", rss);
+
+                double shared_mem = share * page_size_kb;
+                LOG(Helper::LogLevel::LL_Info,"Shared Memory : .6lf KB\n", shared_mem);
+                LOG(Helper::LogLevel::LL_Info,"Private Memory : .6lf KB\n", rss - shared_mem);
+            }
+
             template<typename T, typename V>
             void PrintPercentiles(const std::vector<V>& p_values, std::function<T(const V&)> p_get, const char* p_format, bool reverse=false)
             {
@@ -1077,20 +1093,6 @@ namespace SPTAG {
                 StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 
                 LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
-
-                int tSize = 0, resident = 0, share = 0;
-                std::ifstream buffer("/proc/self/statm");
-                buffer >> tSize >> resident >> share;
-                buffer.close();
-
-                long page_size_kb = sysconf(_SC_PAGE_SIZE) / 1024; // in case x86-64 is configured to use 2MB pages
-                double rss = resident * page_size_kb;
-                std::cout << "RSS - " << rss << " kB\n";
-
-                double shared_mem = share * page_size_kb;
-                std::cout << "Shared Memory - " << shared_mem << " kB\n";
-
-                std::cout << "Private Memory - " << rss - shared_mem << "kB\n";
 
                 std::shared_ptr<VectorSet> vectorSet;
 
