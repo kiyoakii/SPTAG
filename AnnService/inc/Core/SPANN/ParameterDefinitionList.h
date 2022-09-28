@@ -164,4 +164,5 @@ DefineSSDParameter(m_postingVectorLimit, int, 1000, "PostingSearchVectorLimit")
 DefineSSDParameter(m_disableReassign, bool, false, "DisableReassign")
 DefineSSDParameter(m_addDeleteTaskToPM, bool, false, "AddDeleteTaskToLog")
 DefineSSDParameter(m_reassignK, int, 0, "ReassignK")
+DefineSSDParameter(m_maxHeadNode, int, 200000000, "MaxHeadNode")
 #endif

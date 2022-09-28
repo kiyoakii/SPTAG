@@ -98,8 +98,7 @@ namespace SPTAG
 
             m_versionMap.Load(m_options.m_fullDeletedIDFile, m_index->m_iDataBlockSize, m_index->m_iDataCapacity);
 
-            //m_rwLocks = std::make_unique<std::shared_timed_mutex[]>(500000000);
-            m_postingSizes = std::make_unique<std::atomic_uint32_t[]>(200000000);
+            m_postingSizes = std::make_unique<std::atomic_uint32_t[]>(m_options.m_maxHeadNode);
 
             for (int idx = 0; idx < m_extraSearcher->GetIndexSize(); idx++) {
                 uint32_t tmp;
@@ -631,7 +630,7 @@ namespace SPTAG
                 } else {
                     //data structrue initialization
                     m_versionMap.Load(m_options.m_fullDeletedIDFile, m_index->m_iDataBlockSize, m_index->m_iDataCapacity);
-                    m_postingSizes = std::make_unique<std::atomic_uint32_t[]>(200000000);
+                    m_postingSizes = std::make_unique<std::atomic_uint32_t[]>(m_options.m_maxHeadNode);
                     std::ifstream input(m_options.m_ssdInfoFile, std::ios::binary);
                     if (!input.is_open())
                     {
@@ -1060,6 +1059,7 @@ namespace SPTAG
                     int begin, end = 0;
                     m_index->AddIndexId(smallSample[args.clusterIdx[k]], 1, m_options.m_dim, begin, end);
                     newHeadVID = begin;
+                    if (begin == m_options.m_maxHeadNode) exit(0);
                     newHeadsID.push_back(begin);
                     for (int j = 0; j < args.counts[k]; j++)
                     {
@@ -1101,7 +1101,6 @@ namespace SPTAG
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
             */
-            
             
             //LOG(Helper::LogLevel::LL_Info, "After ReAssign\n");
 

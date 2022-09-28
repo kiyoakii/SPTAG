@@ -73,11 +73,11 @@ namespace SPTAG {
                 long page_size_kb = sysconf(_SC_PAGE_SIZE) / 1024; // in case x86-64 is configured to use 2MB pages
                 double rss = resident * page_size_kb;
 
-                LOG(Helper::LogLevel::LL_Info,"RSS : .6lf KB\n", rss);
+                LOG(Helper::LogLevel::LL_Info,"RSS : %.6lf KB\n", rss);
 
                 double shared_mem = share * page_size_kb;
-                LOG(Helper::LogLevel::LL_Info,"Shared Memory : .6lf KB\n", shared_mem);
-                LOG(Helper::LogLevel::LL_Info,"Private Memory : .6lf KB\n", rss - shared_mem);
+                LOG(Helper::LogLevel::LL_Info,"Shared Memory : %.6lf KB\n", shared_mem);
+                LOG(Helper::LogLevel::LL_Info,"Private Memory : %.6lf KB\n", rss - shared_mem);
             }
 
             template<typename T, typename V>
@@ -235,6 +235,7 @@ namespace SPTAG {
                 float meanrecall = 0, minrecall = MaxDist, maxrecall = 0, stdrecall = 0;
                 std::vector<float> thisrecall(NumQuerys, 0);
                 std::unique_ptr<bool[]> visited(new bool[K]);
+                LOG(Helper::LogLevel::LL_Info, "Start Calculating Recall\n");
                 for (SizeType i = 0; i < NumQuerys; i++)
                 {
                     memset(visited.get(), 0, K * sizeof(bool));
@@ -301,6 +302,8 @@ namespace SPTAG {
                         return recall;
                     },
                     "%.3lf", true);
+
+                LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", K, truthK, meanrecall);
                 
                 if (log) (*log) << meanrecall << " " << stdrecall << " " << minrecall << " " << maxrecall << std::endl;
                 return meanrecall;
@@ -570,19 +573,10 @@ namespace SPTAG {
                 PrintStats<ValueType>(TotalStats);
             }
 
-            template <typename ValueType>
-            void StabilitySPFresh(SPANN::Index<ValueType>* p_index)
+
+            std::shared_ptr<VectorSet> LoadVectorSet(SPANN::Options& p_opts, int numThreads)
             {
-                SPANN::Options& p_opts = *(p_index->GetOptions());
-
-                int numThreads = p_opts.m_searchThreadNum;
-                int internalResultNum = p_opts.m_searchInternalResultNum;
-                int K = p_opts.m_resultNum;
-                int truthK = (p_opts.m_truthResultNum <= 0) ? K : p_opts.m_truthResultNum;
-                int searchTimes = p_opts.m_searchTimes;
-
                 std::shared_ptr<VectorSet> vectorSet;
-
                 LOG(Helper::LogLevel::LL_Info, "Start loading VectorSet...\n");
                 if (!p_opts.m_vectorPath.empty() && fileexists(p_opts.m_vectorPath.c_str())) {
                     std::shared_ptr<Helper::ReaderOptions> vectorOptions(new Helper::ReaderOptions(p_opts.m_valueType, p_opts.m_dim, p_opts.m_vectorType, p_opts.m_vectorDelimiter));
@@ -594,7 +588,11 @@ namespace SPTAG {
                         LOG(Helper::LogLevel::LL_Info, "\nLoad VectorSet(%d,%d).\n", vectorSet->Count(), vectorSet->Dimension());
                     }
                 }
+                return vectorSet;
+            }
 
+            std::shared_ptr<VectorSet> LoadQuerySet(SPANN::Options& p_opts)
+            {
                 LOG(Helper::LogLevel::LL_Info, "Start loading QuerySet...\n");
                 std::shared_ptr<Helper::ReaderOptions> queryOptions(new Helper::ReaderOptions(p_opts.m_valueType, p_opts.m_dim, p_opts.m_queryType, p_opts.m_queryDelimiter));
                 auto queryReader = Helper::VectorSetReader::CreateInstance(queryOptions);
@@ -603,159 +601,23 @@ namespace SPTAG {
                     LOG(Helper::LogLevel::LL_Error, "Failed to read query file.\n");
                     exit(1);
                 }
-                auto querySet = queryReader->GetVectorSet();
-                int numQueries = querySet->Count();
+                return queryReader->GetVectorSet();
+            }
 
-                int curCount = p_index->GetNumSamples();
-                int insertCount = vectorSet->Count() * p_opts.m_indexSize;
-
-                std::vector<std::set<SizeType>> truth;
-                float recall;
-
-                std::vector<QueryResult> results(numQueries, QueryResult(NULL, max(K, internalResultNum), false));
-
-                p_index->ForceCompaction();
-
-                StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
-
+            void LoadTruth(SPANN::Options& p_opts, std::vector<std::set<SizeType>>& truth, int numQueries, std::string truthfilename, int truthK)
+            {
                 LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
                 auto ptr = f_createIO();
-                if (ptr == nullptr || !ptr->Initialize(p_opts.m_truthPath.c_str(), std::ios::in | std::ios::binary)) {
-                    LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", p_opts.m_truthPath.c_str());
+                
+                if (ptr == nullptr || !ptr->Initialize(truthfilename.c_str(), std::ios::in | std::ios::binary)) {
+                    LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", truthfilename.c_str());
                     exit(1);
-                }
+                }    
                 int originalK = truthK;
                 COMMON::TruthSet::LoadTruth(ptr, truth, numQueries, originalK, truthK, p_opts.m_truthType);
                 char tmp[4];
                 if (ptr->ReadBinary(4, tmp) == 4) {
                     LOG(Helper::LogLevel::LL_Error, "Truth number is larger than query number(%d)!\n", numQueries);
-                }
-
-                LOG(Helper::LogLevel::LL_Info, "Start Calculating Recall\n");
-                recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth, K, truthK, querySet, vectorSet, numQueries);
-                LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", K, truthK, recall);
-
-                int batch = p_opts.m_indexBatch;
-                
-                int insertThreads = p_opts.m_insertThreadNum;
-
-                int section = curCount / insertThreads;
-                int selectionNum = insertCount / insertThreads;
-
-                int finishedInsert = 0;
-
-                LOG(Helper::LogLevel::LL_Info, "Updating: numThread: %d, update ratio: %f, totalBatch: %d.\n", insertThreads, p_opts.m_indexSize, batch);
-
-                LOG(Helper::LogLevel::LL_Info, "Start updating...\n");
-                std::vector<SizeType> updateIndice;
-                for (int i = 0; i < batch; i++)
-                {
-                    updateIndice.clear();
-                    updateIndice.resize(insertCount);
-                    LOG(Helper::LogLevel::LL_Info, "Updating Batch %d: numThread: %d.\n", i, insertThreads);
-                    StopWSPFresh sw;
-
-                    std::vector<std::thread> threads;
-
-                    std::atomic_size_t threadID(0);
-
-                    auto func = [&]()
-                    {
-                        size_t tid = threadID.fetch_add(1);
-                        int lowerBound = tid * section;
-                        int upperBound = (tid == numThreads-1) ? curCount : (tid + 1) * section;
-                        int selectBegin = tid * selectionNum;
-                        int select = (tid == insertThreads-1) ? (insertCount - selectionNum * (insertThreads - 1)) : selectionNum;
-                        LOG(Helper::LogLevel::LL_Info, "tid: %d, select range: (%d, %d), select indice range: (%d,%d), select num: %d\n", tid, lowerBound, upperBound, selectBegin, selectBegin+select, select);
-                        std::vector<int> tempIndice;
-                        tempIndice.resize(select);
-                        for (int k = 0; k < select; k++)
-                        {
-                            SizeType randid = COMMON::Utils::rand(upperBound, lowerBound);
-                            while (std::count(tempIndice.begin(), tempIndice.end(), randid)) {
-                                randid = COMMON::Utils::rand(upperBound, lowerBound);
-                            }
-                            updateIndice[k + selectBegin] = randid;
-                            tempIndice[k] = randid;
-                            p_index->DeleteIndex(randid);
-                        }
-                    };
-                    for (int j = 0; j < insertThreads; j++) { threads.emplace_back(func); }
-                    for (auto& thread : threads) { thread.join(); }
-                    threads.resize(0);
-                    threads.clear();
-                    std::atomic_size_t vectorsSent(0);
-
-                    auto funcInsert = [&]()
-                    {
-                        size_t index = 0;
-                        while (true)
-                        {
-                            index = vectorsSent.fetch_add(1);
-                            if (index < insertCount)
-                            {
-                                if ((index & ((1 << 14) - 1)) == 0)
-                                {
-                                    LOG(Helper::LogLevel::LL_Info, "Sent %.2lf%%...\n", index * 100.0 / insertCount);
-                                }
-
-                                p_index->AddIndex(vectorSet->GetVector(updateIndice[index]), 1, p_opts.m_dim, nullptr);
-                                //p_index->AddIndex(insertSet->GetVector(index), 1, p_opts.m_dim, nullptr);
-                            }
-                            else
-                            {
-                                return;
-                            }
-                        }
-                    };
-                    for (int j = 0; j < 1; j++) { threads.emplace_back(funcInsert); }
-                    for (auto& thread : threads) { thread.join(); }
-
-                    double sendingCost = sw.getElapsedSec();
-                    LOG(Helper::LogLevel::LL_Info,
-                    "Finish sending in %.3lf seconds, sending throughput is %.2lf , insertion count %u.\n",
-                    sendingCost,
-                    insertCount/ sendingCost,
-                    static_cast<uint32_t>(insertCount));
-
-                    while(!p_index->AllFinishedExceptReassign())
-                    {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                    }
-                    double appendSyncingCost = sw.getElapsedSec();
-                    LOG(Helper::LogLevel::LL_Info,
-                    "Finish syncing append in %.3lf seconds, actuall throughput is %.2lf, insertion count %u.\n",
-                    appendSyncingCost,
-                    insertCount / appendSyncingCost,
-                    static_cast<uint32_t>(insertCount));
-
-                    while(!p_index->AllFinished())
-                    {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-                    }
-                    double syncingCost = sw.getElapsedSec();
-                    LOG(Helper::LogLevel::LL_Info,
-                    "Finish syncing in %.3lf seconds, actuall throughput is %.2lf, insertion count %u.\n",
-                    syncingCost,
-                    insertCount / syncingCost,
-                    static_cast<uint32_t>(insertCount));
-
-                    finishedInsert += insertCount;
-                    LOG(Helper::LogLevel::LL_Info, "Total Vector num %d \n", curCount);
-
-                    //StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
-
-                    p_index->ForceCompaction();
-
-                    StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
-
-                    recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth, K, truthK, querySet, vectorSet, numQueries);
-                    //ProfilingQueryVer1<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[i % 2], truth[(i+1) % 2], K, truthK, querySet, vectorSet, numQueries, thisrecall[i % 2], thisrecall[(i+1) % 2]);
-                    LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", K, truthK, recall);
-
-                    LOG(Helper::LogLevel::LL_Info, "\n");
-                    LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times, head missing %d times\n", finishedInsert, p_index->getSplitTimes(), p_index->getHeadMiss());
-                    //p_index->QuantifyAssumptionBrokenTotally();
                 }
             }
 
@@ -777,31 +639,9 @@ namespace SPTAG {
                 int truthK = (p_opts.m_truthResultNum <= 0) ? K : p_opts.m_truthResultNum;
                 int searchTimes = p_opts.m_searchTimes;
 
-                int KList[5] = {1, 5, 10, 20, 50};
+                auto vectorSet = LoadVectorSet(p_opts, numThreads);
 
-                std::shared_ptr<VectorSet> vectorSet;
-
-                LOG(Helper::LogLevel::LL_Info, "Start loading VectorSet...\n");
-                if (!p_opts.m_vectorPath.empty() && fileexists(p_opts.m_vectorPath.c_str())) {
-                    std::shared_ptr<Helper::ReaderOptions> vectorOptions(new Helper::ReaderOptions(p_opts.m_valueType, p_opts.m_dim, p_opts.m_vectorType, p_opts.m_vectorDelimiter));
-                    auto vectorReader = Helper::VectorSetReader::CreateInstance(vectorOptions);
-                    if (ErrorCode::Success == vectorReader->LoadFile(p_opts.m_fullVectorPath))
-                    {
-                        vectorSet = vectorReader->GetVectorSet();
-                        if (p_opts.m_distCalcMethod == DistCalcMethod::Cosine) vectorSet->Normalize(numThreads);
-                        LOG(Helper::LogLevel::LL_Info, "\nLoad VectorSet(%d,%d).\n", vectorSet->Count(), vectorSet->Dimension());
-                    }
-                }
-
-                LOG(Helper::LogLevel::LL_Info, "Start loading QuerySet...\n");
-                std::shared_ptr<Helper::ReaderOptions> queryOptions(new Helper::ReaderOptions(p_opts.m_valueType, p_opts.m_dim, p_opts.m_queryType, p_opts.m_queryDelimiter));
-                auto queryReader = Helper::VectorSetReader::CreateInstance(queryOptions);
-                if (ErrorCode::Success != queryReader->LoadFile(p_opts.m_queryPath))
-                {
-                    LOG(Helper::LogLevel::LL_Error, "Failed to read query file.\n");
-                    exit(1);
-                }
-                auto querySet = queryReader->GetVectorSet();
+                auto querySet = LoadQuerySet(p_opts);
                 int numQueries = querySet->Count();
 
                 int curCount = p_index->GetNumSamples();
@@ -814,69 +654,28 @@ namespace SPTAG {
                 std::vector<std::vector<std::set<SizeType>>> truth(2);
                 std::vector<std::vector<int>> thisrecall(2);
                 thisrecall[1].resize(numQueries);
-                float recall;
 
                 std::vector<QueryResult> results(numQueries, QueryResult(NULL, max(K, internalResultNum), false));
 
                 StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 
-                LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
-                auto ptr = f_createIO();
-                
-                if (ptr == nullptr || !ptr->Initialize(GetTruthFileName(truthFilePrefix, curCount).c_str(), std::ios::in | std::ios::binary)) {
-                    LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", GetTruthFileName(truthFilePrefix, curCount).c_str());
-                    exit(1);
-                }
-                /*
-                if (ptr == nullptr || !ptr->Initialize((truthFilePrefix + std::to_string(0)).c_str(), std::ios::in | std::ios::binary)) {
-                    LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", (truthFilePrefix + std::to_string(0)).c_str());
-                    exit(1);
-                }
-                */
-                
-                int originalK = truthK;
-                COMMON::TruthSet::LoadTruth(ptr, truth[1], numQueries, originalK, truthK, p_opts.m_truthType);
-                char tmp[4];
-                if (ptr->ReadBinary(4, tmp) == 4) {
-                    LOG(Helper::LogLevel::LL_Error, "Truth number is larger than query number(%d)!\n", numQueries);
-                }
+                LoadTruth(p_opts, truth[1], numQueries, GetTruthFileName(truthFilePrefix, curCount), truthK);
+                // LoadTruth(p_opts, truth[1], numQueries, truthFilePrefix + std::to_string(0), truthK);
 
-                LOG(Helper::LogLevel::LL_Info, "Start Calculating Recall\n");
-                recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[1], K, truthK, querySet, vectorSet, numQueries);
-                LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", K, truthK, recall);
-
+                float recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[1], K, truthK, querySet, vectorSet, numQueries);
 
                 thisrecall[0].resize(numQueries);
-                //PreReassign
 
-                //p_index->PreReassign();
                 p_index->ForceCompaction();
                 
                 StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 
-                LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
-                
-                if (ptr == nullptr || !ptr->Initialize(GetTruthFileName(truthFilePrefix, curCount).c_str(), std::ios::in | std::ios::binary)) {
-                    LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", GetTruthFileName(truthFilePrefix, curCount).c_str());
-                    exit(1);
-                }
-                /*
-                if (ptr == nullptr || !ptr->Initialize((truthFilePrefix + std::to_string(0)).c_str(), std::ios::in | std::ios::binary)) {
-                    LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", (truthFilePrefix + std::to_string(0)).c_str());
-                    exit(1);
-                }
-                */
-                COMMON::TruthSet::LoadTruth(ptr, truth[0], numQueries, originalK, truthK, p_opts.m_truthType);
-                if (ptr->ReadBinary(4, tmp) == 4) {
-                    LOG(Helper::LogLevel::LL_Error, "Truth number is larger than query number(%d)!\n", numQueries);
-                }
+                LoadTruth(p_opts, truth[0], numQueries, GetTruthFileName(truthFilePrefix, curCount), truthK);
+                // LoadTruth(p_opts, truth[0], numQueries, truthFilePrefix + std::to_string(0), truthK);
 
-                LOG(Helper::LogLevel::LL_Info, "Start Calculating Recall\n");
                 recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[0], K, truthK, querySet, vectorSet, numQueries);
 
-                LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", K, truthK, recall);
-                LOG(Helper::LogLevel::LL_Info, "\n");
-
+                ShowMemoryStatus();
 
                 int batch = insertCount / step;
                 // int batch = 5;
@@ -978,34 +777,17 @@ namespace SPTAG {
 
                     StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 
-                    LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
-
                     truth[(i+1) % 2].clear();
 
-                    auto ptr = f_createIO();
-                    
-                    if (ptr == nullptr || !ptr->Initialize(GetTruthFileName(truthFilePrefix, curCount).c_str(), std::ios::in | std::ios::binary)) {
-                        LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", GetTruthFileName(truthFilePrefix, curCount).c_str());
-                        exit(1);
-                    }
-                    /*
-                    if (ptr == nullptr || !ptr->Initialize((truthFilePrefix + std::to_string(i+1)).c_str(), std::ios::in | std::ios::binary)) {
-                        LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", (truthFilePrefix + std::to_string(i+1)).c_str());
-                        exit(1);
-                    }
-                    */
-                    int originalK = truthK;
-                    COMMON::TruthSet::LoadTruth(ptr, truth[(i+1) % 2], numQueries, originalK, truthK, p_opts.m_truthType);
-                    char tmp[4];
-                    if (ptr->ReadBinary(4, tmp) == 4) {
-                        LOG(Helper::LogLevel::LL_Error, "Truth number is larger than query number(%d)!\n", numQueries);
-                    }
+                    LoadTruth(p_opts, truth[(i+1) % 2], numQueries, GetTruthFileName(truthFilePrefix, curCount), truthK);
+                    // LoadTruth(p_opts, truth[(i+1) % 2], numQueries, truthFilePrefix + std::to_string(0), truthK);
+
                     recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[(i+1) % 2], K, truthK, querySet, vectorSet, numQueries);
 
-                    LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", K, truthK, recall);
-
-                    LOG(Helper::LogLevel::LL_Info, "\n");
                     LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times, head missing %d times, same head %d times, reassign %d times\n", finishedInsert, p_index->getSplitTimes(), p_index->getHeadMiss(), p_index->getSameHead(), p_index->getReassignNum());
+
+                    ShowMemoryStatus();
+
                     //p_index->QuantifyAssumptionBrokenTotally();
                 }
             }
@@ -1079,12 +861,6 @@ namespace SPTAG {
                 int numQueries = querySet->Count();
 
                 std::vector<QueryResult> results(numQueries, QueryResult(NULL, max(K, internalResultNum), false));
-
-                //LOG(Helper::LogLevel::LL_Info, "Start ANN Search...\n");
-
-                //StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
-
-                //LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
 
                 p_index->ForceCompaction();
 

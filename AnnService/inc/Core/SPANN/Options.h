@@ -132,6 +132,7 @@ namespace SPTAG {
             bool m_disableReassign;
             bool m_addDeleteTaskToPM;
             int m_reassignK;
+            int m_maxHeadNode;
 
             // Updating(SPFresh Update Test)
             bool m_update;
