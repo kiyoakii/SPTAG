@@ -647,6 +647,11 @@ namespace SPTAG
 					uint32_t postingNum;
 					input.read(reinterpret_cast<char*>(&postingNum), sizeof(postingNum));
 
+                    TheSameHeadSplit.resize(postingNum);
+                    for (int i = 0; i < postingNum; i++) {
+                        TheSameHeadSplit[i] = 0;
+                    }
+
 					LOG(Helper::LogLevel::LL_Info, "Current posting num: %d.\n", postingNum);
 
 					for (int idx = 0; idx < postingNum; idx++) {
@@ -677,6 +682,11 @@ namespace SPTAG
 
             m_dispatcher->run();
             LOG(Helper::LogLevel::LL_Info, "SPFresh: finish initialization\n");
+
+            SimplyCountSplit.resize(20);
+            for (int i = 0; i < 20; i++) {
+                SimplyCountSplit[i] = 0;
+            }
             
             auto t4 = std::chrono::high_resolution_clock::now();
             double buildSSDTime = std::chrono::duration_cast<std::chrono::seconds>(t4 - t3).count();
@@ -1002,6 +1012,7 @@ namespace SPTAG
                 }
                 m_postingSizes[headID].store(realVectorNum);
                 m_extraSearcher->OverrideIndex(headID, postingList);
+                m_garbageNum++;
                 // m_splitWriteBackCost += sw.getElapsedMs() - gcEndTime;
                 return ErrorCode::Success;
             }
@@ -1014,6 +1025,7 @@ namespace SPTAG
 
             // k = 2, maybe we can change the split number, now it is fixed
             SPTAG::COMMON::KmeansArgs<ValueType> args(2, smallSample.C(), (SizeType)localIndicesInsert.size(), 1, m_index->GetDistCalcMethod());
+            // float m_fBalanceFactor = SPTAG::COMMON::DynamicFactorSelect(smallSample, localIndices, 0, (SizeType)localIndices.size(), args);
             std::shuffle(localIndices.begin(), localIndices.end(), std::mt19937(std::random_device()()));
             int numClusters = SPTAG::COMMON::KmeansClustering(smallSample, localIndices, 0, (SizeType)localIndices.size(), args);
             if (numClusters <= 1)
@@ -1038,9 +1050,13 @@ namespace SPTAG
             std::vector<SizeType> newHeadsID;
             std::vector<std::string> newPostingLists;
             bool theSameHead = false;
+            // if (realVectorNum > (m_extraSearcher->GetPostingSizeLimit() + 1)) {
+            //     LOG(Helper::LogLevel::LL_Info, "real vector num: %d, append: %d, cluster1: %d, cluster2: %d\n", realVectorNum, appendNum, args.counts[0], args.counts[1]);
+            // }
             for (int k = 0; k < 2; k++) {
                 std::string postingList;
                 if (args.counts[k] == 0)	continue;
+                SimplyCountSplit[args.counts[k] / 10]++;
                 if (!theSameHead && m_index->ComputeDistance(smallSample[args.clusterIdx[k]], m_index->GetSample(headID)) < Epsilon) {
                     newHeadsID.push_back(headID);
                     newHeadVID = headID;
@@ -1054,6 +1070,7 @@ namespace SPTAG
                     }
                     m_extraSearcher->OverrideIndex(newHeadVID, postingList);
                     m_theSameHeadNum++;
+                    TheSameHeadSplit[headID]++;
                 }
                 else {
                     int begin, end = 0;
@@ -1071,6 +1088,7 @@ namespace SPTAG
                     }
                     m_extraSearcher->AddIndex(newHeadVID, postingList);
                     m_index->AddIndexIdx(begin, end);
+                    TheSameHeadSplit.push_back(0);
                 }
                 newPostingLists.push_back(postingList);
                 // LOG(Helper::LogLevel::LL_Info, "Head id: %d split into : %d, length: %d\n", headID, newHeadVID, args.counts[k]);
@@ -1172,7 +1190,7 @@ namespace SPTAG
                     if (dist < Epsilon) continue;
                     if (i <= 1) {
                         if (!CheckIdDeleted(vid) && CheckVersionValid(vid, version)) {
-                            if (CheckIsNeedReassign(newHeadsID, reinterpret_cast<ValueType*>(vectorId + m_metaDataSize), headID, newHeadDist[i], dist, true)) {
+                            if (CheckIsNeedReassign(newHeadsID, reinterpret_cast<ValueType*>(vectorId + m_metaDataSize), headID, newHeadDist[i], dist, true, newHeadsID[i])) {
                                 // insideSplitHeadNum++;
                                 // if (CheckIsInMiddleOfTwoHead(reinterpret_cast<ValueType*>(vectorId + m_metaDataSize), newHeadsID, newHeadsID[i], dist, headID)) {
                                 //     insideOp2Num++;
@@ -1187,7 +1205,7 @@ namespace SPTAG
                         if ((reAssignVectorsTop0.find(vid) == reAssignVectorsTop0.end()))
                         {
                             if (reAssignVectorsTopK.find(vid) == reAssignVectorsTopK.end() && !CheckIdDeleted(vid) && CheckVersionValid(vid, version)) {
-                                if (CheckIsNeedReassign(newHeadsID, reinterpret_cast<ValueType*>(vectorId + m_metaDataSize), headID, HeadPrevToSplitHeadDist[i-2], dist, false)) {
+                                if (CheckIsNeedReassign(newHeadsID, reinterpret_cast<ValueType*>(vectorId + m_metaDataSize), headID, HeadPrevToSplitHeadDist[i-2], dist, false, HeadPrevTopK[i-2])) {
                                     // outsideSplitHeadNum++;
                                     // if (CheckIsInMiddleOfTwoHead(reinterpret_cast<ValueType*>(vectorId + m_metaDataSize), newHeadsID, HeadPrevTopK[i-2], dist, headID)) {
                                     //     outsideOp2Num++;

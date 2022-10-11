@@ -126,6 +126,9 @@ namespace SPTAG {
             bool m_calTruth;
             bool m_calAllTruth;
             int m_searchTimes;
+            int m_minInternalResultNum;
+            int m_stepInternalResultNum;
+            int m_maxInternalResultNum;
 
             // Updating
             int m_postingVectorLimit;

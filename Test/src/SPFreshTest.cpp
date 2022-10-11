@@ -64,7 +64,7 @@ namespace SPTAG {
                 }
             };
 
-            void ShowMemoryStatus()
+            void ShowMemoryStatus(std::shared_ptr<SPTAG::VectorSet> vectorSet)
             {
                 int tSize = 0, resident = 0, share = 0;
                 std::ifstream buffer("/proc/self/statm");
@@ -76,8 +76,11 @@ namespace SPTAG {
                 LOG(Helper::LogLevel::LL_Info,"RSS : %.6lf KB\n", rss);
 
                 double shared_mem = share * page_size_kb;
+
+                double vector_size = vectorSet->Count() * vectorSet->PerVectorDataSize() / 1024;
+
                 LOG(Helper::LogLevel::LL_Info,"Shared Memory : %.6lf KB\n", shared_mem);
-                LOG(Helper::LogLevel::LL_Info,"Private Memory : %.6lf KB\n", rss - shared_mem);
+                LOG(Helper::LogLevel::LL_Info,"Private Memory : %.6lf KB\n", rss - shared_mem - vector_size);
             }
 
             template<typename T, typename V>
@@ -123,110 +126,6 @@ namespace SPTAG {
                     collects[static_cast<size_t>(collects.size() * 0.99)],
                     collects[static_cast<size_t>(collects.size() * 0.999)],
                     collects[static_cast<size_t>(collects.size() - 1)]);
-            }
-
-            template <typename T>
-            void ProfilingQueryVer1(VectorIndex* index, std::vector<QueryResult>& results, const std::vector<std::set<SizeType>>& truthPrev, const std::vector<std::set<SizeType>>& truthAfter, int K, int truthK, std::shared_ptr<SPTAG::VectorSet> querySet, std::shared_ptr<SPTAG::VectorSet> vectorSet, SizeType NumQuerys, std::vector<int>& recallPrev, std::vector<int>& recallAfter)
-            {
-                std::unique_ptr<bool[]> visited(new bool[K]);
-                std::vector<int> recallDistribution(K+1, 0);
-                for (SizeType i = 0; i < NumQuerys; i++)
-                {
-                    recallAfter[i] = 0;
-                    memset(visited.get(), 0, K * sizeof(bool));
-                    for (SizeType id : truthAfter[i])
-                    {
-                        for (int j = 0; j < K; j++)
-                        {
-                            if (visited[j] || results[i].GetResult(j)->VID < 0) continue;
-
-                            if (vectorSet != nullptr) {
-                                float dist = results[i].GetResult(j)->Dist;
-                                float truthDist = COMMON::DistanceUtils::ComputeDistance((const T*)querySet->GetVector(i), (const T*)vectorSet->GetVector(id), vectorSet->Dimension(), index->GetDistCalcMethod());
-                                if (index->GetDistCalcMethod() == SPTAG::DistCalcMethod::Cosine && fabs(dist - truthDist) < Epsilon) {
-                                    recallAfter[i] += 1;
-                                    visited[j] = true;
-                                    break;
-                                }
-                                else if (index->GetDistCalcMethod() == SPTAG::DistCalcMethod::L2 && fabs(dist - truthDist) < Epsilon * (dist + Epsilon)) {
-                                    recallAfter[i] += 1;
-                                    visited[j] = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    recallDistribution[recallAfter[i]]++;
-                }
-                LOG(Helper::LogLevel::LL_Info, "Recall Distribution:\n");
-                for (int i = 0; i <= K; i++)
-                {
-                    LOG(Helper::LogLevel::LL_Info, "hit %d: %d\t", i, recallDistribution[i]);
-                }
-                LOG(Helper::LogLevel::LL_Info, "\n");
-                PrintPercentiles<int, int>(recallAfter,
-                    [](const int& recall) -> int
-                    {
-                        return recall;
-                    },
-                    "%3d", true);
-                if (!recallPrev.empty())
-                {
-                    int stableCount = 0;
-                    std::map<int, int> recallChangeMapTotal;
-                    int stableCountKChange = 0;
-                    std::map<int, int> recallChangeMapTopKChange;
-                    int stableCountKUnchange = 0;
-                    std::map<int, int> recallChangeMapTopKUnchange;
-                    std::vector<int> topKChange(NumQuerys, 0);
-                    int topKChangeNum = 0;
-                    for (SizeType i = 0; i < NumQuerys; i++)
-                    {
-                        for (SizeType id : truthPrev[i])
-                        {
-                            if (!truthAfter[i].count(id)) topKChange[i]++;
-                        }
-                        int recallChange = recallAfter[i] - recallPrev[i];
-                        if (recallChangeMapTotal.find(recallChange) == recallChangeMapTotal.end()) recallChangeMapTotal[recallChange] = 1;
-                        else recallChangeMapTotal[recallChange]++;
-                        if (topKChange[i])
-                        {
-                            topKChangeNum++;
-                            if (recallChangeMapTopKChange.find(recallChange) == recallChangeMapTopKChange.end()) recallChangeMapTopKChange[recallChange] = 1;
-                            else recallChangeMapTopKChange[recallChange]++;
-
-                            if (recallChange >= 0) stableCountKChange++;
-                        } else 
-                        {
-                            if (recallChangeMapTopKUnchange.find(recallChange) == recallChangeMapTopKUnchange.end()) recallChangeMapTopKUnchange[recallChange] = 1;
-                            else recallChangeMapTopKUnchange[recallChange]++;
-
-                            if (recallChange >= 0) stableCountKUnchange++;
-                        }
-                        if (recallAfter[i] >= recallPrev[i]) stableCount++;
-                    }
-                    LOG(Helper::LogLevel::LL_Info, "Query Profiling:\n");
-                    LOG(Helper::LogLevel::LL_Info, "After Update Batch, %d Queries of totally %d Queries change Top%d truth, %d Queries keep recall stable\n", topKChangeNum, NumQuerys, K, stableCount);
-                    LOG(Helper::LogLevel::LL_Info, "Totally Recall Change Distribution:\n");
-                    LOG(Helper::LogLevel::LL_Info, "Change Size\tNumber\n");
-                    for (auto it = recallChangeMapTotal.begin(); it != recallChangeMapTotal.end(); it++)
-                    {
-                        LOG(Helper::LogLevel::LL_Info, "%d\t%d:\n", it->first, it->second);
-                    }
-                    LOG(Helper::LogLevel::LL_Info, "TopK Change Recall Change Distribution: %d/%d Queries keep recall stable\n", stableCountKChange, topKChangeNum);
-                    LOG(Helper::LogLevel::LL_Info, "Change Size\tNumber\n");
-                    for (auto it = recallChangeMapTopKChange.begin(); it != recallChangeMapTopKChange.end(); it++)
-                    {
-                        LOG(Helper::LogLevel::LL_Info, "%d\t%d:\n", it->first, it->second);
-                    }
-                    LOG(Helper::LogLevel::LL_Info, "TopK Unchange Recall Change Distribution: %d/%d Queries keep recall stable\n", stableCountKUnchange, NumQuerys-topKChangeNum);
-                    LOG(Helper::LogLevel::LL_Info, "Change Size\tNumber\n");
-                    for (auto it = recallChangeMapTopKUnchange.begin(); it != recallChangeMapTopKUnchange.end(); it++)
-                    {
-                        LOG(Helper::LogLevel::LL_Info, "%d\t%d:\n", it->first, it->second);
-                    }
-
-                }
             }
 
             template <typename T>
@@ -539,41 +438,6 @@ namespace SPTAG {
                 return fileName;
             }
 
-            template <typename ValueType>
-            void StableSearch(SPANN::Index<ValueType>* p_index,
-                int numThreads,
-                std::vector<QueryResult>& results,
-                std::shared_ptr<SPTAG::VectorSet> querySet,
-                int avgStatsNum,
-                int queryCountLimit,
-                int internalResultNum)
-            {
-                if (avgStatsNum == 0) return;
-                int numQueries = results.size();
-                LOG(Helper::LogLevel::LL_Info, "Searching: numThread: %d, numQueries: %d, searchTimes: %d.\n", numThreads, numQueries, avgStatsNum);
-                std::vector<SPANN::SearchStats> stats(numQueries);
-                std::vector<SPANN::SearchStats> TotalStats(numQueries);
-                ResetStats(TotalStats);
-                double totalQPS = 0;
-                for (int i = 0; i < avgStatsNum; i++)
-                {
-                    for (int j = 0; j < numQueries; ++j)
-                    {
-                        results[j].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(j)));
-                        results[j].Reset();
-                    }
-                    totalQPS += SearchSequential(p_index, numThreads, results, stats, queryCountLimit, internalResultNum);
-                    //PrintStats<ValueType>(stats);
-                    AddStats(TotalStats, stats);
-                }
-                LOG(Helper::LogLevel::LL_Info, "Searching Times: %d, AvgQPS: %.2lf.\n", avgStatsNum, totalQPS/avgStatsNum);
-
-                AvgStats(TotalStats, avgStatsNum);
-
-                PrintStats<ValueType>(TotalStats);
-            }
-
-
             std::shared_ptr<VectorSet> LoadVectorSet(SPANN::Options& p_opts, int numThreads)
             {
                 std::shared_ptr<VectorSet> vectorSet;
@@ -622,10 +486,56 @@ namespace SPTAG {
             }
 
             template <typename ValueType>
+            void StableSearch(SPANN::Index<ValueType>* p_index,
+                int numThreads,
+                std::shared_ptr<SPTAG::VectorSet> querySet,
+                std::shared_ptr<SPTAG::VectorSet> vectorSet,
+                int avgStatsNum,
+                int queryCountLimit,
+                int internalResultNum,
+                int curCount,
+                SPANN::Options& p_opts)
+            {
+                if (avgStatsNum == 0) return;
+                int numQueries = querySet->Count();
+
+                std::vector<QueryResult> results(numQueries, QueryResult(NULL, internalResultNum, false));
+
+                LOG(Helper::LogLevel::LL_Info, "Searching: numThread: %d, numQueries: %d, searchTimes: %d.\n", numThreads, numQueries, avgStatsNum);
+                std::vector<SPANN::SearchStats> stats(numQueries);
+                std::vector<SPANN::SearchStats> TotalStats(numQueries);
+                ResetStats(TotalStats);
+                double totalQPS = 0;
+                for (int i = 0; i < avgStatsNum; i++)
+                {
+                    for (int j = 0; j < numQueries; ++j)
+                    {
+                        results[j].SetTarget(reinterpret_cast<ValueType*>(querySet->GetVector(j)));
+                        results[j].Reset();
+                    }
+                    totalQPS += SearchSequential(p_index, numThreads, results, stats, queryCountLimit, internalResultNum);
+                    //PrintStats<ValueType>(stats);
+                    AddStats(TotalStats, stats);
+                }
+                LOG(Helper::LogLevel::LL_Info, "Searching Times: %d, AvgQPS: %.2lf.\n", avgStatsNum, totalQPS/avgStatsNum);
+
+                AvgStats(TotalStats, avgStatsNum);
+
+                PrintStats<ValueType>(TotalStats);
+
+                if (p_opts.m_calTruth)
+                {
+                    std::vector<std::set<SizeType>> truth;
+                    int truthK = p_opts.m_resultNum;
+                    LoadTruth(p_opts, truth, numQueries, GetTruthFileName(p_opts.m_truthFilePrefix, curCount), truthK);
+                    CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth, p_opts.m_resultNum, truthK, querySet, vectorSet, numQueries);
+                }
+            }
+
+            template <typename ValueType>
             void UpdateSPFresh(SPANN::Index<ValueType>* p_index)
             {
                 SPANN::Options& p_opts = *(p_index->GetOptions());
-                std::string truthFilePrefix = p_opts.m_truthFilePrefix;
                 int step = p_opts.m_step;
                 if (step == 0)
                 {
@@ -635,14 +545,11 @@ namespace SPTAG {
 
                 int numThreads = p_opts.m_searchThreadNum;
                 int internalResultNum = p_opts.m_searchInternalResultNum;
-                int K = p_opts.m_resultNum;
-                int truthK = (p_opts.m_truthResultNum <= 0) ? K : p_opts.m_truthResultNum;
                 int searchTimes = p_opts.m_searchTimes;
 
                 auto vectorSet = LoadVectorSet(p_opts, numThreads);
 
                 auto querySet = LoadQuerySet(p_opts);
-                int numQueries = querySet->Count();
 
                 int curCount = p_index->GetNumSamples();
                 int insertCount = vectorSet->Count() - curCount;
@@ -651,31 +558,22 @@ namespace SPTAG {
                 {
                     insertCount = p_opts.m_endVectorNum - curCount;
                 }
-                std::vector<std::vector<std::set<SizeType>>> truth(2);
-                std::vector<std::vector<int>> thisrecall(2);
-                thisrecall[1].resize(numQueries);
-
-                std::vector<QueryResult> results(numQueries, QueryResult(NULL, max(K, internalResultNum), false));
-
-                StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
-
-                LoadTruth(p_opts, truth[1], numQueries, GetTruthFileName(truthFilePrefix, curCount), truthK);
-                // LoadTruth(p_opts, truth[1], numQueries, truthFilePrefix + std::to_string(0), truthK);
-
-                float recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[1], K, truthK, querySet, vectorSet, numQueries);
-
-                thisrecall[0].resize(numQueries);
 
                 p_index->ForceCompaction();
-                
-                StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
 
-                LoadTruth(p_opts, truth[0], numQueries, GetTruthFileName(truthFilePrefix, curCount), truthK);
-                // LoadTruth(p_opts, truth[0], numQueries, truthFilePrefix + std::to_string(0), truthK);
+                if (p_opts.m_maxInternalResultNum != -1) 
+                {
+                    for (int iterInternalResultNum = p_opts.m_minInternalResultNum; iterInternalResultNum <= p_opts.m_maxInternalResultNum; iterInternalResultNum += p_opts.m_stepInternalResultNum) 
+                    {
+                        StableSearch(p_index, numThreads, querySet, vectorSet, searchTimes, p_opts.m_queryCountLimit, iterInternalResultNum, curCount, p_opts);
+                    }
+                }
+                else 
+                {
+                    StableSearch(p_index, numThreads, querySet, vectorSet, searchTimes, p_opts.m_queryCountLimit, internalResultNum, curCount, p_opts);
+                }
 
-                recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[0], K, truthK, querySet, vectorSet, numQueries);
-
-                ShowMemoryStatus();
+                ShowMemoryStatus(vectorSet);
 
                 int batch = insertCount / step;
                 // int batch = 5;
@@ -687,27 +585,7 @@ namespace SPTAG {
 
                 LOG(Helper::LogLevel::LL_Info, "Start updating...\n");
                 for (int i = 0; i < batch; i++)
-                {
-                    /*
-                    std::shared_ptr<VectorSet> insertSet;
-
-                    //std::string extraInsertPath = "/home/yuming/ann_search/data/spacev_clustering_reverse/spacev_clustering_reverse_extra" + std::to_string(i);
-                    std::string extraInsertPath = "/home/yuming/ann_search/data/spacev_clustering/spacev_clustering_extra" + std::to_string(i);
-                    LOG(Helper::LogLevel::LL_Info, "Start loading Insert File: %s\n", extraInsertPath.c_str());
-
-                    if (fileexists(extraInsertPath.c_str())) {
-                        std::shared_ptr<Helper::ReaderOptions> insertOptions(new Helper::ReaderOptions(p_opts.m_valueType, p_opts.m_dim, p_opts.m_vectorType, p_opts.m_vectorDelimiter));
-                        auto insertReader = Helper::VectorSetReader::CreateInstance(insertOptions);
-                        if (ErrorCode::Success == insertReader->LoadFile(extraInsertPath))
-                        {
-                            insertSet = insertReader->GetVectorSet();
-                            LOG(Helper::LogLevel::LL_Info, "\nLoad InsertSet(%d,%d).\n", insertSet->Count(), insertSet->Dimension());
-                        }
-                    }
-                    step = insertSet->Count();
-                    */
-
-                    
+                {   
                     LOG(Helper::LogLevel::LL_Info, "Updating Batch %d: numThread: %d, step: %d.\n", i, insertThreads, step);
                     StopWSPFresh sw;
 
@@ -727,9 +605,7 @@ namespace SPTAG {
                                 {
                                     LOG(Helper::LogLevel::LL_Info, "Sent %.2lf%%...\n", index * 100.0 / step);
                                 }
-
                                 p_index->AddIndex(vectorSet->GetVector(index + curCount), 1, p_opts.m_dim, nullptr);
-                                //p_index->AddIndex(insertSet->GetVector(index), 1, p_opts.m_dim, nullptr);
                             }
                             else
                             {
@@ -775,19 +651,24 @@ namespace SPTAG {
 
                     p_index->ForceCompaction();
 
-                    StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
+                    if (p_opts.m_maxInternalResultNum != -1) 
+                    {
+                        for (int iterInternalResultNum = p_opts.m_minInternalResultNum; iterInternalResultNum <= p_opts.m_maxInternalResultNum; iterInternalResultNum += p_opts.m_stepInternalResultNum) 
+                        {
+                            StableSearch(p_index, numThreads, querySet, vectorSet, searchTimes, p_opts.m_queryCountLimit, iterInternalResultNum, curCount, p_opts);
+                        }
+                    }
+                    else 
+                    {
+                        StableSearch(p_index, numThreads, querySet, vectorSet, searchTimes, p_opts.m_queryCountLimit, internalResultNum, curCount, p_opts);
+                    }
 
-                    truth[(i+1) % 2].clear();
+                    LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times, head missing %d times, same head %d times, reassign %d times, garbage collection %d times\n", finishedInsert, p_index->getSplitTimes(), p_index->getHeadMiss(), p_index->getSameHead(), p_index->getReassignNum(), p_index->getGarbageNum());
 
-                    LoadTruth(p_opts, truth[(i+1) % 2], numQueries, GetTruthFileName(truthFilePrefix, curCount), truthK);
-                    // LoadTruth(p_opts, truth[(i+1) % 2], numQueries, truthFilePrefix + std::to_string(0), truthK);
+                    ShowMemoryStatus(vectorSet);
 
-                    recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth[(i+1) % 2], K, truthK, querySet, vectorSet, numQueries);
-
-                    LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times, head missing %d times, same head %d times, reassign %d times\n", finishedInsert, p_index->getSplitTimes(), p_index->getHeadMiss(), p_index->getSameHead(), p_index->getReassignNum());
-
-                    ShowMemoryStatus();
-
+                    p_index->printSplitStatus();
+                    p_index->printSplitTheSameHeadStatus();
                     //p_index->QuantifyAssumptionBrokenTotally();
                 }
             }
@@ -819,35 +700,7 @@ namespace SPTAG {
                 }
                 int numThreads = p_opts.m_searchThreadNum;
                 int internalResultNum = p_opts.m_searchInternalResultNum;
-                int K = p_opts.m_resultNum;
-                int truthK = (p_opts.m_truthResultNum <= 0) ? K : p_opts.m_truthResultNum;
                 int searchTimes = p_opts.m_searchTimes;
-
-                if (!warmupFile.empty())
-                {
-                    LOG(Helper::LogLevel::LL_Info, "Start loading warmup query set...\n");
-                    std::shared_ptr<Helper::ReaderOptions> queryOptions(new Helper::ReaderOptions(p_opts.m_valueType, p_opts.m_dim, p_opts.m_warmupType, p_opts.m_warmupDelimiter));
-                    auto queryReader = Helper::VectorSetReader::CreateInstance(queryOptions);
-                    if (ErrorCode::Success != queryReader->LoadFile(p_opts.m_warmupPath))
-                    {
-                        LOG(Helper::LogLevel::LL_Error, "Failed to read query file.\n");
-                        exit(1);
-                    }
-                    auto warmupQuerySet = queryReader->GetVectorSet();
-                    int warmupNumQueries = warmupQuerySet->Count();
-
-                    std::vector<QueryResult> warmupResults(warmupNumQueries, QueryResult(NULL, max(K, internalResultNum), false));
-                    std::vector<SPANN::SearchStats> warmpUpStats(warmupNumQueries);
-                    for (int i = 0; i < warmupNumQueries; ++i)
-                    {
-                        warmupResults[i].SetTarget(reinterpret_cast<ValueType*>(warmupQuerySet->GetVector(i)));
-                        warmupResults[i].Reset();
-                    }
-
-                    LOG(Helper::LogLevel::LL_Info, "Start warmup...\n");
-                    SearchSequential(p_index, numThreads, warmupResults, warmpUpStats, p_opts.m_queryCountLimit, internalResultNum);
-                    LOG(Helper::LogLevel::LL_Info, "\nFinish warmup...\n");
-                }
 
                 LOG(Helper::LogLevel::LL_Info, "Start loading QuerySet...\n");
                 std::shared_ptr<Helper::ReaderOptions> queryOptions(new Helper::ReaderOptions(p_opts.m_valueType, p_opts.m_dim, p_opts.m_queryType, p_opts.m_queryDelimiter));
@@ -858,17 +711,8 @@ namespace SPTAG {
                     exit(1);
                 }
                 auto querySet = queryReader->GetVectorSet();
-                int numQueries = querySet->Count();
-
-                std::vector<QueryResult> results(numQueries, QueryResult(NULL, max(K, internalResultNum), false));
 
                 p_index->ForceCompaction();
-
-                LOG(Helper::LogLevel::LL_Info, "Start ANN Search...\n");
-
-                StableSearch(p_index, numThreads, results, querySet, searchTimes, p_opts.m_queryCountLimit, internalResultNum);
-
-                LOG(Helper::LogLevel::LL_Info, "\nFinish ANN Search...\n");
 
                 std::shared_ptr<VectorSet> vectorSet;
 
@@ -884,33 +728,7 @@ namespace SPTAG {
                     }
                 }
 
-                float recall = 0;
-                std::vector<std::set<SizeType>> truth;
-                if (!truthFile.empty())
-                {
-                    LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
-
-                    auto ptr = f_createIO();
-                    if (ptr == nullptr || !ptr->Initialize(truthFile.c_str(), std::ios::in | std::ios::binary)) {
-                        LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", truthFile.c_str());
-                        exit(1);
-                    }
-                    int originalK = truthK;
-                    COMMON::TruthSet::LoadTruth(ptr, truth, numQueries, originalK, truthK, p_opts.m_truthType);
-                    char tmp[4];
-                    if (ptr->ReadBinary(4, tmp) == 4) {
-                        LOG(Helper::LogLevel::LL_Error, "Truth number is larger than query number(%d)!\n", numQueries);
-                    }
-
-                    recall = CalculateRecallSPFresh<ValueType>((p_index->GetMemoryIndex()).get(), results, truth, K, truthK, querySet, vectorSet, numQueries);
-                    LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f\n", truthK, K, recall);
-                }
-
-                LOG(Helper::LogLevel::LL_Info,
-                    "Recall: %f\n",
-                    recall);
-
-                LOG(Helper::LogLevel::LL_Info, "\n");
+                StableSearch(p_index, numThreads, querySet, vectorSet, searchTimes, p_opts.m_queryCountLimit, internalResultNum, vectorSet->Count(), p_opts);
             }
 
             int UpdateTest(std::map<std::string, std::map<std::string, std::string>>* config_map, 

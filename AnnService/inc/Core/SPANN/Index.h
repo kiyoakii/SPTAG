@@ -246,6 +246,9 @@ namespace SPTAG
             uint32_t m_splitNum{0};
             uint32_t m_theSameHeadNum{0};
             uint32_t m_reAssignNum{0};
+            uint32_t m_garbageNum{0};
+            std::vector<SizeType> SimplyCountSplit;
+            std::vector<SizeType> TheSameHeadSplit;
             std::mutex m_dataAddLock;
 
         public:
@@ -381,6 +384,40 @@ namespace SPTAG
             int getSameHead() {return m_theSameHeadNum;}
 
             int getReassignNum() {return m_reAssignNum;}
+            
+            int getGarbageNum() {return m_garbageNum;}
+
+            void printSplitStatus() 
+            {
+                for (int i = 0; i < 13; i++)
+                {
+                    LOG(Helper::LogLevel::LL_Info, "%d ~ %d\t", i*10, (i+1)*10-1);
+                }
+                LOG(Helper::LogLevel::LL_Info, "\n");
+                for (int i = 0; i < 13; i++)
+                {
+                    LOG(Helper::LogLevel::LL_Info, "%6d\t", SimplyCountSplit[i]);
+                }
+                LOG(Helper::LogLevel::LL_Info, "\n");
+                return;
+            }
+
+            void printSplitTheSameHeadStatus()
+            {
+                int postingNum = m_index->GetNumSamples();
+                std::map<int, int> count;
+                for (int i = 0; i < postingNum; i++)
+                {
+                    if(count.find(TheSameHeadSplit[i]) == count.end()) {
+                        count[TheSameHeadSplit[i]] = 0;
+                    }
+                    count[TheSameHeadSplit[i]]++;
+                }
+                for (auto it = count.begin(); it != count.end(); it++)
+                {
+                    LOG(Helper::LogLevel::LL_Info, "TheSameHeadSplit %d times: %d nodes\n", it->first, it->second);
+                }
+            }
 
             void UpdateStop()
             {
@@ -800,7 +837,7 @@ namespace SPTAG
                 float_t newHeadToVectorDist_2 = m_index->ComputeDistance(m_index->GetSample(newHeads[1]), data);
                 // if (newHeadToHeadDist_1 >= newHeadToVectorDist_1 || newHeadToHeadDist_2 >= newHeadToVectorDist_2) return true;
 
-                if (newHeadToHeadDist_1 < currentHeadDist || newHeadToHeadDist_2 < currentHeadDist) return true;
+                if (newHeadToVectorDist_1 < currentHeadDist || newHeadToVectorDist_2 < currentHeadDist) return true;
 
                 // LOG(Helper::LogLevel::LL_Info, "NewHeadToHeadDist_1: %f, NewHeadToHeadDist_2: %f, newHeadToVectorDist_1: %f, newHeadToVectorDist_2: %f,  currentHeadDist: %f, splitHeadDist: %f\n", 
                 //  newHeadToHeadDist_1, newHeadToHeadDist_2, newHeadToVectorDist_1, newHeadToVectorDist_2, currentHeadDist, splitHeadDist);
@@ -825,21 +862,72 @@ namespace SPTAG
                 return false;
             }
 
-            bool CheckIsNeedReassign(std::vector<SizeType>& newHeads, T* data, SizeType splitHead, float_t headToSplitHeadDist, float_t currentHeadDist, bool isInSplitHead)
+            bool CheckIsNeedReassign(std::vector<SizeType>& newHeads, T* data, SizeType splitHead, float_t headToSplitHeadDist, float_t currentHeadDist, bool isInSplitHead, SizeType currentHead)
             {
                 
                 float_t headDist = m_index->ComputeDistance(data, m_index->GetSample(splitHead));
-                
+                float_t newHeadDist_1 = m_index->ComputeDistance(data, m_index->GetSample(newHeads[0]));
+                float_t newHeadDist_2 = m_index->ComputeDistance(data, m_index->GetSample(newHeads[1]));
+
+                // float_t newHeadToHeadDist_1 = m_index->ComputeDistance(m_index->GetSample(newHeads[0]), m_index->GetSample(currentHead));
+                // float_t newHeadToHeadDist_2 = m_index->ComputeDistance(m_index->GetSample(newHeads[1]), m_index->GetSample(currentHead));
+
+                // float_t newHeadToSplitHeadDist_1 = m_index->ComputeDistance(m_index->GetSample(newHeads[0]), m_index->GetSample(splitHead));
+                // float_t newHeadToSplitHeadDist_2 = m_index->ComputeDistance(m_index->GetSample(newHeads[1]), m_index->GetSample(splitHead));
+                // float_t newHeadToNewHeadDist = m_index->ComputeDistance(m_index->GetSample(newHeads[0]), m_index->GetSample(newHeads[1]));
+
+
                 // if (headDist * headDist >= (currentHeadDist * currentHeadDist + headToSplitHeadDist * headToSplitHeadDist) ) return false;
 
                 if (isInSplitHead) {
                     if (headDist >= currentHeadDist) return false;
                 } else {
-                    float_t newHeadDist_1 = m_index->ComputeDistance(data, m_index->GetSample(newHeads[0]));
-                    float_t newHeadDist_2 = m_index->ComputeDistance(data, m_index->GetSample(newHeads[1]));
                     if (headDist <= newHeadDist_1 && headDist <= newHeadDist_2) return false;
+                    if (currentHeadDist <= newHeadDist_1 && currentHeadDist <= newHeadDist_2) return false;
                 }
-                
+
+                // LOG(Helper::LogLevel::LL_Info, "newHeadDist_1: %f, newHeadDist_2: %f, currentHeadDist: %f, toSplitHeadDist: %f, headToSplitHeadDist: %f, headToNewHeadDist_1: %f, headToNewHeadDist_2: %f newHeadToSplitHeadDist_1: %f, newHeadToSplitHeadDist_2: %f, newHeadToNewHeadDist: %f\n",
+                //     newHeadDist_1, newHeadDist_2, currentHeadDist, headDist, headToSplitHeadDist, newHeadToHeadDist_1, newHeadToHeadDist_2,
+                //     newHeadToSplitHeadDist_1, newHeadToSplitHeadDist_2, newHeadToNewHeadDist);
+                // if ((headToSplitHeadDist + newHeadToSplitHeadDist_1 ) > newHeadToHeadDist_1) LOG(Helper::LogLevel::LL_Info, "Head_1: True\n");
+                // else LOG(Helper::LogLevel::LL_Info, "Head_1: False\n");
+                // if ((headToSplitHeadDist + newHeadToSplitHeadDist_2 ) > newHeadToHeadDist_2) LOG(Helper::LogLevel::LL_Info, "Head_2: True\n");
+                // else LOG(Helper::LogLevel::LL_Info, "Head_2: False\n");
+                // COMMON::QueryResultSet<T> headCandidates(NULL, 64);
+                // headCandidates.SetTarget(reinterpret_cast<T*>(data));
+                // headCandidates.Reset();
+                // if (IsAssumptionBroken(currentHead, headCandidates, 0)) LOG(Helper::LogLevel::LL_Info, "Really Need Reassign\n");
+                // if (currentHeadDist > headDist)
+                // {
+                //     std::string postingList;
+                //     m_extraSearcher->SearchIndex(newHeads[0], postingList);
+                //     int vectorInfoSize = m_options.m_dim * sizeof(T) + m_metaDataSize;
+                //     size_t postVectorNum = postingList.size() / vectorInfoSize;
+                //     auto* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
+                //     for (int j = 0; j < postVectorNum; j++) {
+                //         uint8_t* vectorId = postingP + j * vectorInfoSize;
+                //         SizeType vid = *(reinterpret_cast<SizeType*>(vectorId));
+                //         float dist = *(reinterpret_cast<float*>(vectorId + sizeof(int) + sizeof(uint8_t)));
+                //         if (dist == headDist) {
+                //             LOG(Helper::LogLevel::LL_Info, "It is in splithead\n");
+                //             return true;
+                //         }
+                //     }
+                //     m_extraSearcher->SearchIndex(newHeads[1], postingList);
+                //     postVectorNum = postingList.size() / vectorInfoSize;
+                //     postingP = reinterpret_cast<uint8_t*>(&postingList.front());
+                //     for (int j = 0; j < postVectorNum; j++) {
+                //         uint8_t* vectorId = postingP + j * vectorInfoSize;
+                //         SizeType vid = *(reinterpret_cast<SizeType*>(vectorId));
+                //         float dist = *(reinterpret_cast<float*>(vectorId + sizeof(int) + sizeof(uint8_t)));
+                //         if (dist == headDist) {
+                //             LOG(Helper::LogLevel::LL_Info, "It is in splithead\n");
+                //             return true;
+                //         }
+                //     }
+                //     LOG(Helper::LogLevel::LL_Info, "It is not in splithead\n");
+                // }
+
                 return true;
             }
         };

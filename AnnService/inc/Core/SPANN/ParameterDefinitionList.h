@@ -128,6 +128,10 @@ DefineSSDParameter(m_calAllTruth, bool, false, "CalAllTruth")
 DefineSSDParameter(m_searchTimes, int, 1, "SearchTimes")
 // Frontend search threadnum
 DefineSSDParameter(m_searchThreadNum, int, 16, "SearchThreadNum")
+// Show tradeoff of latency and acurracy
+DefineSSDParameter(m_minInternalResultNum, int, -1, "MinInternalResultNum")
+DefineSSDParameter(m_stepInternalResultNum, int, -1, "StepInternalResultNum")
+DefineSSDParameter(m_maxInternalResultNum, int, -1, "MaxInternalResultNum")
 
 // Updating(SPFresh Update Test)
 // For update mode: current only update
