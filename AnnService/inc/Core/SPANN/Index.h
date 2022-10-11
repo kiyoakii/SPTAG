@@ -256,7 +256,8 @@ namespace SPTAG
             {
                 m_fComputeDistance = COMMON::DistanceCalcSelector<T>(m_options.m_distCalcMethod);
                 m_iBaseSquare = (m_options.m_distCalcMethod == DistCalcMethod::Cosine) ? COMMON::Utils::GetBase<T>() * COMMON::Utils::GetBase<T>() : 1;
-                m_metaDataSize = sizeof(int) + sizeof(uint8_t) + sizeof(float);
+                // m_metaDataSize = sizeof(int) + sizeof(uint8_t) + sizeof(float);
+                m_metaDataSize = sizeof(int) + sizeof(uint8_t);
             }
 
             ~Index() {}
@@ -719,7 +720,8 @@ namespace SPTAG
                     uint8_t* vectorId = postingP + j * m_vectorInfoSize;
                     SizeType vid = *(reinterpret_cast<int*>(vectorId));
                     uint8_t version = *(reinterpret_cast<uint8_t*>(vectorId + sizeof(int)));
-                    float_t dist = *(reinterpret_cast<float*>(vectorId + sizeof(int) + sizeof(uint8_t)));
+                    // float_t dist = *(reinterpret_cast<float*>(vectorId + sizeof(int) + sizeof(uint8_t)));
+                    float_t dist = m_index->ComputeDistance(reinterpret_cast<T*>(vectorId + m_metaDataSize), m_index->GetSample(headID));
                     // if (dist < Epsilon) LOG(Helper::LogLevel::LL_Info, "head found: vid: %d, head: %d\n", vid, headID);
                     avgDist += dist;
                     distanceSet.push_back(dist);
@@ -865,7 +867,7 @@ namespace SPTAG
             bool CheckIsNeedReassign(std::vector<SizeType>& newHeads, T* data, SizeType splitHead, float_t headToSplitHeadDist, float_t currentHeadDist, bool isInSplitHead, SizeType currentHead)
             {
                 
-                float_t headDist = m_index->ComputeDistance(data, m_index->GetSample(splitHead));
+                float_t splitHeadDist = m_index->ComputeDistance(data, m_index->GetSample(splitHead));
                 float_t newHeadDist_1 = m_index->ComputeDistance(data, m_index->GetSample(newHeads[0]));
                 float_t newHeadDist_2 = m_index->ComputeDistance(data, m_index->GetSample(newHeads[1]));
 
@@ -880,9 +882,9 @@ namespace SPTAG
                 // if (headDist * headDist >= (currentHeadDist * currentHeadDist + headToSplitHeadDist * headToSplitHeadDist) ) return false;
 
                 if (isInSplitHead) {
-                    if (headDist >= currentHeadDist) return false;
+                    if (splitHeadDist >= currentHeadDist) return false;
                 } else {
-                    if (headDist <= newHeadDist_1 && headDist <= newHeadDist_2) return false;
+                    if (splitHeadDist <= newHeadDist_1 && splitHeadDist <= newHeadDist_2) return false;
                     if (currentHeadDist <= newHeadDist_1 && currentHeadDist <= newHeadDist_2) return false;
                 }
 

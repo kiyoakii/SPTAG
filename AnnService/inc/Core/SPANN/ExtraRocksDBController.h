@@ -174,7 +174,8 @@ namespace SPTAG::SPANN
     public:
         ExtraRocksDBController(const char* dbPath, int dim, int vectorlimit, bool useDirectIO, float searchLatencyHardLimit) { 
             db.Initialize(dbPath, useDirectIO); 
-            m_metaDataSize = sizeof(int) + sizeof(uint8_t) + sizeof(float);
+            // m_metaDataSize = sizeof(int) + sizeof(uint8_t) + sizeof(float);
+            m_metaDataSize = sizeof(int) + sizeof(uint8_t);
             m_vectorInfoSize = dim * sizeof(ValueType) + m_metaDataSize;
             m_postingSizeLimit = vectorlimit;LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", m_postingSizeLimit);
             m_hardLatencyLimit = searchLatencyHardLimit;
@@ -310,7 +311,8 @@ namespace SPTAG::SPANN
                 //vectorInfoSize = fullVectors->PerVectorDataSize() + sizeof(int) + sizeof(uint8_t);
             }
 
-            m_metaDataSize = sizeof(int) + sizeof(uint8_t) + sizeof(float);
+            // m_metaDataSize = sizeof(int) + sizeof(uint8_t) + sizeof(float);
+            m_metaDataSize = sizeof(int) + sizeof(uint8_t);
 
             Selection selections(static_cast<size_t>(fullCount) * p_opt.m_replicaCount, p_opt.m_tmpdir);
             LOG(Helper::LogLevel::LL_Info, "Full vector count:%d Edge bytes:%llu selection size:%zu, capacity size:%zu\n", fullCount, sizeof(Edge), selections.m_selections.size(), selections.m_selections.capacity());
@@ -466,7 +468,7 @@ namespace SPTAG::SPANN
                         LOG(Helper::LogLevel::LL_Error, "Selection ID NOT MATCH\n");
                         exit(1);
                     }
-                    float distance = selections[selectIdx].distance;
+                    // float distance = selections[selectIdx].distance;
                     int fullID = selections[selectIdx++].tonode;
                     uint8_t version = 0;
                     m_versionMap.UpdateVersion(fullID, 0);
@@ -474,7 +476,7 @@ namespace SPTAG::SPANN
                     // First Vector ID, then Vector
                     postinglist += Helper::Convert::Serialize<int>(&fullID, 1);
                     postinglist += Helper::Convert::Serialize<uint8_t>(&version, 1);
-                    postinglist += Helper::Convert::Serialize<float>(&distance, 1);
+                    // postinglist += Helper::Convert::Serialize<float>(&distance, 1);
                     postinglist += Helper::Convert::Serialize<ValueType>(fullVectors->GetVector(fullID), dim);
                 }
 
