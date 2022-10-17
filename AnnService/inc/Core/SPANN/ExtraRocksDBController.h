@@ -177,7 +177,8 @@ namespace SPTAG::SPANN
             // m_metaDataSize = sizeof(int) + sizeof(uint8_t) + sizeof(float);
             m_metaDataSize = sizeof(int) + sizeof(uint8_t);
             m_vectorInfoSize = dim * sizeof(ValueType) + m_metaDataSize;
-            m_postingSizeLimit = vectorlimit;LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", m_postingSizeLimit);
+            m_postingSizeLimit = vectorlimit;
+            LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", m_postingSizeLimit);
             m_hardLatencyLimit = searchLatencyHardLimit;
         }
 
@@ -307,8 +308,8 @@ namespace SPTAG::SPANN
             {
                 auto fullVectors = p_reader->GetVectorSet();
                 fullCount = fullVectors->Count();
-                vectorInfoSize = fullVectors->PerVectorDataSize() + sizeof(int);
-                //vectorInfoSize = fullVectors->PerVectorDataSize() + sizeof(int) + sizeof(uint8_t);
+                // vectorInfoSize = fullVectors->PerVectorDataSize() + sizeof(int);
+                vectorInfoSize = fullVectors->PerVectorDataSize() + sizeof(int) + sizeof(uint8_t);
             }
 
             // m_metaDataSize = sizeof(int) + sizeof(uint8_t) + sizeof(float);
@@ -401,49 +402,63 @@ namespace SPTAG::SPANN
                 }
             }
 
-#pragma omp parallel for schedule(dynamic)
-            for (int i = 0; i < postingListSize.size(); ++i)
-            {
-                if (postingListSize[i] <= postingSizeLimit) continue;
+// #pragma omp parallel for schedule(dynamic)
+//             for (int i = 0; i < postingListSize.size(); ++i)
+//             {
+//                 if (postingListSize[i] <= postingSizeLimit) continue;
 
-                std::size_t selectIdx = std::lower_bound(selections.m_selections.begin(), selections.m_selections.end(), i, Selection::g_edgeComparer) - selections.m_selections.begin();
+//                 std::size_t selectIdx = std::lower_bound(selections.m_selections.begin(), selections.m_selections.end(), i, Selection::g_edgeComparer) - selections.m_selections.begin();
 
-                for (size_t dropID = postingSizeLimit; dropID < postingListSize[i]; ++dropID)
-                {
-                    int tonode = selections.m_selections[selectIdx + dropID].tonode;
-                    --replicaCount[tonode];
-                }
-                postingListSize[i] = postingSizeLimit;
-            }
+//                 for (size_t dropID = postingSizeLimit; dropID < postingListSize[i]; ++dropID)
+//                 {
+//                     int tonode = selections.m_selections[selectIdx + dropID].tonode;
+//                     --replicaCount[tonode];
+//                 }
+//                 postingListSize[i] = postingSizeLimit;
+//             }
 
-            if (p_opt.m_outputEmptyReplicaID)
-            {
-                std::vector<int> replicaCountDist(p_opt.m_replicaCount + 1, 0);
-                auto ptr = SPTAG::f_createIO();
-                if (ptr == nullptr || !ptr->Initialize("EmptyReplicaID.bin", std::ios::binary | std::ios::out)) {
-                    LOG(Helper::LogLevel::LL_Error, "Fail to create EmptyReplicaID.bin!\n");
-                    return false;
-                }
-                for (int i = 0; i < replicaCount.size(); ++i)
-                {
+//             {
+//                 std::vector<int> replicaCountDist(p_opt.m_replicaCount + 1, 0);
+//                 for (int i = 0; i < replicaCount.size(); ++i)
+//                 {
+//                     ++replicaCountDist[replicaCount[i]];
+//                 }
 
-                    ++replicaCountDist[replicaCount[i]];
+//                 LOG(Helper::LogLevel::LL_Info, "After Posting Cut:\n");
+//                 for (int i = 0; i < replicaCountDist.size(); ++i)
+//                 {
+//                     LOG(Helper::LogLevel::LL_Info, "Replica Count Dist: %d, %d\n", i, replicaCountDist[i]);
+//                 }
+//             }
 
-                    if (replicaCount[i] < 2)
-                    {
-                        long long vid = i;
-                        if (ptr->WriteBinary(sizeof(vid), reinterpret_cast<char*>(&vid)) != sizeof(vid)) {
-                            LOG(Helper::LogLevel::LL_Error, "Failt to write EmptyReplicaID.bin!");
-                            return false;
-                        }
-                    }
-                }
-                LOG(Helper::LogLevel::LL_Info, "After Posting Cut:\n");
-                for (int i = 0; i < replicaCountDist.size(); ++i)
-                {
-                    LOG(Helper::LogLevel::LL_Info, "Replica Count Dist: %d, %d\n", i, replicaCountDist[i]);
-                }
-            }
+//             if (p_opt.m_outputEmptyReplicaID)
+//             {
+//                 std::vector<int> replicaCountDist(p_opt.m_replicaCount + 1, 0);
+//                 auto ptr = SPTAG::f_createIO();
+//                 if (ptr == nullptr || !ptr->Initialize("EmptyReplicaID.bin", std::ios::binary | std::ios::out)) {
+//                     LOG(Helper::LogLevel::LL_Error, "Fail to create EmptyReplicaID.bin!\n");
+//                     return false;
+//                 }
+//                 for (int i = 0; i < replicaCount.size(); ++i)
+//                 {
+
+//                     ++replicaCountDist[replicaCount[i]];
+
+//                     if (replicaCount[i] < 2)
+//                     {
+//                         long long vid = i;
+//                         if (ptr->WriteBinary(sizeof(vid), reinterpret_cast<char*>(&vid)) != sizeof(vid)) {
+//                             LOG(Helper::LogLevel::LL_Error, "Failt to write EmptyReplicaID.bin!");
+//                             return false;
+//                         }
+//                     }
+//                 }
+//                 LOG(Helper::LogLevel::LL_Info, "After Posting Cut:\n");
+//                 for (int i = 0; i < replicaCountDist.size(); ++i)
+//                 {
+//                     LOG(Helper::LogLevel::LL_Info, "Replica Count Dist: %d, %d\n", i, replicaCountDist[i]);
+//                 }
+//             }
 
 
             auto t4 = std::chrono::high_resolution_clock::now();

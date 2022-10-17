@@ -313,7 +313,7 @@ namespace SPTAG
         template <typename T>
         float TryClustering(const Dataset<T>& data,
             std::vector<SizeType>& indices, const SizeType first, const SizeType last,
-            KmeansArgs<T>& args, int samples = 1000, float lambdaFactor = 100.0f, bool debug = false, IAbortOperation* abort = nullptr) {
+            KmeansArgs<T>& args, int samples = 1000, float lambdaFactor = 100.0f, bool debug = false, IAbortOperation* abort = nullptr, bool virtualCenter = false) {
 
             float adjustedLambda = InitCenters(data, indices, first, last, args, samples, 3);
             if (abort && abort->ShouldAbort()) return 0;
@@ -340,7 +340,7 @@ namespace SPTAG
                     noImprovement++;
                 }
 
-                /*
+                
                 if (debug) {
                     std::string log = "";
                     for (int k = 0; k < args._DK; k++) {
@@ -348,7 +348,7 @@ namespace SPTAG
                     }
                     LOG(Helper::LogLevel::LL_Info, "iter %d dist:%f lambda:(%f,%f) counts:%s\n", iter, currDist, originalLambda, adjustedLambda, log.c_str());
                 }
-                */
+                
 
                 currDiff = RefineCenters(data, args);
                 //if (debug) LOG(Helper::LogLevel::LL_Info, "iter %d dist:%f diff:%f\n", iter, currDist, currDiff);
@@ -357,11 +357,13 @@ namespace SPTAG
                 if (currDiff < 1e-3 || noImprovement >= 5) break;
             }
 
-            args.ClearCounts();
-            args.ClearDists(MaxDist);
-            currDist = KmeansAssign(data, indices, first, last, args, false, 0);
-            for (int k = 0; k < args._DK; k++) {
-                if (args.clusterIdx[k] != -1) std::memcpy(args.centers + k * args._D, data[args.clusterIdx[k]], sizeof(T) * args._D);
+            if (!virtualCenter) {
+                args.ClearCounts();
+                args.ClearDists(MaxDist);
+                currDist = KmeansAssign(data, indices, first, last, args, false, 0);
+                for (int k = 0; k < args._DK; k++) {
+                    if (args.clusterIdx[k] != -1) std::memcpy(args.centers + k * args._D, data[args.clusterIdx[k]], sizeof(T) * args._D);
+                }
             }
 
             args.ClearCounts();
@@ -417,9 +419,9 @@ namespace SPTAG
         template <typename T>
         int KmeansClustering(const Dataset<T>& data,
             std::vector<SizeType>& indices, const SizeType first, const SizeType last, 
-            KmeansArgs<T>& args, int samples = 1000, float lambdaFactor = 100.0f, bool debug = false, IAbortOperation* abort = nullptr) {
+            KmeansArgs<T>& args, int samples = 1000, float lambdaFactor = 100.0f, bool debug = false, IAbortOperation* abort = nullptr, bool virtualCenter = false) {
             
-            TryClustering(data, indices, first, last, args, samples, lambdaFactor, debug, abort);
+            TryClustering(data, indices, first, last, args, samples, lambdaFactor, debug, abort, virtualCenter);
             if (abort && abort->ShouldAbort()) return 1;
 
             int numClusters = 0;

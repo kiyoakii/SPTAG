@@ -147,6 +147,9 @@ namespace SPTAG {
                             if (vectorSet != nullptr) {
                                 float dist = results[i].GetResult(j)->Dist;
                                 float truthDist = COMMON::DistanceUtils::ComputeDistance((const T*)querySet->GetVector(i), (const T*)vectorSet->GetVector(id), vectorSet->Dimension(), index->GetDistCalcMethod());
+                                // if (id >= 500000) {
+                                //     LOG(Helper::LogLevel::LL_Info, "ann: %d@%f, truth: %d@%f\n", results[i].GetResult(j)->VID, dist, id, truthDist);
+                                // }
                                 if (index->GetDistCalcMethod() == SPTAG::DistCalcMethod::Cosine && fabs(dist - truthDist) < Epsilon) {
                                     thisrecall[i] += 1;
                                     visited[j] = true;
@@ -221,8 +224,6 @@ namespace SPTAG {
 
                 std::vector<std::thread> threads;
 
-                //LOG(Helper::LogLevel::LL_Info, "Searching: numThread: %d, numQueries: %d.\n", p_numThreads, numQueries);
-
                 StopWSPFresh sw;
 
                 auto func = [&]()
@@ -234,12 +235,6 @@ namespace SPTAG {
                         index = queriesSent.fetch_add(1);
                         if (index < numQueries)
                         {
-                            /*
-                            if ((index & ((1 << 14) - 1)) == 0)
-                            {
-                                LOG(Helper::LogLevel::LL_Info, "Sent %.2lf%%...\n", index * 100.0 / numQueries);
-                            }
-                            */
 
                             double startTime = threadws.getElapsedMs();
                             p_index->GetMemoryIndex()->SearchIndex(p_results[index]);
@@ -262,15 +257,8 @@ namespace SPTAG {
                 for (int i = 0; i < p_numThreads; i++) { threads.emplace_back(func); }
                 for (auto& thread : threads) { thread.join(); }
 
-                double sendingCost = sw.getElapsedSec();
+                auto sendingCost = sw.getElapsedSec();
 
-                /*
-                LOG(Helper::LogLevel::LL_Info,
-                    "Finish sending in %.3lf seconds, actuallQPS is %.2lf, query count %u.\n",
-                    sendingCost,
-                    numQueries / sendingCost,
-                    static_cast<uint32_t>(numQueries));
-                    */
                 return numQueries / sendingCost;
             }
 
@@ -586,6 +574,7 @@ namespace SPTAG {
                 LOG(Helper::LogLevel::LL_Info, "Start updating...\n");
                 for (int i = 0; i < batch; i++)
                 {   
+                    // p_index->QuantifyAssumptionBrokenTotally();
                     LOG(Helper::LogLevel::LL_Info, "Updating Batch %d: numThread: %d, step: %d.\n", i, insertThreads, step);
                     StopWSPFresh sw;
 
@@ -649,6 +638,13 @@ namespace SPTAG {
                     finishedInsert += step;
                     LOG(Helper::LogLevel::LL_Info, "Total Vector num %d \n", curCount);
 
+                    std::shared_ptr<Helper::ReaderOptions> vectorOptions(new Helper::ReaderOptions(p_opts.m_valueType, p_opts.m_dim, p_opts.m_vectorType, p_opts.m_vectorDelimiter));
+                    auto vectorReader = Helper::VectorSetReader::CreateInstance(vectorOptions);
+
+                    vectorReader->LoadFile(p_opts.m_fullVectorPath);
+
+                    p_index->Rebuild(vectorReader, curCount);
+
                     p_index->ForceCompaction();
 
                     if (p_opts.m_maxInternalResultNum != -1) 
@@ -663,13 +659,14 @@ namespace SPTAG {
                         StableSearch(p_index, numThreads, querySet, vectorSet, searchTimes, p_opts.m_queryCountLimit, internalResultNum, curCount, p_opts);
                     }
 
-                    LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times, head missing %d times, same head %d times, reassign %d times, garbage collection %d times\n", finishedInsert, p_index->getSplitTimes(), p_index->getHeadMiss(), p_index->getSameHead(), p_index->getReassignNum(), p_index->getGarbageNum());
+                    LOG(Helper::LogLevel::LL_Info, "After %d insertion, head vectors split %d times, head missing %d times, same head %d times, reassign %d(%.2lf) times, reassign scan %ld times, garbage collection %d times\n", finishedInsert, p_index->getSplitTimes(), p_index->getHeadMiss(), p_index->getSameHead(), p_index->getReassignNum(), p_index->getReassignNum()/p_index->getReAssignScanNum(), p_index->getReAssignScanNum(), p_index->getGarbageNum());
 
                     ShowMemoryStatus(vectorSet);
 
                     p_index->printSplitStatus();
-                    p_index->printSplitTheSameHeadStatus();
-                    //p_index->QuantifyAssumptionBrokenTotally();
+                    // p_index->printSplitTheSameHeadStatus();
+                    // p_index->QuantifyAssumptionBrokenTotally();
+                    // exit(0);
                 }
             }
 

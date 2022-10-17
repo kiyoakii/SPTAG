@@ -247,8 +247,9 @@ namespace SPTAG
             uint32_t m_theSameHeadNum{0};
             uint32_t m_reAssignNum{0};
             uint32_t m_garbageNum{0};
+            std::atomic_uint64_t m_reAssignScanNum{0};
             std::vector<SizeType> SimplyCountSplit;
-            std::vector<SizeType> TheSameHeadSplit;
+            std::vector<SizeType> m_totalReplicaCount;
             std::mutex m_dataAddLock;
 
         public:
@@ -353,7 +354,7 @@ namespace SPTAG
             ErrorCode Split(const SizeType headID, int appendNum, std::string& appendPosting);
             ErrorCode ReAssign(SizeType headID, std::vector<std::string>& postingLists, std::vector<SizeType>& newHeadsID);
             void ReAssignVectors(std::map<SizeType, T*>& reAssignVectors, std::map<SizeType, SizeType>& HeadPrevs, std::map<SizeType, uint8_t>& versions);
-            void ReAssignUpdate(const std::shared_ptr<std::string>&, SizeType VID, SizeType HeadPrev, uint8_t version);
+            bool ReAssignUpdate(const std::shared_ptr<std::string>&, SizeType VID, SizeType HeadPrev, uint8_t version);
 
         public:
             inline void AppendAsync(SizeType headID, int appendNum, std::shared_ptr<std::string> appendPosting, std::function<void()> p_callback=nullptr)
@@ -388,6 +389,8 @@ namespace SPTAG
             
             int getGarbageNum() {return m_garbageNum;}
 
+            unsigned long getReAssignScanNum() {return m_reAssignScanNum.load();}
+
             void printSplitStatus() 
             {
                 for (int i = 0; i < 13; i++)
@@ -401,23 +404,6 @@ namespace SPTAG
                 }
                 LOG(Helper::LogLevel::LL_Info, "\n");
                 return;
-            }
-
-            void printSplitTheSameHeadStatus()
-            {
-                int postingNum = m_index->GetNumSamples();
-                std::map<int, int> count;
-                for (int i = 0; i < postingNum; i++)
-                {
-                    if(count.find(TheSameHeadSplit[i]) == count.end()) {
-                        count[TheSameHeadSplit[i]] = 0;
-                    }
-                    count[TheSameHeadSplit[i]]++;
-                }
-                for (auto it = count.begin(); it != count.end(); it++)
-                {
-                    LOG(Helper::LogLevel::LL_Info, "TheSameHeadSplit %d times: %d nodes\n", it->first, it->second);
-                }
             }
 
             void UpdateStop()
@@ -492,7 +478,7 @@ namespace SPTAG
                                             m_index->GetSample(selections[selectionOffset + j].headID));
 
                                         // LOG(Helper::LogLevel::LL_Info,  "NNDist: %f Original: %f\n", nnDist, queryResults[i].Score);
-                                        if (nnDist <= queryResults[i].Dist)
+                                        if (m_options.m_rngFactor * nnDist <= queryResults[i].Dist)
                                         {
                                             rngAccpeted = false;
                                             break;
@@ -512,6 +498,18 @@ namespace SPTAG
                                     selections[selectionOffset + replicaCount[fullID]].order = (char)replicaCount[fullID];
                                     ++replicaCount[fullID];
                                 }
+                                // if (replicaCount[fullID] == 1) {
+                                //     for (int i = 0; i < m_options.m_internalResultNum; i++) {
+                                //         for (int j = 0; j < replicaCount[fullID]; ++j)
+                                //         {
+                                //             float nnDist = m_index->ComputeDistance(
+                                //                 m_index->GetSample(queryResults[i].VID),
+                                //                 m_index->GetSample(selections[selectionOffset + j].headID));
+
+                                //             LOG(Helper::LogLevel::LL_Info, "VID: %d, The %d th head dist: %f, rng check %d: %f\n", fullID, i, queryResults[i].Dist, j, nnDist);
+                                //         }
+                                //     }
+                                // }
                             }
 
                             rngFailedCountTotal += rngFailedCount;
@@ -527,14 +525,6 @@ namespace SPTAG
 
                 std::sort(selections.begin(), selections.end(), g_edgeComparerInsert);
 
-                int postingSizeLimit = INT_MAX;
-                if (m_options.m_postingPageLimit > 0)
-                {
-                    postingSizeLimit = static_cast<int>(m_options.m_postingPageLimit * 4096/ (fullVectors->PerVectorDataSize() + sizeof(int)));
-                }
-
-                LOG(Helper::LogLevel::LL_Info, "Posting size limit: %d\n", postingSizeLimit);
-
                 {
                     std::vector<int> replicaCountDist(m_options.m_replicaCount + 1, 0);
                     for (int i = 0; i < replicaCount.size(); ++i)
@@ -547,19 +537,6 @@ namespace SPTAG
                     {
                         LOG(Helper::LogLevel::LL_Info, "Replica Count Dist: %d, %d\n", i, replicaCountDist[i]);
                     }
-                }
-                for (int i = 0; i < postingListSize.size(); ++i)
-                {
-                    std::size_t selectIdx = std::lower_bound(selections.begin(), selections.end(), i, g_edgeComparerInsert) - selections.begin();
-                    if (postingListSize[i] <= postingSizeLimit) {
-                        continue;
-                    }
-                    for (size_t dropID = postingSizeLimit; dropID < postingListSize[i]; ++dropID) {
-                        int fullID = selections[selectIdx + dropID].fullID;
-                        --replicaCount[fullID];
-                    }
-
-                    postingListSize[i] = postingSizeLimit;
                 }
                 std::string postinglist;
                 for (int id = 0; id < postingListSize.size(); id++) 
@@ -581,10 +558,10 @@ namespace SPTAG
                         // First Vector ID, then Vector
                         postinglist += Helper::Convert::Serialize<int>(&fullID, 1);
                         postinglist += Helper::Convert::Serialize<uint8_t>(&version, 1);
-                        postinglist += Helper::Convert::Serialize<float>(&distance, 1);
+                        // postinglist += Helper::Convert::Serialize<float>(&distance, 1);
                         postinglist += Helper::Convert::Serialize<T>(fullVectors->GetVector(fullID), dim);
                     }
-                    m_extraSearcher->AddIndex(id, postinglist);
+                    m_extraSearcher->OverrideIndex(id, postinglist);
                 }
                 for(int id = 0; id < postingListSize.size(); id++)
                 {
@@ -594,13 +571,15 @@ namespace SPTAG
 
             void QuantifyAssumptionBrokenTotally()
             {
-                std::atomic_int assumptionBrokenNum = 0;
-                std::atomic_int assumption64BrokenNum = 0;
-                std::atomic_int deleted = 0;
+
+                std::atomic_int32_t isIn64(0); 
                 int vectorNum = m_vectorNum.load();
                 std::vector<std::set<SizeType>> vectorHeadMap(vectorNum);
                 std::vector<bool> vectorFoundMap(vectorNum);
                 std::vector<std::string> vectorIdValueMap(vectorNum);
+                for (int i = 0; i < vectorNum; i++) {
+                    m_totalReplicaCount[i] = 0;
+                }
                 for (int i = 0; i < m_index->GetNumSamples(); i++) {
                     std::string postingList;
                     if (!m_index->ContainSample(i)) continue;
@@ -610,6 +589,7 @@ namespace SPTAG
                     for (int j = 0; j < postVectorNum; j++) {
                         uint8_t* vectorId = postingP + j * (m_options.m_dim * sizeof(T) + m_metaDataSize);
                         SizeType vid = *(reinterpret_cast<SizeType*>(vectorId));
+                        m_totalReplicaCount[vid]++;
                         if (m_versionMap.Contains(vid)) continue;
                         vectorHeadMap[vid].insert(i);
                         if (vectorFoundMap[vid]) continue;
@@ -617,13 +597,14 @@ namespace SPTAG
                         vectorIdValueMap[vid] = Helper::Convert::Serialize<uint8_t>(vectorId + m_metaDataSize, m_options.m_dim * sizeof(T));
                     }
                 }
-                LOG(Helper::LogLevel::LL_Info, "Begin Searching\n");
+                int totalNum = 0;
+                for (int i = 0; i < vectorNum; i++) {
+                    if (vectorFoundMap[i]) totalNum++;
+                    else LOG(Helper::LogLevel::LL_Info, "missing VID: %d\n", i);
+                }
+                LOG(Helper::LogLevel::LL_Info, "Acutall Vector Number: %d\n", totalNum);
                 #pragma omp parallel for num_threads(32)
                 for (int vid = 0; vid < vectorNum; vid++) {
-                    if (m_versionMap.Contains(vid)) {
-                        deleted++;
-                        continue;
-                    }
                     COMMON::QueryResultSet<T> headCandidates(NULL, 64);
                     headCandidates.SetTarget(reinterpret_cast<T*>(&vectorIdValueMap[vid].front()));
                     headCandidates.Reset();
@@ -636,38 +617,13 @@ namespace SPTAG
                         if (queryResults[i].VID == -1) {
                             break;
                         }
-                        HeadMap.insert(queryResults[i].VID);
-                        // RNG Check.
-                        bool rngAccpeted = true;
-                        for (int j = 0; j < replicaCount; ++j) {
-                            float nnDist = m_index->ComputeDistance(
-                                                        m_index->GetSample(queryResults[i].VID),
-                                                        m_index->GetSample(selections[j].headID));
-                            if (nnDist <= queryResults[i].Dist) {
-                                rngAccpeted = false;
-                                break;
-                            }
-                        }
-                        if (!rngAccpeted)
-                            continue;
-
-                        selections[replicaCount].headID = queryResults[i].VID;
-                        ++replicaCount;
-                    }
-                    for (int i = 0; i < replicaCount; i++) {
-                        if (!vectorHeadMap[vid].count(selections[i].headID)) {
-                            assumptionBrokenNum++;
-                            break;
-                        }
-                    }
-                    for (auto vectorHead : vectorHeadMap[vid]) {
-                        if (!HeadMap.count(vectorHead)) {
-                            assumption64BrokenNum++;
+                        if (vectorHeadMap[vid].count(queryResults[i].VID)) {
+                            isIn64++;
                             break;
                         }
                     }
                 }
-                LOG(Helper::LogLevel::LL_Info, "After Split %d times, %d total vectors, %d assumption broken vectors, %d vectors are not in 64 nearest postings\n", m_splitNum, vectorNum - deleted.load(), assumptionBrokenNum.load(), assumption64BrokenNum.load());
+                LOG(Helper::LogLevel::LL_Info, "%d/%d Vectors has at least 1 replica in top64\n", isIn64.load(), vectorNum);
             }
 
             //headCandidates: search data structrue for "vid" vector
@@ -755,14 +711,14 @@ namespace SPTAG
                     minDist = distanceSet[1];
                     maxDist = distanceSet[distanceSet.size() - 1];
                     // LOG(Helper::LogLevel::LL_Info, "distance: min: %f, max: %f, avg: %f, 50th: %f\n", minDist, maxDist, avgDist/postVectorNum, distanceSet[distanceSet.size() * 0.5]);
-                    LOG(Helper::LogLevel::LL_Info, "assumption broken num: %d\n", assumptionBrokenNum);
+                    // LOG(Helper::LogLevel::LL_Info, "assumption broken num: %d\n", assumptionBrokenNum);
                     float_t splitDist = m_index->ComputeDistance(m_index->GetSample(SplitHead), m_index->GetSample(headID));
 
                     float_t headToNewHeadDist_1 = m_index->ComputeDistance(m_index->GetSample(headID), m_index->GetSample(newHeads[0]));
                     float_t headToNewHeadDist_2 = m_index->ComputeDistance(m_index->GetSample(headID), m_index->GetSample(newHeads[1]));
 
-                    LOG(Helper::LogLevel::LL_Info, "head to spilt head distance: %f/%d/%.2f\n", splitDist, topK, ratio);
-                    LOG(Helper::LogLevel::LL_Info, "head to new head 1 distance: %f, to new head 2 distance: %f\n", headToNewHeadDist_1, headToNewHeadDist_2);
+                    // LOG(Helper::LogLevel::LL_Info, "head to spilt head distance: %f/%d/%.2f\n", splitDist, topK, ratio);
+                    // LOG(Helper::LogLevel::LL_Info, "head to new head 1 distance: %f, to new head 2 distance: %f\n", headToNewHeadDist_1, headToNewHeadDist_2);
                 }
                 
                 return assumptionBrokenNum;
@@ -774,7 +730,7 @@ namespace SPTAG
                 assumptionBrokenNum += QuantifyAssumptionBroken(newHeads[0], postingLists[0], SplitHead, newHeads, brokenID);
                 assumptionBrokenNum += QuantifyAssumptionBroken(newHeads[1], postingLists[1], SplitHead, newHeads, brokenID);
                 int vectorNum = (postingLists[0].size() + postingLists[1].size()) / (sizeof(T) * m_options.m_dim + m_metaDataSize);
-                // LOG(Helper::LogLevel::LL_Info, "After Split%d, Top0 nearby posting lists, caseA : %d/%d\n", split_order, assumptionBrokenNum, vectorNum);
+                LOG(Helper::LogLevel::LL_Info, "After Split%d, Top0 nearby posting lists, caseA : %d/%d\n", split_order, assumptionBrokenNum, vectorNum);
                 return assumptionBrokenNum;
             }
 
@@ -783,7 +739,7 @@ namespace SPTAG
             void QuantifySplitCaseB(SizeType headID, std::vector<SizeType>& newHeads, SizeType SplitHead, int split_order, int assumptionBrokenNum_top0, std::set<int>& brokenID)
             {
                 auto headVector = reinterpret_cast<const T*>(m_index->GetSample(headID));
-                COMMON::QueryResultSet<T> nearbyHeads(NULL, 128);
+                COMMON::QueryResultSet<T> nearbyHeads(NULL, 64);
                 nearbyHeads.SetTarget(headVector);
                 nearbyHeads.Reset();
                 std::vector<std::string> postingLists;
@@ -805,7 +761,6 @@ namespace SPTAG
                     furthestDist = queryResults[i].Dist;
                     if (i == topk) {
                         LOG(Helper::LogLevel::LL_Info, "After Split%d, Top%d nearby posting lists, caseB : %d in %d/%d\n", split_order, i, assumptionBrokenNum, containedHead, vectorNum);
-                        LOG(Helper::LogLevel::LL_Info, "After Split%d, Top%d Dist: %f\n", split_order, i, furthestDist);
                         topk *= 2;
                     }
                     if (queryResults[i].VID == newHeads[0] || queryResults[i].VID == newHeads[1]) continue;
@@ -816,7 +771,6 @@ namespace SPTAG
                     if (tempNum != 0) containedHead++;
                 }
                 LOG(Helper::LogLevel::LL_Info, "After Split%d, Top%d nearby posting lists, caseB : %d in %d/%d\n", split_order, i, assumptionBrokenNum, containedHead, vectorNum);
-                LOG(Helper::LogLevel::LL_Info, "After Split%d, Top%d Dist: %f\n", split_order, i, furthestDist);
             }
 
             void QuantifySplit(SizeType headID, std::vector<std::string>& postingLists, std::vector<SizeType>& newHeads, SizeType SplitHead, int split_order)
@@ -828,42 +782,6 @@ namespace SPTAG
                 QuantifySplitCaseB(headID, newHeads, SplitHead, split_order, assumptionBrokenNum, brokenID);
             }
 
-            bool CheckIsInMiddleOfTwoHead(T* data, std::vector<SizeType>& newHeads, SizeType currentHead, float_t currentHeadDist, SizeType splitHead)
-            {
-                float_t splitHeadDist = m_index->ComputeDistance(data, m_index->GetSample(splitHead));
-
-                float_t newHeadToHeadDist_1 = m_index->ComputeDistance(m_index->GetSample(newHeads[0]), m_index->GetSample(currentHead));
-                float_t newHeadToVectorDist_1 = m_index->ComputeDistance(m_index->GetSample(newHeads[0]), data);
-
-                float_t newHeadToHeadDist_2 = m_index->ComputeDistance(m_index->GetSample(newHeads[1]), m_index->GetSample(currentHead));
-                float_t newHeadToVectorDist_2 = m_index->ComputeDistance(m_index->GetSample(newHeads[1]), data);
-                // if (newHeadToHeadDist_1 >= newHeadToVectorDist_1 || newHeadToHeadDist_2 >= newHeadToVectorDist_2) return true;
-
-                if (newHeadToVectorDist_1 < currentHeadDist || newHeadToVectorDist_2 < currentHeadDist) return true;
-
-                // LOG(Helper::LogLevel::LL_Info, "NewHeadToHeadDist_1: %f, NewHeadToHeadDist_2: %f, newHeadToVectorDist_1: %f, newHeadToVectorDist_2: %f,  currentHeadDist: %f, splitHeadDist: %f\n", 
-                //  newHeadToHeadDist_1, newHeadToHeadDist_2, newHeadToVectorDist_1, newHeadToVectorDist_2, currentHeadDist, splitHeadDist);
-                return false;
-            }
-
-            bool CheckIsReallyNeedReassign(T* data, std::vector<SizeType>& newHeads, SizeType currentHead)
-            {
-                COMMON::QueryResultSet<T> p_queryResults(NULL, m_options.m_internalResultNum);
-                p_queryResults.SetTarget(reinterpret_cast<T*>(data));
-                p_queryResults.Reset();
-                m_index->SearchIndex(p_queryResults);
-                BasicResult* queryResults = p_queryResults.GetResults();
-                for (int i = 0; i < p_queryResults.GetResultNum(); ++i) {
-                    if (queryResults[i].VID == -1 || queryResults[i].VID == currentHead) {
-                        break;
-                    }
-                    for (auto headID : newHeads) {
-                        if (queryResults[i].VID == headID) return true;
-                    }
-                }
-                return false;
-            }
-
             bool CheckIsNeedReassign(std::vector<SizeType>& newHeads, T* data, SizeType splitHead, float_t headToSplitHeadDist, float_t currentHeadDist, bool isInSplitHead, SizeType currentHead)
             {
                 
@@ -871,64 +789,13 @@ namespace SPTAG
                 float_t newHeadDist_1 = m_index->ComputeDistance(data, m_index->GetSample(newHeads[0]));
                 float_t newHeadDist_2 = m_index->ComputeDistance(data, m_index->GetSample(newHeads[1]));
 
-                // float_t newHeadToHeadDist_1 = m_index->ComputeDistance(m_index->GetSample(newHeads[0]), m_index->GetSample(currentHead));
-                // float_t newHeadToHeadDist_2 = m_index->ComputeDistance(m_index->GetSample(newHeads[1]), m_index->GetSample(currentHead));
-
-                // float_t newHeadToSplitHeadDist_1 = m_index->ComputeDistance(m_index->GetSample(newHeads[0]), m_index->GetSample(splitHead));
-                // float_t newHeadToSplitHeadDist_2 = m_index->ComputeDistance(m_index->GetSample(newHeads[1]), m_index->GetSample(splitHead));
-                // float_t newHeadToNewHeadDist = m_index->ComputeDistance(m_index->GetSample(newHeads[0]), m_index->GetSample(newHeads[1]));
-
-
-                // if (headDist * headDist >= (currentHeadDist * currentHeadDist + headToSplitHeadDist * headToSplitHeadDist) ) return false;
-
                 if (isInSplitHead) {
                     if (splitHeadDist >= currentHeadDist) return false;
                 } else {
                     if (splitHeadDist <= newHeadDist_1 && splitHeadDist <= newHeadDist_2) return false;
                     if (currentHeadDist <= newHeadDist_1 && currentHeadDist <= newHeadDist_2) return false;
                 }
-
-                // LOG(Helper::LogLevel::LL_Info, "newHeadDist_1: %f, newHeadDist_2: %f, currentHeadDist: %f, toSplitHeadDist: %f, headToSplitHeadDist: %f, headToNewHeadDist_1: %f, headToNewHeadDist_2: %f newHeadToSplitHeadDist_1: %f, newHeadToSplitHeadDist_2: %f, newHeadToNewHeadDist: %f\n",
-                //     newHeadDist_1, newHeadDist_2, currentHeadDist, headDist, headToSplitHeadDist, newHeadToHeadDist_1, newHeadToHeadDist_2,
-                //     newHeadToSplitHeadDist_1, newHeadToSplitHeadDist_2, newHeadToNewHeadDist);
-                // if ((headToSplitHeadDist + newHeadToSplitHeadDist_1 ) > newHeadToHeadDist_1) LOG(Helper::LogLevel::LL_Info, "Head_1: True\n");
-                // else LOG(Helper::LogLevel::LL_Info, "Head_1: False\n");
-                // if ((headToSplitHeadDist + newHeadToSplitHeadDist_2 ) > newHeadToHeadDist_2) LOG(Helper::LogLevel::LL_Info, "Head_2: True\n");
-                // else LOG(Helper::LogLevel::LL_Info, "Head_2: False\n");
-                // COMMON::QueryResultSet<T> headCandidates(NULL, 64);
-                // headCandidates.SetTarget(reinterpret_cast<T*>(data));
-                // headCandidates.Reset();
-                // if (IsAssumptionBroken(currentHead, headCandidates, 0)) LOG(Helper::LogLevel::LL_Info, "Really Need Reassign\n");
-                // if (currentHeadDist > headDist)
-                // {
-                //     std::string postingList;
-                //     m_extraSearcher->SearchIndex(newHeads[0], postingList);
-                //     int vectorInfoSize = m_options.m_dim * sizeof(T) + m_metaDataSize;
-                //     size_t postVectorNum = postingList.size() / vectorInfoSize;
-                //     auto* postingP = reinterpret_cast<uint8_t*>(&postingList.front());
-                //     for (int j = 0; j < postVectorNum; j++) {
-                //         uint8_t* vectorId = postingP + j * vectorInfoSize;
-                //         SizeType vid = *(reinterpret_cast<SizeType*>(vectorId));
-                //         float dist = *(reinterpret_cast<float*>(vectorId + sizeof(int) + sizeof(uint8_t)));
-                //         if (dist == headDist) {
-                //             LOG(Helper::LogLevel::LL_Info, "It is in splithead\n");
-                //             return true;
-                //         }
-                //     }
-                //     m_extraSearcher->SearchIndex(newHeads[1], postingList);
-                //     postVectorNum = postingList.size() / vectorInfoSize;
-                //     postingP = reinterpret_cast<uint8_t*>(&postingList.front());
-                //     for (int j = 0; j < postVectorNum; j++) {
-                //         uint8_t* vectorId = postingP + j * vectorInfoSize;
-                //         SizeType vid = *(reinterpret_cast<SizeType*>(vectorId));
-                //         float dist = *(reinterpret_cast<float*>(vectorId + sizeof(int) + sizeof(uint8_t)));
-                //         if (dist == headDist) {
-                //             LOG(Helper::LogLevel::LL_Info, "It is in splithead\n");
-                //             return true;
-                //         }
-                //     }
-                //     LOG(Helper::LogLevel::LL_Info, "It is not in splithead\n");
-                // }
+                
 
                 return true;
             }
